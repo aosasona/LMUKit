@@ -1,0 +1,20 @@
+# Rust build output
+/target/
+**/*.rs.bk
+
+# Windows build artifacts copied outside target/
+*.exe
+*.pdb
+*.dll
+*.lib
+*.exp
+
+# Local mise overrides
+mise.local.toml
+.mise.local.toml
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

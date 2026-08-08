@@ -1,0 +1,291 @@
+use crate::storage::{Profile, Store};
+use anyhow::{Context, Result};
+use eframe::egui;
+use std::{path::PathBuf, process::Command};
+
+pub struct WillaApp {
+    store: Option<Store>,
+    profiles: Vec<Profile>,
+    selected: Option<usize>,
+    new_name: String,
+    config_path: String,
+    status: Status,
+}
+
+enum Status {
+    Ready(String),
+    Success(String),
+    Error(String),
+}
+
+impl WillaApp {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        let mut visuals = egui::Visuals::dark();
+        visuals.panel_fill = egui::Color32::from_rgb(20, 22, 26);
+        visuals.window_fill = visuals.panel_fill;
+        cc.egui_ctx.set_visuals(visuals);
+        match Store::open() {
+            Ok(store) => {
+                let config_path = store.settings.lmu_config_path.display().to_string();
+                let profiles = store.profiles().unwrap_or_default();
+                Self {
+                    store: Some(store),
+                    profiles,
+                    selected: None,
+                    new_name: String::new(),
+                    config_path,
+                    status: Status::Ready(
+                        "Choose a profile or capture LMU's current bindings.".into(),
+                    ),
+                }
+            }
+            Err(error) => Self {
+                store: None,
+                profiles: Vec::new(),
+                selected: None,
+                new_name: String::new(),
+                config_path: String::new(),
+                status: Status::Error(error.to_string()),
+            },
+        }
+    }
+
+    fn refresh(&mut self) {
+        if let Some(store) = &self.store {
+            match store.profiles() {
+                Ok(profiles) => self.profiles = profiles,
+                Err(error) => self.status = Status::Error(error.to_string()),
+            }
+        }
+    }
+
+    fn save_path(&mut self) {
+        if let Some(store) = &mut self.store {
+            store.settings.lmu_config_path = PathBuf::from(self.config_path.trim());
+            match store.save_settings() {
+                Ok(()) => self.status = Status::Success("LMU config location saved.".into()),
+                Err(error) => self.status = Status::Error(error.to_string()),
+            }
+        }
+    }
+
+    fn capture(&mut self) {
+        if let Some(store) = &self.store {
+            match store.capture(&self.new_name) {
+                Ok(profile) => {
+                    self.new_name.clear();
+                    self.status = Status::Success(format!("Saved profile '{}'.", profile.name));
+                    self.refresh();
+                }
+                Err(error) => self.status = Status::Error(error.to_string()),
+            }
+        }
+    }
+
+    fn show_profiles_folder(&mut self) {
+        let Some(store) = &self.store else {
+            return;
+        };
+        let path = store.profiles_dir();
+        match open_folder(&path) {
+            Ok(()) => {
+                self.status =
+                    Status::Success(format!("Opened the profiles folder: {}", path.display()));
+            }
+            Err(error) => self.status = Status::Error(error.to_string()),
+        }
+    }
+
+    fn activate_selected(&mut self) {
+        let Some(profile) = self.selected.and_then(|i| self.profiles.get(i)).cloned() else {
+            return;
+        };
+        if let Some(store) = &mut self.store {
+            match store.activate(&profile) {
+                Ok(_) => {
+                    self.status = Status::Success(format!("'{}' is now active.", profile.name))
+                }
+                Err(error) => self.status = Status::Error(error.to_string()),
+            }
+        }
+    }
+
+    fn delete_selected(&mut self) {
+        let Some(profile) = self.selected.and_then(|i| self.profiles.get(i)).cloned() else {
+            return;
+        };
+        if let Some(store) = &mut self.store {
+            match store.delete(&profile) {
+                Ok(()) => {
+                    self.selected = None;
+                    self.status = Status::Success(format!("Deleted '{}'.", profile.name));
+                    self.refresh();
+                }
+                Err(error) => self.status = Status::Error(error.to_string()),
+            }
+        }
+    }
+}
+
+impl eframe::App for WillaApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::TopBottomPanel::top("header").show(ctx, |ui| {
+            ui.add_space(14.0);
+            ui.heading(egui::RichText::new("Willa").size(24.0));
+            ui.weak("Le Mans Ultimate wheel profile manager");
+            ui.add_space(12.0);
+        });
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+
+            egui::Frame::group(ui.style())
+                .inner_margin(14.0)
+                .show(ui, |ui| {
+                    ui.heading("LMU configuration");
+                    ui.weak("Choose the live bindings file that Willa should manage.");
+                    ui.add_space(4.0);
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.config_path)
+                            .desired_width(f32::INFINITY),
+                    );
+                    ui.horizontal(|ui| {
+                        if ui.button("Browse…").clicked()
+                            && let Some(path) = rfd::FileDialog::new()
+                                .add_filter("JSON", &["json"])
+                                .set_file_name("direct input.json")
+                                .pick_file()
+                        {
+                            self.config_path = path.display().to_string();
+                            self.save_path();
+                        }
+                        if ui.button("Save path").clicked() {
+                            self.save_path();
+                        }
+                    });
+                });
+
+            ui.add_space(10.0);
+            egui::Frame::group(ui.style())
+                .inner_margin(14.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.heading("Saved profiles");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui
+                                .add_enabled(
+                                    self.store.is_some(),
+                                    egui::Button::new("Show in folder"),
+                                )
+                                .clicked()
+                            {
+                                self.show_profiles_folder();
+                            }
+                            if ui.button("Refresh").clicked() {
+                                self.refresh();
+                            }
+                        });
+                    });
+                    ui.weak("Select a saved setup to make it active in LMU.");
+                    ui.separator();
+                    egui::ScrollArea::vertical()
+                        .max_height(220.0)
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            if self.profiles.is_empty() {
+                                ui.weak("No profiles saved yet.");
+                            }
+                            let active =
+                                self.store.as_ref().and_then(|s| s.settings.active_profile);
+                            for (index, profile) in self.profiles.iter().enumerate() {
+                                let label = if active == Some(profile.id) {
+                                    format!("{}  • active", profile.name)
+                                } else {
+                                    profile.name.clone()
+                                };
+                                ui.selectable_value(&mut self.selected, Some(index), label);
+                            }
+                        });
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(
+                                self.selected.is_some(),
+                                egui::Button::new("Activate selected"),
+                            )
+                            .clicked()
+                        {
+                            self.activate_selected();
+                        }
+                        if ui
+                            .add_enabled(self.selected.is_some(), egui::Button::new("Delete"))
+                            .clicked()
+                        {
+                            self.delete_selected();
+                        }
+                    });
+                });
+
+            ui.add_space(10.0);
+            egui::Frame::group(ui.style())
+                .inner_margin(14.0)
+                .show(ui, |ui| {
+                    ui.heading("Capture current bindings");
+                    ui.weak("Configure the wheel in LMU, then save that setup with a name.");
+                    ui.add_space(4.0);
+                    let response = ui.add(
+                        egui::TextEdit::singleline(&mut self.new_name)
+                            .hint_text("e.g. Simagic GT Neo")
+                            .desired_width(f32::INFINITY),
+                    );
+                    let enter = response.lost_focus()
+                        && ui.input(|input| input.key_pressed(egui::Key::Enter));
+                    if ui
+                        .add_sized([120.0, 30.0], egui::Button::new("Save profile"))
+                        .clicked()
+                        || enter
+                    {
+                        self.capture();
+                    }
+                });
+
+            ui.add_space(12.0);
+            let (text, color) = match &self.status {
+                Status::Ready(text) => (text, ui.visuals().weak_text_color()),
+                Status::Success(text) => (text, egui::Color32::from_rgb(100, 210, 140)),
+                Status::Error(text) => (text, egui::Color32::from_rgb(240, 110, 110)),
+            };
+            ui.colored_label(color, text);
+            ui.add_space(4.0);
+            ui.small("Close LMU before activating a profile. A recovery backup is created first.");
+        });
+    }
+}
+
+fn open_folder(path: &std::path::Path) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = Command::new("explorer.exe");
+        command.arg(path);
+        command
+    };
+
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = Command::new("open");
+        command.arg(path);
+        command
+    };
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = {
+        let mut command = Command::new("xdg-open");
+        command.arg(path);
+        command
+    };
+
+    command
+        .spawn()
+        .with_context(|| format!("could not open {}", path.display()))?;
+    Ok(())
+}

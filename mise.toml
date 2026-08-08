@@ -1,0 +1,33 @@
+[tools]
+rust = "1.91.1"
+"cargo:cargo-xwin" = "latest"
+
+[env]
+WINDOWS_TARGET = "x86_64-pc-windows-msvc"
+
+[tasks.run]
+description = "Build and launch the Windows debug executable through WSL interoperability"
+run = """
+cargo xwin build --target "$WINDOWS_TARGET"
+./target/$WINDOWS_TARGET/debug/willa.exe
+"""
+
+[tasks.test]
+description = "Run the test suite"
+run = "cargo test"
+
+[tasks.check]
+description = "Check the project"
+run = "cargo check"
+
+[tasks.fmt]
+description = "Check Rust formatting"
+run = "cargo fmt --check"
+
+[tasks.lint]
+description = "Run Clippy"
+run = "cargo clippy --all-targets --all-features -- -D warnings"
+
+[tasks.build]
+description = "Build an optimized Windows executable"
+run = "cargo xwin build --release --target \"$WINDOWS_TARGET\""
