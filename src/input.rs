@@ -11,7 +11,7 @@ mod platform {
     use std::collections::HashMap;
     use windows::{
         Gaming::Input::{GameControllerSwitchPosition, RawGameController},
-        Win32::System::WinRT::{RO_INIT_MULTITHREADED, RoInitialize},
+        Win32::System::WinRT::{RO_INIT_SINGLETHREADED, RoInitialize},
     };
 
     pub struct InputListener {
@@ -20,7 +20,7 @@ mod platform {
 
     impl InputListener {
         pub fn new() -> Result<Self, String> {
-            unsafe { RoInitialize(RO_INIT_MULTITHREADED) }.map_err(|error| error.to_string())?;
+            unsafe { RoInitialize(RO_INIT_SINGLETHREADED) }.map_err(|error| error.to_string())?;
             let mut listener = Self {
                 previous: HashMap::new(),
             };
