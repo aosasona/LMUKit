@@ -96,6 +96,37 @@ impl WillaApp {
         }
     }
 
+    fn import_profiles(&mut self, paths: &[PathBuf]) {
+        let Some(store) = &self.store else {
+            return;
+        };
+        let mut imported = Vec::new();
+        let mut failures = Vec::new();
+        for path in paths {
+            match store.import_profile(path) {
+                Ok(profile) => imported.push(profile.name),
+                Err(error) => failures.push(format!("{}: {error}", path.display())),
+            }
+        }
+        self.refresh();
+        if failures.is_empty() {
+            let count = imported.len();
+            self.status = Status::Success(format!(
+                "Imported {count} profile{}: {}",
+                if count == 1 { "" } else { "s" },
+                imported.join(", ")
+            ));
+        } else {
+            let prefix = if imported.is_empty() {
+                String::new()
+            } else {
+                format!("Imported {}. ", imported.join(", "))
+            };
+            self.status =
+                Status::Error(format!("{prefix}Could not import: {}", failures.join("; ")));
+        }
+    }
+
     fn activate_selected(&mut self) {
         let Some(profile) = self.selected.and_then(|i| self.profiles.get(i)).cloned() else {
             return;
@@ -129,6 +160,19 @@ impl WillaApp {
 
 impl eframe::App for WillaApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let dropped_paths = ctx.input(|input| {
+            input
+                .raw
+                .dropped_files
+                .iter()
+                .filter_map(|file| file.path.clone())
+                .collect::<Vec<_>>()
+        });
+        if !dropped_paths.is_empty() {
+            self.import_profiles(&dropped_paths);
+        }
+        let hovering_files = ctx.input(|input| !input.raw.hovered_files.is_empty());
+
         egui::TopBottomPanel::top("header").show(ctx, |ui| {
             ui.add_space(14.0);
             ui.heading(egui::RichText::new("Willa").size(24.0));
@@ -167,6 +211,11 @@ impl eframe::App for WillaApp {
 
             ui.add_space(10.0);
             egui::Frame::group(ui.style())
+                .fill(if hovering_files {
+                    egui::Color32::from_rgb(32, 53, 48)
+                } else {
+                    ui.visuals().faint_bg_color
+                })
                 .inner_margin(14.0)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
@@ -186,7 +235,14 @@ impl eframe::App for WillaApp {
                             }
                         });
                     });
-                    ui.weak("Select a saved setup to make it active in LMU.");
+                    if hovering_files {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(120, 220, 170),
+                            "Drop to import preset files or folders",
+                        );
+                    } else {
+                        ui.weak("Select a setup, or drop LMU preset JSON files here to import.");
+                    }
                     ui.separator();
                     egui::ScrollArea::vertical()
                         .max_height(220.0)

@@ -81,11 +81,25 @@ impl Store {
     }
 
     pub fn capture(&self, name: &str) -> Result<Profile> {
+        let source = &self.settings.lmu_config_path;
+        self.store_profile(source, name)
+    }
+
+    pub fn import_profile(&self, dropped: &Path) -> Result<Profile> {
+        let source = if dropped.is_dir() {
+            dropped.join(CONFIG_FILE_NAME)
+        } else {
+            dropped.to_path_buf()
+        };
+        let name = imported_profile_name(dropped)?;
+        self.store_profile(&source, &name)
+    }
+
+    fn store_profile(&self, source: &Path, name: &str) -> Result<Profile> {
         let name = name.trim();
         if name.is_empty() {
             bail!("Enter a profile name.");
         }
-        let source = &self.settings.lmu_config_path;
         validate_lmu_file(source)?;
 
         let profile = Profile {
@@ -151,6 +165,36 @@ impl Store {
     }
 }
 
+fn imported_profile_name(path: &Path) -> Result<String> {
+    if path.is_dir() {
+        let metadata = path.join("profile.json");
+        if metadata.is_file()
+            && let Ok(profile) = serde_json::from_slice::<Profile>(&fs::read(metadata)?)
+        {
+            return Ok(profile.name);
+        }
+        return path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(str::to_owned)
+            .context("the dropped profile folder has no usable name");
+    }
+
+    let stem = path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .context("the dropped preset has no usable filename")?;
+    if stem.eq_ignore_ascii_case("direct input") {
+        return path
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str())
+            .map(str::to_owned)
+            .context("place direct input.json in a named folder before importing it");
+    }
+    Ok(stem.to_owned())
+}
+
 pub fn default_lmu_path() -> PathBuf {
     PathBuf::from(
         r"C:\Program Files (x86)\Steam\steamapps\common\Le Mans Ultimate\UserData\player\direct input.json",
@@ -199,5 +243,22 @@ mod tests {
         let backup = store.activate(&profile).unwrap();
         assert_eq!(fs::read_to_string(live).unwrap(), r#"{"wheel":"neo"}"#);
         assert_eq!(fs::read_to_string(backup).unwrap(), r#"{"wheel":"other"}"#);
+    }
+
+    #[test]
+    fn imports_a_named_preset_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let preset = temp.path().join("Porsche 963.json");
+        fs::write(&preset, br#"{"wheel":"formula"}"#).unwrap();
+
+        let store = Store::open_at(temp.path().join("willa")).unwrap();
+        let profile = store.import_profile(&preset).unwrap();
+
+        assert_eq!(profile.name, "Porsche 963");
+        assert_eq!(store.profiles().unwrap().len(), 1);
+        assert_eq!(
+            fs::read_to_string(store.profile_dir(profile.id).join(CONFIG_FILE_NAME)).unwrap(),
+            r#"{"wheel":"formula"}"#
+        );
     }
 }
