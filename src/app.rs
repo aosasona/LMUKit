@@ -281,6 +281,7 @@ impl WillaApp {
 impl eframe::App for WillaApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.check_active_profile();
+        ctx.request_repaint_after(Duration::from_secs(1));
         self.poll_input_lookup(ctx);
         let dropped_paths = ctx.input(|input| {
             input
