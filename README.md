@@ -1,3 +1,6 @@
+> [!WARNING]
+> **LLM usage disclosure:** LMUKit is developed with substantial assistance from large language models. LLM-generated code and documentation are reviewed and tested before being committed, but users should evaluate the software accordingly.
+
 # LMUKit
 
 LMUKit is a native Windows toolkit for Le Mans Ultimate. Its first tools manage wheel-binding profiles, making it practical to use different wheel rims, cars, or classes without rebuilding the same control layout each time.
