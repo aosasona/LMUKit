@@ -19,6 +19,14 @@ pub struct Profile {
     pub assignments: Vec<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Binding {
+    pub action: String,
+    pub device: String,
+    pub input_id: u64,
+    pub alternate: bool,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Settings {
     pub lmu_config_path: PathBuf,
@@ -95,6 +103,17 @@ impl Store {
         self.store_profile(&source, &name)
     }
 
+    pub fn bindings(&self, profile: &Profile) -> Result<Vec<Binding>> {
+        let path = self.profile_dir(profile.id).join(CONFIG_FILE_NAME);
+        let document: serde_json::Value = serde_json::from_slice(&fs::read(&path)?)
+            .with_context(|| format!("{} is not valid JSON", path.display()))?;
+        let mut bindings = Vec::new();
+        collect_bindings(&document, "Input", false, &mut bindings);
+        collect_bindings(&document, "Alternative Input", true, &mut bindings);
+        bindings.sort_by(|a, b| a.action.to_lowercase().cmp(&b.action.to_lowercase()));
+        Ok(bindings)
+    }
+
     fn store_profile(&self, source: &Path, name: &str) -> Result<Profile> {
         let name = name.trim();
         if name.is_empty() {
@@ -162,6 +181,31 @@ impl Store {
 
     fn profile_dir(&self, id: Uuid) -> PathBuf {
         self.root.join("profiles").join(id.to_string())
+    }
+}
+
+fn collect_bindings(
+    document: &serde_json::Value,
+    section: &str,
+    alternate: bool,
+    bindings: &mut Vec<Binding>,
+) {
+    let Some(entries) = document.get(section).and_then(serde_json::Value::as_object) else {
+        return;
+    };
+    for (action, mapping) in entries {
+        let Some(device) = mapping.get("device").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let Some(input_id) = mapping.get("id").and_then(serde_json::Value::as_u64) else {
+            continue;
+        };
+        bindings.push(Binding {
+            action: action.clone(),
+            device: device.to_owned(),
+            input_id,
+            alternate,
+        });
     }
 }
 
@@ -260,5 +304,28 @@ mod tests {
             fs::read_to_string(store.profile_dir(profile.id).join(CONFIG_FILE_NAME)).unwrap(),
             r#"{"wheel":"formula"}"#
         );
+    }
+
+    #[test]
+    fn reads_primary_and_alternate_bindings() {
+        let temp = tempfile::tempdir().unwrap();
+        let preset = temp.path().join("Hypercar.json");
+        fs::write(
+            &preset,
+            br#"{
+                "Input":{"Shift Up":{"device":"Wheel-123","id":44}},
+                "Alternative Input":{"Shift Up":{"device":"Wheel-123","id":45}}
+            }"#,
+        )
+        .unwrap();
+
+        let store = Store::open_at(temp.path().join("willa")).unwrap();
+        let profile = store.import_profile(&preset).unwrap();
+        let bindings = store.bindings(&profile).unwrap();
+
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(bindings[0].action, "Shift Up");
+        assert!(!bindings[0].alternate);
+        assert!(bindings[1].alternate);
     }
 }

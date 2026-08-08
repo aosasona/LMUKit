@@ -1,4 +1,4 @@
-use crate::storage::{Profile, Store};
+use crate::storage::{Binding, Profile, Store};
 use anyhow::{Context, Result};
 use eframe::egui;
 use std::{path::PathBuf, process::Command};
@@ -10,6 +10,13 @@ pub struct WillaApp {
     new_name: String,
     config_path: String,
     status: Status,
+    binding_view: Option<BindingView>,
+}
+
+struct BindingView {
+    profile_name: String,
+    bindings: Vec<Binding>,
+    filter: String,
 }
 
 enum Status {
@@ -37,6 +44,7 @@ impl WillaApp {
                     status: Status::Ready(
                         "Choose a profile or capture LMU's current bindings.".into(),
                     ),
+                    binding_view: None,
                 }
             }
             Err(error) => Self {
@@ -46,6 +54,7 @@ impl WillaApp {
                 new_name: String::new(),
                 config_path: String::new(),
                 status: Status::Error(error.to_string()),
+                binding_view: None,
             },
         }
     }
@@ -138,6 +147,25 @@ impl WillaApp {
                 }
                 Err(error) => self.status = Status::Error(error.to_string()),
             }
+        }
+    }
+
+    fn inspect_selected(&mut self) {
+        let Some(profile) = self.selected.and_then(|i| self.profiles.get(i)).cloned() else {
+            return;
+        };
+        let Some(store) = &self.store else {
+            return;
+        };
+        match store.bindings(&profile) {
+            Ok(bindings) => {
+                self.binding_view = Some(BindingView {
+                    profile_name: profile.name,
+                    bindings,
+                    filter: String::new(),
+                });
+            }
+            Err(error) => self.status = Status::Error(error.to_string()),
         }
     }
 
@@ -283,6 +311,15 @@ impl eframe::App for WillaApp {
                             self.activate_selected();
                         }
                         if ui
+                            .add_enabled(
+                                self.selected.is_some(),
+                                egui::Button::new("View bindings…"),
+                            )
+                            .clicked()
+                        {
+                            self.inspect_selected();
+                        }
+                        if ui
                             .add_enabled(self.selected.is_some(), egui::Button::new("Delete"))
                             .clicked()
                         {
@@ -324,6 +361,63 @@ impl eframe::App for WillaApp {
             ui.add_space(4.0);
             ui.small("Close LMU before activating a profile. A recovery backup is created first.");
         });
+
+        self.show_binding_view(ctx);
+    }
+}
+
+impl WillaApp {
+    fn show_binding_view(&mut self, ctx: &egui::Context) {
+        let Some(view) = &mut self.binding_view else {
+            return;
+        };
+        let mut open = true;
+        egui::Window::new(format!("{} bindings", view.profile_name))
+            .open(&mut open)
+            .default_width(520.0)
+            .default_height(560.0)
+            .resizable(true)
+            .show(ctx, |ui| {
+                ui.weak("Search by LMU action, device, or input number.");
+                ui.add(
+                    egui::TextEdit::singleline(&mut view.filter)
+                        .hint_text("Search bindings…")
+                        .desired_width(f32::INFINITY),
+                );
+                ui.separator();
+                let filter = view.filter.trim().to_lowercase();
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    let mut shown = 0;
+                    for binding in &view.bindings {
+                        let alternate = if binding.alternate { " alternate" } else { "" };
+                        let searchable = format!(
+                            "{} {} {}{}",
+                            binding.action, binding.device, binding.input_id, alternate
+                        )
+                        .to_lowercase();
+                        if !filter.is_empty() && !searchable.contains(&filter) {
+                            continue;
+                        }
+                        shown += 1;
+                        ui.horizontal(|ui| {
+                            ui.vertical(|ui| {
+                                ui.strong(&binding.action);
+                                ui.weak(format!(
+                                    "{} · input {}{alternate}",
+                                    binding.device, binding.input_id
+                                ));
+                            });
+                        });
+                        ui.separator();
+                    }
+                    if shown == 0 {
+                        ui.weak("No matching bindings.");
+                    }
+                });
+            });
+        if !open {
+            self.binding_view = None;
+        }
     }
 }
 
