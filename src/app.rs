@@ -254,12 +254,21 @@ impl eframe::App for WillaApp {
                             let active =
                                 self.store.as_ref().and_then(|s| s.settings.active_profile);
                             for (index, profile) in self.profiles.iter().enumerate() {
+                                let is_selected = self.selected == Some(index);
                                 let label = if active == Some(profile.id) {
                                     format!("{}  • active", profile.name)
                                 } else {
                                     profile.name.clone()
                                 };
-                                ui.selectable_value(&mut self.selected, Some(index), label);
+                                if ui
+                                    .add_sized(
+                                        [ui.available_width(), 30.0],
+                                        egui::Button::new(label).selected(is_selected),
+                                    )
+                                    .clicked()
+                                {
+                                    self.selected = Some(index);
+                                }
                             }
                         });
                     ui.separator();
