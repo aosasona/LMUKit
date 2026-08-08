@@ -39,8 +39,17 @@ pub struct Settings {
     pub lmu_config_path: PathBuf,
     #[serde(default)]
     pub active_profile: Option<Uuid>,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub lmuffb_path: PathBuf,
+    #[serde(default = "default_companion_apps")]
+    pub companion_apps: Vec<CompanionApp>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CompanionApp {
+    pub name: String,
+    pub path: PathBuf,
+    pub enabled: bool,
 }
 
 impl Default for Settings {
@@ -49,8 +58,24 @@ impl Default for Settings {
             lmu_config_path: default_lmu_path(),
             active_profile: None,
             lmuffb_path: PathBuf::new(),
+            companion_apps: default_companion_apps(),
         }
     }
+}
+
+fn default_companion_apps() -> Vec<CompanionApp> {
+    vec![
+        CompanionApp {
+            name: "LMUFFB".into(),
+            path: PathBuf::new(),
+            enabled: true,
+        },
+        CompanionApp {
+            name: "Crew Chief".into(),
+            path: PathBuf::new(),
+            enabled: false,
+        },
+    ]
 }
 
 pub struct Store {
@@ -69,12 +94,21 @@ impl Store {
         fs::create_dir_all(root.join("profiles"))?;
         fs::create_dir_all(root.join("backups"))?;
         let settings_path = root.join("settings.json");
-        let settings = if settings_path.exists() {
+        let mut settings = if settings_path.exists() {
             serde_json::from_slice(&fs::read(&settings_path)?)
                 .context("Willa's settings file is invalid")?
         } else {
             Settings::default()
         };
+        if !settings.lmuffb_path.as_os_str().is_empty()
+            && let Some(lmuffb) = settings
+                .companion_apps
+                .iter_mut()
+                .find(|app| app.name == "LMUFFB")
+        {
+            lmuffb.path = std::mem::take(&mut settings.lmuffb_path);
+            lmuffb.enabled = true;
+        }
         Ok(Self { root, settings })
     }
 
@@ -89,23 +123,31 @@ impl Store {
                 willa_exe.display()
             );
         }
-        if !self.settings.lmuffb_path.is_file() {
-            bail!(
-                "Choose LMUFFB.exe first (currently {})",
-                self.settings.lmuffb_path.display()
-            );
-        }
         let launcher = self.root.join("launch-lmu-with-companions.cmd");
         let willa = batch_path(willa_exe);
-        let lmuffb = batch_path(&self.settings.lmuffb_path);
-        let script = format!(
+        let mut script = format!(
             "@echo off\r\n\
              tasklist /FI \"IMAGENAME eq willa.exe\" 2>NUL | find /I \"willa.exe\" >NUL\r\n\
-             if errorlevel 1 start \"\" \"{willa}\"\r\n\
-             tasklist /FI \"IMAGENAME eq LMUFFB.exe\" 2>NUL | find /I \"LMUFFB.exe\" >NUL\r\n\
-             if errorlevel 1 start \"\" \"{lmuffb}\"\r\n\
-             %*\r\n"
+             if errorlevel 1 start \"\" \"{willa}\"\r\n"
         );
+        for app in self
+            .settings
+            .companion_apps
+            .iter()
+            .filter(|app| app.enabled && app.path.is_file())
+        {
+            let executable = app
+                .path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .context("a companion app has no usable executable name")?;
+            let path = batch_path(&app.path);
+            script.push_str(&format!(
+                "tasklist /FI \"IMAGENAME eq {executable}\" 2>NUL | find /I \"{executable}\" >NUL\r\n\
+                 if errorlevel 1 start \"\" \"{path}\"\r\n"
+            ));
+        }
+        script.push_str("%*\r\n");
         fs::write(&launcher, script).context("could not create the companion launcher")?;
         Ok(format!("cmd /c \"\"{}\" %command%\"", launcher.display()))
     }
@@ -502,7 +544,7 @@ mod tests {
         fs::write(&willa, []).unwrap();
         fs::write(&lmuffb, []).unwrap();
         let mut store = Store::open_at(temp.path().join("data")).unwrap();
-        store.settings.lmuffb_path = lmuffb;
+        store.settings.companion_apps[0].path = lmuffb;
 
         let option = store.companion_launch_option(&willa).unwrap();
         let launcher = store.root.join("launch-lmu-with-companions.cmd");
@@ -513,5 +555,21 @@ mod tests {
         assert!(script.contains("LMUFFB.exe"));
         assert!(script.contains("willa.exe"));
         assert!(script.contains("%*"));
+    }
+
+    #[test]
+    fn excludes_disabled_companion_apps() {
+        let temp = tempfile::tempdir().unwrap();
+        let willa = temp.path().join("willa.exe");
+        let crew_chief = temp.path().join("CrewChiefV4.exe");
+        fs::write(&willa, []).unwrap();
+        fs::write(&crew_chief, []).unwrap();
+        let mut store = Store::open_at(temp.path().join("data")).unwrap();
+        store.settings.companion_apps[1].path = crew_chief;
+        store.settings.companion_apps[1].enabled = false;
+
+        store.companion_launch_option(&willa).unwrap();
+        let script = fs::read_to_string(store.root.join("launch-lmu-with-companions.cmd")).unwrap();
+        assert!(!script.contains("CrewChiefV4.exe"));
     }
 }

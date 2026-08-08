@@ -1,6 +1,6 @@
 use crate::{
     input::{InputListener, PressedInput},
-    storage::{Binding, BindingMatch, Profile, Store},
+    storage::{Binding, BindingMatch, CompanionApp, Profile, Store},
 };
 use anyhow::{Context, Result};
 use eframe::egui;
@@ -16,7 +16,7 @@ pub struct WillaApp {
     selected: Option<usize>,
     new_name: String,
     config_path: String,
-    lmuffb_path: String,
+    companion_apps: Vec<CompanionApp>,
     status: Status,
     binding_view: Option<BindingView>,
     input_lookup: Option<InputLookup>,
@@ -53,7 +53,7 @@ impl WillaApp {
         match Store::open() {
             Ok(store) => {
                 let config_path = store.settings.lmu_config_path.display().to_string();
-                let lmuffb_path = store.settings.lmuffb_path.display().to_string();
+                let companion_apps = store.settings.companion_apps.clone();
                 let profiles = store.profiles().unwrap_or_default();
                 Self {
                     store: Some(store),
@@ -61,7 +61,7 @@ impl WillaApp {
                     selected: None,
                     new_name: String::new(),
                     config_path,
-                    lmuffb_path,
+                    companion_apps,
                     status: Status::Ready(
                         "Choose a profile or capture LMU's current bindings.".into(),
                     ),
@@ -77,7 +77,7 @@ impl WillaApp {
                 selected: None,
                 new_name: String::new(),
                 config_path: String::new(),
-                lmuffb_path: String::new(),
+                companion_apps: Vec::new(),
                 status: Status::Error(error.to_string()),
                 binding_view: None,
                 input_lookup: None,
@@ -106,11 +106,11 @@ impl WillaApp {
         }
     }
 
-    fn save_lmuffb_path(&mut self) {
+    fn save_companion_apps(&mut self) {
         if let Some(store) = &mut self.store {
-            store.settings.lmuffb_path = PathBuf::from(self.lmuffb_path.trim());
+            store.settings.companion_apps = self.companion_apps.clone();
             match store.save_settings() {
-                Ok(()) => self.status = Status::Success("LMUFFB location saved.".into()),
+                Ok(()) => self.status = Status::Success("Companion apps saved.".into()),
                 Err(error) => self.status = Status::Error(error.to_string()),
             }
         }
@@ -382,27 +382,52 @@ impl eframe::App for WillaApp {
                         }
                     });
                     ui.separator();
-                    ui.collapsing("Launch Willa and LMUFFB with LMU", |ui| {
-                        ui.weak(
-                            "Choose LMUFFB.exe, then copy the generated option into Steam once.",
-                        );
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.lmuffb_path)
-                                .hint_text("Path to LMUFFB.exe")
-                                .desired_width(f32::INFINITY),
-                        );
+                    ui.collapsing("Launch companion apps with LMU", |ui| {
+                        ui.weak("Enable each app that should start alongside LMU.");
+                        let mut changed = false;
+                        for app in &mut self.companion_apps {
+                            ui.horizontal(|ui| {
+                                changed |= ui.checkbox(&mut app.enabled, &app.name).changed();
+                                let path = if app.path.as_os_str().is_empty() {
+                                    "No executable selected".into()
+                                } else {
+                                    app.path.display().to_string()
+                                };
+                                ui.weak(path);
+                                if ui.button("Browse…").clicked()
+                                    && let Some(path) = rfd::FileDialog::new()
+                                        .add_filter("Windows application", &["exe"])
+                                        .pick_file()
+                                {
+                                    app.path = path;
+                                    app.enabled = true;
+                                    changed = true;
+                                }
+                            });
+                        }
+                        if changed {
+                            self.save_companion_apps();
+                        }
                         ui.horizontal(|ui| {
-                            if ui.button("Browse for LMUFFB…").clicked()
+                            if ui.button("Add another app…").clicked()
                                 && let Some(path) = rfd::FileDialog::new()
                                     .add_filter("Windows application", &["exe"])
-                                    .set_file_name("LMUFFB.exe")
                                     .pick_file()
                             {
-                                self.lmuffb_path = path.display().to_string();
-                                self.save_lmuffb_path();
+                                let name = path
+                                    .file_stem()
+                                    .and_then(|name| name.to_str())
+                                    .unwrap_or("Companion app")
+                                    .to_owned();
+                                self.companion_apps.push(CompanionApp {
+                                    name,
+                                    path,
+                                    enabled: true,
+                                });
+                                self.save_companion_apps();
                             }
                             if ui.button("Copy Steam launch option").clicked() {
-                                self.save_lmuffb_path();
+                                self.save_companion_apps();
                                 self.copy_companion_launch_option(ctx);
                             }
                         });
