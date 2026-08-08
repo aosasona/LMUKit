@@ -19,7 +19,7 @@ LMUKit is a native Windows toolkit for Le Mans Ultimate. Its first tools manage 
 - Launch LMUKit, LMUFFB, Crew Chief, or other selected companion apps with LMU through one Steam launch option.
 - Support custom LMU installations and non-default Steam libraries.
 
-LMUKit stores its own profiles in the current Windows user's application-data directory. Existing Willa installations retain the same storage location so saved profiles remain available. Use **Show in folder** to open the exact location.
+LMUKit stores its own profiles in the current Windows user's application-data directory. Use **Show in folder** to open the exact location.
 
 ## Using LMUKit
 

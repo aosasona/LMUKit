@@ -85,8 +85,7 @@ pub struct Store {
 
 impl Store {
     pub fn open() -> Result<Self> {
-        // Keep the legacy path so upgrading to LMUKit does not hide existing profiles.
-        let dirs = ProjectDirs::from("app", "Willa", "Willa")
+        let dirs = ProjectDirs::from("app", "LMUKit", "LMUKit")
             .context("could not determine LMUKit's application-data directory")?;
         Self::open_at(dirs.data_local_dir().to_path_buf())
     }
