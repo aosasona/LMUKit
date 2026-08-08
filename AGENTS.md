@@ -1,10 +1,10 @@
-# Willa development guide
+# LMUKit development guide
 
 This file is the repository handoff for human and LLM-assisted development. Keep it accurate when architecture, commands, formats, or invariants change.
 
 ## Product intent
 
-Willa is a small native Windows utility for managing Le Mans Ultimate wheel-binding profiles. Prefer focused, dependable workflows over a broad simulator-management suite. The primary runtime platform is Windows; development commonly happens in WSL.
+LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate utilities. Its current feature set manages wheel-binding profiles, while the broader name leaves room for related LMU tools. The primary runtime platform is Windows; development commonly happens in WSL.
 
 ## Architecture
 

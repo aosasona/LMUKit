@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub struct WillaApp {
+pub struct LmuKitApp {
     store: Option<Store>,
     profiles: Vec<Profile>,
     selected: Option<usize>,
@@ -49,7 +49,7 @@ enum Status {
     Error(String),
 }
 
-impl WillaApp {
+impl LmuKitApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut visuals = egui::Visuals::dark();
         visuals.panel_fill = egui::Color32::from_rgb(20, 22, 26);
@@ -130,8 +130,8 @@ impl WillaApp {
             return;
         };
         match std::env::current_exe()
-            .context("could not determine Willa's executable location")
-            .and_then(|willa| store.companion_launch_option(&willa))
+            .context("could not determine LMUKit's executable location")
+            .and_then(|lmukit| store.companion_launch_option(&lmukit))
         {
             Ok(option) => {
                 ctx.copy_text(option);
@@ -379,7 +379,7 @@ impl WillaApp {
     }
 }
 
-impl eframe::App for WillaApp {
+impl eframe::App for LmuKitApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.check_active_profile();
         ctx.request_repaint_after(Duration::from_secs(1));
@@ -400,7 +400,7 @@ impl eframe::App for WillaApp {
 
         egui::TopBottomPanel::top("header").show(ctx, |ui| {
             ui.add_space(14.0);
-            ui.heading(egui::RichText::new("Willa").size(24.0));
+            ui.heading(egui::RichText::new("LMUKit").size(24.0));
             ui.weak("Le Mans Ultimate wheel profile manager");
             ui.add_space(12.0);
         });
@@ -433,7 +433,7 @@ impl eframe::App for WillaApp {
                         .inner_margin(14.0)
                         .show(ui, |ui| {
                             ui.heading("LMU configuration");
-                            ui.weak("Choose the live bindings file that Willa should manage.");
+                            ui.weak("Choose the live bindings file that LMUKit should manage.");
                             ui.add_space(4.0);
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.config_path)
@@ -669,7 +669,7 @@ impl eframe::App for WillaApp {
     }
 }
 
-impl WillaApp {
+impl LmuKitApp {
     fn show_binding_view(&mut self, ctx: &egui::Context) {
         let Some(view) = &mut self.binding_view else {
             return;

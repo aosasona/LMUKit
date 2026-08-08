@@ -1,8 +1,8 @@
-# Willa
+# LMUKit
 
-Willa is a native Windows profile manager for Le Mans Ultimate wheel bindings. It makes it practical to use different wheel rims, cars, or classes without rebuilding the same control layout each time.
+LMUKit is a native Windows toolkit for Le Mans Ultimate. Its first tools manage wheel-binding profiles, making it practical to use different wheel rims, cars, or classes without rebuilding the same control layout each time.
 
-![Willa profile manager](assets/willa.png)
+![LMUKit profile manager](assets/willa.png)
 
 ## Features
 
@@ -14,12 +14,12 @@ Willa is a native Windows profile manager for Le Mans Ultimate wheel bindings. I
 - Browse and search every action stored in a profile.
 - Press a wheel button, move a POV, or turn an axis to compare its mapping across profiles.
 - Open the managed profile directory for manual backup or copying.
-- Launch Willa, LMUFFB, Crew Chief, or other selected companion apps with LMU through one Steam launch option.
+- Launch LMUKit, LMUFFB, Crew Chief, or other selected companion apps with LMU through one Steam launch option.
 - Support custom LMU installations and non-default Steam libraries.
 
-Willa stores its own profiles in the current Windows user's application-data directory. Use **Show in folder** to open the exact location.
+LMUKit stores its own profiles in the current Windows user's application-data directory. Existing Willa installations retain the same storage location so saved profiles remain available. Use **Show in folder** to open the exact location.
 
-## Using Willa
+## Using LMUKit
 
 1. Close LMU before changing profiles.
 2. Confirm the path to LMU's live `direct input.json`.
@@ -28,7 +28,7 @@ Willa stores its own profiles in the current Windows user's application-data dir
 
 Existing preset files can be dropped directly onto the saved-profile panel. A file is named from its filename; a folder should contain `direct input.json`.
 
-To inspect a physical control, choose **Find wheel button…** and press or move it. Willa will show the corresponding action—or **Not mapped**—for every saved profile.
+To inspect a physical control, choose **Find wheel button…** and press or move it. LMUKit will show the corresponding action—or **Not mapped**—for every saved profile.
 
 ### Companion apps
 
@@ -36,7 +36,7 @@ Expand **Launch companion apps with LMU**, choose each executable, and enable th
 
 **Steam → Le Mans Ultimate → Properties → Launch Options**
 
-The launcher avoids opening duplicate Willa or companion-app processes.
+The launcher avoids opening duplicate LMUKit or companion-app processes.
 
 ## Development
 
@@ -62,7 +62,7 @@ Useful tasks:
 Release output is written to:
 
 ```text
-target/x86_64-pc-windows-msvc/release/willa.exe
+target/x86_64-pc-windows-msvc/release/lmukit.exe
 ```
 
 Before committing a change, run:
@@ -76,7 +76,7 @@ cargo check --target x86_64-pc-windows-msvc
 
 ## AI-assisted development
 
-Willa is developed with LLM assistance. Generated code and documentation are treated like any other contribution: changes should be scoped, reviewed, tested on both the native and Windows targets, and committed in small units with descriptive messages.
+LMUKit is developed with LLM assistance. Generated code and documentation are treated like any other contribution: changes should be scoped, reviewed, tested on both the native and Windows targets, and committed in small units with descriptive messages.
 
 Repository-specific guidance for future human and LLM contributors is in [AGENTS.md](AGENTS.md).
 

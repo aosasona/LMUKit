@@ -1,5 +1,5 @@
 [package]
-name = "willa"
+name = "lmukit"
 version = "0.1.0"
 edition = "2024"
 description = "A native profile manager for Le Mans Ultimate wheel configurations"

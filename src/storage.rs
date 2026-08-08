@@ -85,8 +85,9 @@ pub struct Store {
 
 impl Store {
     pub fn open() -> Result<Self> {
+        // Keep the legacy path so upgrading to LMUKit does not hide existing profiles.
         let dirs = ProjectDirs::from("app", "Willa", "Willa")
-            .context("could not determine Willa's application-data directory")?;
+            .context("could not determine LMUKit's application-data directory")?;
         Self::open_at(dirs.data_local_dir().to_path_buf())
     }
 
@@ -96,7 +97,7 @@ impl Store {
         let settings_path = root.join("settings.json");
         let mut settings = if settings_path.exists() {
             serde_json::from_slice(&fs::read(&settings_path)?)
-                .context("Willa's settings file is invalid")?
+                .context("LMUKit's settings file is invalid")?
         } else {
             Settings::default()
         };
@@ -116,19 +117,19 @@ impl Store {
         write_json(&self.root.join("settings.json"), &self.settings)
     }
 
-    pub fn companion_launch_option(&self, willa_exe: &Path) -> Result<String> {
-        if !willa_exe.is_file() {
+    pub fn companion_launch_option(&self, lmukit_exe: &Path) -> Result<String> {
+        if !lmukit_exe.is_file() {
             bail!(
-                "Willa's executable could not be found at {}",
-                willa_exe.display()
+                "LMUKit's executable could not be found at {}",
+                lmukit_exe.display()
             );
         }
         let launcher = self.root.join("launch-lmu-with-companions.cmd");
-        let willa = batch_path(willa_exe);
+        let lmukit = batch_path(lmukit_exe);
         let mut script = format!(
             "@echo off\r\n\
-             tasklist /FI \"IMAGENAME eq willa.exe\" 2>NUL | find /I \"willa.exe\" >NUL\r\n\
-             if errorlevel 1 start \"\" \"{willa}\"\r\n"
+             tasklist /FI \"IMAGENAME eq lmukit.exe\" 2>NUL | find /I \"lmukit.exe\" >NUL\r\n\
+             if errorlevel 1 start \"\" \"{lmukit}\"\r\n"
         );
         for app in self
             .settings
@@ -288,7 +289,7 @@ impl Store {
             fs::copy(&destination, &backup).context("could not create the safety backup")?;
         }
 
-        let staged = parent.join(".willa-direct-input.tmp");
+        let staged = parent.join(".lmukit-direct-input.tmp");
         fs::copy(&saved, &staged).context("could not stage the selected profile")?;
         if destination.exists() {
             fs::remove_file(&destination).context("could not replace LMU's current config")?;
@@ -439,7 +440,7 @@ mod tests {
         fs::create_dir_all(live.parent().unwrap()).unwrap();
         fs::write(&live, br#"{"wheel":"neo"}"#).unwrap();
 
-        let mut store = Store::open_at(temp.path().join("willa")).unwrap();
+        let mut store = Store::open_at(temp.path().join("lmukit")).unwrap();
         store.settings.lmu_config_path = live.clone();
         let profile = store.capture("GT Neo").unwrap();
         fs::write(&live, br#"{"wheel":"other"}"#).unwrap();
@@ -455,7 +456,7 @@ mod tests {
         let preset = temp.path().join("Porsche 963.json");
         fs::write(&preset, br#"{"wheel":"formula"}"#).unwrap();
 
-        let store = Store::open_at(temp.path().join("willa")).unwrap();
+        let store = Store::open_at(temp.path().join("lmukit")).unwrap();
         let profile = store.import_profile(&preset).unwrap();
 
         assert_eq!(profile.name, "Porsche 963");
@@ -479,7 +480,7 @@ mod tests {
         )
         .unwrap();
 
-        let store = Store::open_at(temp.path().join("willa")).unwrap();
+        let store = Store::open_at(temp.path().join("lmukit")).unwrap();
         let profile = store.import_profile(&preset).unwrap();
         let bindings = store.bindings(&profile).unwrap();
 
@@ -502,7 +503,7 @@ mod tests {
         )
         .unwrap();
 
-        let store = Store::open_at(temp.path().join("willa")).unwrap();
+        let store = Store::open_at(temp.path().join("lmukit")).unwrap();
         let profile = store.import_profile(&preset).unwrap();
         let matches = store
             .binding_matches(&[profile], 0x3670, 0x0500, 44)
@@ -520,7 +521,7 @@ mod tests {
         fs::create_dir_all(live.parent().unwrap()).unwrap();
         fs::write(&live, br#"{"Input":{"Shift Up":1}}"#).unwrap();
 
-        let mut store = Store::open_at(temp.path().join("willa")).unwrap();
+        let mut store = Store::open_at(temp.path().join("lmukit")).unwrap();
         store.settings.lmu_config_path = live.clone();
         let profile = store.capture("Wheel").unwrap();
         store.settings.active_profile = Some(profile.id);
@@ -539,36 +540,36 @@ mod tests {
     #[test]
     fn creates_a_steam_companion_launcher() {
         let temp = tempfile::tempdir().unwrap();
-        let willa = temp.path().join("willa.exe");
+        let lmukit = temp.path().join("lmukit.exe");
         let lmuffb = temp.path().join("LMUFFB.exe");
-        fs::write(&willa, []).unwrap();
+        fs::write(&lmukit, []).unwrap();
         fs::write(&lmuffb, []).unwrap();
         let mut store = Store::open_at(temp.path().join("data")).unwrap();
         store.settings.companion_apps[0].path = lmuffb;
 
-        let option = store.companion_launch_option(&willa).unwrap();
+        let option = store.companion_launch_option(&lmukit).unwrap();
         let launcher = store.root.join("launch-lmu-with-companions.cmd");
 
         assert!(option.starts_with("cmd /c \"\""));
         assert!(option.ends_with(" %command%\""));
         let script = fs::read_to_string(launcher).unwrap();
         assert!(script.contains("LMUFFB.exe"));
-        assert!(script.contains("willa.exe"));
+        assert!(script.contains("lmukit.exe"));
         assert!(script.contains("%*"));
     }
 
     #[test]
     fn excludes_disabled_companion_apps() {
         let temp = tempfile::tempdir().unwrap();
-        let willa = temp.path().join("willa.exe");
+        let lmukit = temp.path().join("lmukit.exe");
         let crew_chief = temp.path().join("CrewChiefV4.exe");
-        fs::write(&willa, []).unwrap();
+        fs::write(&lmukit, []).unwrap();
         fs::write(&crew_chief, []).unwrap();
         let mut store = Store::open_at(temp.path().join("data")).unwrap();
         store.settings.companion_apps[1].path = crew_chief;
         store.settings.companion_apps[1].enabled = false;
 
-        store.companion_launch_option(&willa).unwrap();
+        store.companion_launch_option(&lmukit).unwrap();
         let script = fs::read_to_string(store.root.join("launch-lmu-with-companions.cmd")).unwrap();
         assert!(!script.contains("CrewChiefV4.exe"));
     }

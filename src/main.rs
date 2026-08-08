@@ -4,7 +4,7 @@ mod app;
 mod input;
 mod storage;
 
-use app::WillaApp;
+use app::LmuKitApp;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
@@ -16,8 +16,8 @@ fn main() -> eframe::Result<()> {
     };
 
     eframe::run_native(
-        "Willa",
+        "LMUKit",
         options,
-        Box::new(|cc| Ok(Box::new(WillaApp::new(cc)))),
+        Box::new(|cc| Ok(Box::new(LmuKitApp::new(cc)))),
     )
 }
