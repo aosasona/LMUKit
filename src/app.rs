@@ -4,7 +4,11 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use eframe::egui;
-use std::{path::PathBuf, process::Command};
+use std::{
+    path::PathBuf,
+    process::Command,
+    time::{Duration, Instant},
+};
 
 pub struct WillaApp {
     store: Option<Store>,
@@ -15,6 +19,8 @@ pub struct WillaApp {
     status: Status,
     binding_view: Option<BindingView>,
     input_lookup: Option<InputLookup>,
+    active_profile_dirty: bool,
+    last_dirty_check: Instant,
 }
 
 struct BindingView {
@@ -57,6 +63,8 @@ impl WillaApp {
                     ),
                     binding_view: None,
                     input_lookup: None,
+                    active_profile_dirty: false,
+                    last_dirty_check: Instant::now() - Duration::from_secs(2),
                 }
             }
             Err(error) => Self {
@@ -68,6 +76,8 @@ impl WillaApp {
                 status: Status::Error(error.to_string()),
                 binding_view: None,
                 input_lookup: None,
+                active_profile_dirty: false,
+                last_dirty_check: Instant::now() - Duration::from_secs(2),
             },
         }
     }
@@ -89,6 +99,18 @@ impl WillaApp {
                 Err(error) => self.status = Status::Error(error.to_string()),
             }
         }
+    }
+
+    fn check_active_profile(&mut self) {
+        if self.last_dirty_check.elapsed() < Duration::from_secs(1) {
+            return;
+        }
+        self.last_dirty_check = Instant::now();
+        self.active_profile_dirty = self
+            .store
+            .as_ref()
+            .and_then(|store| store.active_profile_has_unsaved_changes().ok().flatten())
+            .unwrap_or(false);
     }
 
     fn capture(&mut self) {
@@ -156,6 +178,7 @@ impl WillaApp {
         if let Some(store) = &mut self.store {
             match store.activate(&profile) {
                 Ok(_) => {
+                    self.active_profile_dirty = false;
                     self.status = Status::Success(format!("'{}' is now active.", profile.name))
                 }
                 Err(error) => self.status = Status::Error(error.to_string()),
@@ -257,6 +280,7 @@ impl WillaApp {
 
 impl eframe::App for WillaApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.check_active_profile();
         self.poll_input_lookup(ctx);
         let dropped_paths = ctx.input(|input| {
             input
@@ -425,6 +449,14 @@ impl eframe::App for WillaApp {
                 });
 
             ui.add_space(12.0);
+            if self.active_profile_dirty {
+                ui.colored_label(
+                    egui::Color32::from_rgb(235, 185, 80),
+                    "Unsaved changes: LMU's bindings differ from the active profile.",
+                );
+                ui.weak("Save them as a profile before activating another setup.");
+                ui.add_space(6.0);
+            }
             let (text, color) = match &self.status {
                 Status::Ready(text) => (text, ui.visuals().weak_text_color()),
                 Status::Success(text) => (text, egui::Color32::from_rgb(100, 210, 140)),

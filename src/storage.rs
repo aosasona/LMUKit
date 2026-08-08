@@ -148,6 +148,28 @@ impl Store {
         Ok(matches)
     }
 
+    pub fn active_profile_has_unsaved_changes(&self) -> Result<Option<bool>> {
+        let Some(active_id) = self.settings.active_profile else {
+            return Ok(None);
+        };
+        let saved_path = self.profile_dir(active_id).join(CONFIG_FILE_NAME);
+        if !saved_path.is_file() || !self.settings.lmu_config_path.is_file() {
+            return Ok(None);
+        }
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(&saved_path)?)
+            .with_context(|| format!("{} is not valid JSON", saved_path.display()))?;
+        let live: serde_json::Value = serde_json::from_slice(&fs::read(
+            &self.settings.lmu_config_path,
+        )?)
+        .with_context(|| {
+            format!(
+                "{} is not valid JSON",
+                self.settings.lmu_config_path.display()
+            )
+        })?;
+        Ok(Some(saved != live))
+    }
+
     fn profile_document(&self, profile: &Profile) -> Result<serde_json::Value> {
         let path = self.profile_dir(profile.id).join(CONFIG_FILE_NAME);
         serde_json::from_slice(&fs::read(&path)?)
@@ -412,5 +434,28 @@ mod tests {
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].profile_name, "GT3");
         assert_eq!(matches[0].action, "Shift Up");
+    }
+
+    #[test]
+    fn detects_unsaved_changes_to_the_active_profile() {
+        let temp = tempfile::tempdir().unwrap();
+        let live = temp.path().join("game").join(CONFIG_FILE_NAME);
+        fs::create_dir_all(live.parent().unwrap()).unwrap();
+        fs::write(&live, br#"{"Input":{"Shift Up":1}}"#).unwrap();
+
+        let mut store = Store::open_at(temp.path().join("willa")).unwrap();
+        store.settings.lmu_config_path = live.clone();
+        let profile = store.capture("Wheel").unwrap();
+        store.settings.active_profile = Some(profile.id);
+
+        assert_eq!(
+            store.active_profile_has_unsaved_changes().unwrap(),
+            Some(false)
+        );
+        fs::write(&live, br#"{"Input":{"Shift Up":2}}"#).unwrap();
+        assert_eq!(
+            store.active_profile_has_unsaved_changes().unwrap(),
+            Some(true)
+        );
     }
 }
