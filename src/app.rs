@@ -34,7 +34,7 @@ struct InputLookup {
     listener: Option<InputListener>,
     pressed: Option<PressedInput>,
     matches: Vec<BindingMatch>,
-    all_bindings: Vec<(String, Binding)>,
+    profile_names: Vec<String>,
     error: Option<String>,
 }
 
@@ -240,29 +240,18 @@ impl WillaApp {
     }
 
     fn start_input_lookup(&mut self) {
-        let all_bindings = self
-            .store
-            .as_ref()
-            .map(|store| {
-                self.profiles
-                    .iter()
-                    .flat_map(|profile| {
-                        store
-                            .bindings(profile)
-                            .unwrap_or_default()
-                            .into_iter()
-                            .map(|binding| (profile.name.clone(), binding))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let profile_names = self
+            .profiles
+            .iter()
+            .map(|profile| profile.name.clone())
+            .collect();
         match InputListener::new() {
             Ok(listener) => {
                 self.input_lookup = Some(InputLookup {
                     listener: Some(listener),
                     pressed: None,
                     matches: Vec::new(),
-                    all_bindings,
+                    profile_names,
                     error: None,
                 });
             }
@@ -271,7 +260,7 @@ impl WillaApp {
                     listener: None,
                     pressed: None,
                     matches: Vec::new(),
-                    all_bindings,
+                    profile_names,
                     error: Some(error),
                 });
             }
@@ -667,48 +656,55 @@ impl WillaApp {
                 if lookup.listener.is_some() && lookup.pressed.is_none() {
                     ui.spinner();
                     ui.strong("Press a button, turn the wheel, or move an axis…");
-                } else if let Some(pressed) = &lookup.pressed {
-                    ui.heading(&pressed.control);
-                    ui.weak(format!(
-                        "Device {:04X}:{:04X} · LMU input {}",
-                        pressed.vendor_id, pressed.product_id, pressed.input_id
-                    ));
+                    ui.weak("Matching bindings will appear here for each saved profile.");
+                    return;
                 }
-                ui.weak("All mappings are shown below; matching controls are highlighted.");
+                let Some(pressed) = &lookup.pressed else {
+                    return;
+                };
+                ui.heading(&pressed.control);
+                ui.weak(format!(
+                    "Device {:04X}:{:04X} · LMU input {}",
+                    pressed.vendor_id, pressed.product_id, pressed.input_id
+                ));
                 ui.separator();
-                if lookup.all_bindings.is_empty() {
-                    ui.weak("No bindings were found in the saved profiles.");
+                if lookup.profile_names.is_empty() {
+                    ui.weak("No saved profiles.");
                     return;
                 }
                 egui::ScrollArea::vertical()
                     .max_height(520.0)
                     .show(ui, |ui| {
-                        for (profile_name, binding) in &lookup.all_bindings {
-                            let highlighted = lookup.matches.iter().any(|mapping| {
-                                mapping.profile_name == *profile_name
-                                    && mapping.action == binding.action
-                                    && mapping.alternate == binding.alternate
-                            });
+                        for profile_name in &lookup.profile_names {
+                            let actions = lookup
+                                .matches
+                                .iter()
+                                .filter(|mapping| mapping.profile_name == *profile_name)
+                                .map(|mapping| {
+                                    if mapping.alternate {
+                                        format!("{} (alternate)", mapping.action)
+                                    } else {
+                                        mapping.action.clone()
+                                    }
+                                })
+                                .collect::<Vec<_>>();
                             egui::Frame::new()
-                                .fill(if highlighted {
-                                    egui::Color32::from_rgb(38, 82, 63)
-                                } else {
+                                .fill(if actions.is_empty() {
                                     egui::Color32::TRANSPARENT
+                                } else {
+                                    egui::Color32::from_rgb(38, 82, 63)
                                 })
                                 .inner_margin(egui::Margin::symmetric(8, 5))
                                 .show(ui, |ui| {
                                     ui.horizontal(|ui| {
                                         ui.strong(profile_name);
                                         ui.label("→");
-                                        ui.label(&binding.action);
-                                        if binding.alternate {
-                                            ui.weak("alternate");
+                                        if actions.is_empty() {
+                                            ui.weak("Not mapped");
+                                        } else {
+                                            ui.label(actions.join(", "));
                                         }
                                     });
-                                    ui.weak(format!(
-                                        "{} · input {}",
-                                        binding.device, binding.input_id
-                                    ));
                                 });
                         }
                     });
