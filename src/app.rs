@@ -71,9 +71,7 @@ impl LmuKitApp {
                     new_name: String::new(),
                     config_path,
                     companion_apps,
-                    status: Status::Ready(
-                        "Choose a profile or capture LMU's current bindings.".into(),
-                    ),
+                    status: Status::Ready("Choose a tool to get started.".into()),
                     binding_view: None,
                     input_lookup: None,
                     active_profile_dirty: false,
@@ -401,7 +399,7 @@ impl eframe::App for LmuKitApp {
         egui::TopBottomPanel::top("header").show(ctx, |ui| {
             ui.add_space(14.0);
             ui.heading(egui::RichText::new("LMUKit").size(24.0));
-            ui.weak("Le Mans Ultimate wheel profile manager");
+            ui.weak("Tools for Le Mans Ultimate");
             ui.add_space(12.0);
         });
 

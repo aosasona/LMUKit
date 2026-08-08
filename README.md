@@ -3,11 +3,11 @@
 
 # LMUKit
 
-LMUKit is a native Windows toolkit for Le Mans Ultimate. Its first tools manage wheel-binding profiles, making it practical to use different wheel rims, cars, or classes without rebuilding the same control layout each time.
+LMUKit is a growing native Windows toolkit for Le Mans Ultimate. It brings useful LMU utilities together in one focused desktop app; profile management and companion-app launching are the first available tools.
 
 <img src="assets/icon/lmukit-256.png" alt="LMUKit icon" width="128">
 
-![LMUKit profile manager](assets/willa.png)
+![LMUKit desktop toolkit](assets/willa.png)
 
 ## Features
 
