@@ -433,6 +433,7 @@ impl eframe::App for WillaApp {
             ui.colored_label(color, text);
             ui.add_space(4.0);
             ui.small("Close LMU before activating a profile. A recovery backup is created first.");
+            ui.add_space(12.0);
         });
 
         self.show_binding_view(ctx);
