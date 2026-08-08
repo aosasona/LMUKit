@@ -33,6 +33,7 @@ struct InputLookup {
     listener: Option<InputListener>,
     pressed: Option<PressedInput>,
     matches: Vec<BindingMatch>,
+    all_bindings: Vec<(String, Binding)>,
     error: Option<String>,
 }
 
@@ -206,12 +207,29 @@ impl WillaApp {
     }
 
     fn start_input_lookup(&mut self) {
+        let all_bindings = self
+            .store
+            .as_ref()
+            .map(|store| {
+                self.profiles
+                    .iter()
+                    .flat_map(|profile| {
+                        store
+                            .bindings(profile)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|binding| (profile.name.clone(), binding))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         match InputListener::new() {
             Ok(listener) => {
                 self.input_lookup = Some(InputLookup {
                     listener: Some(listener),
                     pressed: None,
                     matches: Vec::new(),
+                    all_bindings,
                     error: None,
                 });
             }
@@ -220,6 +238,7 @@ impl WillaApp {
                     listener: None,
                     pressed: None,
                     matches: Vec::new(),
+                    all_bindings,
                     error: Some(error),
                 });
             }
@@ -235,7 +254,6 @@ impl WillaApp {
         };
         match listener.poll() {
             Ok(Some(pressed)) => {
-                let input_id = pressed.button_index as u64 + 32;
                 lookup.matches = self
                     .store
                     .as_ref()
@@ -245,13 +263,13 @@ impl WillaApp {
                                 &self.profiles,
                                 pressed.vendor_id,
                                 pressed.product_id,
-                                input_id,
+                                pressed.input_id,
                             )
                             .ok()
                     })
                     .unwrap_or_default();
                 lookup.pressed = Some(pressed);
-                lookup.listener = None;
+                ctx.request_repaint();
             }
             Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(40)),
             Err(error) => {
@@ -533,65 +551,64 @@ impl WillaApp {
             return;
         };
         let mut open = true;
-        let mut listen_again = false;
         egui::Window::new("Find a wheel button")
             .open(&mut open)
             .default_width(480.0)
             .resizable(true)
             .show(ctx, |ui| {
-                if lookup.listener.is_some() {
-                    ui.spinner();
-                    ui.strong("Press a button on your connected wheel…");
-                    ui.weak("Willa will show what that button does in every saved profile.");
-                    return;
-                }
                 if let Some(error) = &lookup.error {
                     ui.colored_label(egui::Color32::from_rgb(240, 110, 110), error);
-                    if ui.button("Try again").clicked() {
-                        listen_again = true;
-                    }
                     return;
                 }
-                if let Some(pressed) = &lookup.pressed {
-                    ui.heading(format!("Button {}", pressed.button_index + 1));
+                if lookup.listener.is_some() && lookup.pressed.is_none() {
+                    ui.spinner();
+                    ui.strong("Press a button, turn the wheel, or move an axis…");
+                } else if let Some(pressed) = &lookup.pressed {
+                    ui.heading(&pressed.control);
                     ui.weak(format!(
                         "Device {:04X}:{:04X} · LMU input {}",
-                        pressed.vendor_id,
-                        pressed.product_id,
-                        pressed.button_index + 32
+                        pressed.vendor_id, pressed.product_id, pressed.input_id
                     ));
-                    ui.separator();
-                    if lookup.matches.is_empty() {
-                        ui.label("This button is not mapped in any saved profile.");
-                    } else {
-                        for mapping in &lookup.matches {
-                            ui.horizontal(|ui| {
-                                ui.strong(&mapping.profile_name);
-                                ui.label("→");
-                                ui.label(&mapping.action);
-                                if mapping.alternate {
-                                    ui.weak("alternate");
-                                }
+                }
+                ui.weak("All mappings are shown below; matching controls are highlighted.");
+                ui.separator();
+                if lookup.all_bindings.is_empty() {
+                    ui.weak("No bindings were found in the saved profiles.");
+                    return;
+                }
+                egui::ScrollArea::vertical()
+                    .max_height(520.0)
+                    .show(ui, |ui| {
+                        for (profile_name, binding) in &lookup.all_bindings {
+                            let highlighted = lookup.matches.iter().any(|mapping| {
+                                mapping.profile_name == *profile_name
+                                    && mapping.action == binding.action
+                                    && mapping.alternate == binding.alternate
                             });
+                            egui::Frame::new()
+                                .fill(if highlighted {
+                                    egui::Color32::from_rgb(38, 82, 63)
+                                } else {
+                                    egui::Color32::TRANSPARENT
+                                })
+                                .inner_margin(egui::Margin::symmetric(8, 5))
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.strong(profile_name);
+                                        ui.label("→");
+                                        ui.label(&binding.action);
+                                        if binding.alternate {
+                                            ui.weak("alternate");
+                                        }
+                                    });
+                                    ui.weak(format!(
+                                        "{} · input {}",
+                                        binding.device, binding.input_id
+                                    ));
+                                });
                         }
-                    }
-                    ui.add_space(8.0);
-                    if ui.button("Listen for another button").clicked() {
-                        listen_again = true;
-                    }
-                }
+                    });
             });
-        if listen_again {
-            match InputListener::new() {
-                Ok(listener) => {
-                    lookup.listener = Some(listener);
-                    lookup.pressed = None;
-                    lookup.matches.clear();
-                    lookup.error = None;
-                }
-                Err(error) => lookup.error = Some(error),
-            }
-        }
         if !open {
             self.input_lookup = None;
         }

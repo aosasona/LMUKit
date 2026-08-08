@@ -2,7 +2,8 @@
 pub struct PressedInput {
     pub vendor_id: u16,
     pub product_id: u16,
-    pub button_index: usize,
+    pub input_id: u64,
+    pub control: String,
 }
 
 #[cfg(target_os = "windows")]
@@ -15,7 +16,16 @@ mod platform {
     };
 
     pub struct InputListener {
-        previous: HashMap<String, Vec<bool>>,
+        previous: HashMap<String, ControllerState>,
+    }
+
+    #[derive(Clone)]
+    struct ControllerState {
+        buttons: Vec<bool>,
+        switches: Vec<GameControllerSwitchPosition>,
+        neutral_axes: Vec<f64>,
+        axes: Vec<f64>,
+        axis_directions: Vec<i8>,
     }
 
     impl InputListener {
@@ -39,25 +49,72 @@ mod platform {
                     .NonRoamableId()
                     .map_err(|error| error.to_string())?
                     .to_string();
-                let buttons = read_buttons(&controller)?;
-                let previous = self
-                    .previous
-                    .entry(key)
-                    .or_insert_with(|| vec![false; buttons.len()]);
-                let pressed = buttons
+                let reading = read_controller(&controller)?;
+                let previous = self.previous.entry(key).or_insert_with(|| reading.clone());
+                let pressed_button = reading
+                    .buttons
                     .iter()
-                    .zip(previous.iter())
+                    .zip(previous.buttons.iter())
                     .position(|(current, old)| *current && !*old);
-                *previous = buttons;
-                if let Some(button_index) = pressed {
+                previous.buttons = reading.buttons;
+
+                let changed_switch = reading
+                    .switches
+                    .iter()
+                    .zip(previous.switches.iter())
+                    .enumerate()
+                    .find(|(_, (current, old))| {
+                        current != old && **current != GameControllerSwitchPosition::Center
+                    })
+                    .map(|(index, (position, _))| (index, *position));
+                previous.switches = reading.switches;
+
+                let moved_axis = reading.axes.iter().enumerate().find_map(|(index, value)| {
+                    let delta = value - previous.neutral_axes[index];
+                    let direction = if delta > 0.25 {
+                        1
+                    } else if delta < -0.25 {
+                        -1
+                    } else {
+                        0
+                    };
+                    let changed = direction != 0 && direction != previous.axis_directions[index];
+                    previous.axis_directions[index] = direction;
+                    changed.then_some((index, direction))
+                });
+
+                let vendor_id = controller
+                    .HardwareVendorId()
+                    .map_err(|error| error.to_string())?;
+                let product_id = controller
+                    .HardwareProductId()
+                    .map_err(|error| error.to_string())?;
+                if let Some(button_index) = pressed_button {
                     return Ok(Some(PressedInput {
-                        vendor_id: controller
-                            .HardwareVendorId()
-                            .map_err(|error| error.to_string())?,
-                        product_id: controller
-                            .HardwareProductId()
-                            .map_err(|error| error.to_string())?,
-                        button_index,
+                        vendor_id,
+                        product_id,
+                        input_id: button_index as u64 + 32,
+                        control: format!("Button {}", button_index + 1),
+                    }));
+                }
+                if let Some((switch_index, position)) = changed_switch {
+                    return Ok(Some(PressedInput {
+                        vendor_id,
+                        product_id,
+                        input_id: 16 + switch_index as u64 * 8 + position.0 as u64 - 1,
+                        control: format!("POV {} direction {}", switch_index + 1, position.0),
+                    }));
+                }
+                if let Some((axis_index, direction)) = moved_axis {
+                    return Ok(Some(PressedInput {
+                        vendor_id,
+                        product_id,
+                        input_id: axis_index as u64 * 2 + u64::from(direction < 0),
+                        control: format!(
+                            "Axis {} {}",
+                            axis_index + 1,
+                            if direction > 0 { "+" } else { "−" }
+                        ),
                     }));
                 }
             }
@@ -75,13 +132,13 @@ mod platform {
                     .NonRoamableId()
                     .map_err(|error| error.to_string())?
                     .to_string();
-                self.previous.insert(key, read_buttons(&controller)?);
+                self.previous.insert(key, read_controller(&controller)?);
             }
             Ok(())
         }
     }
 
-    fn read_buttons(controller: &RawGameController) -> Result<Vec<bool>, String> {
+    fn read_controller(controller: &RawGameController) -> Result<ControllerState, String> {
         let mut buttons = vec![
             false;
             controller
@@ -106,7 +163,14 @@ mod platform {
         controller
             .GetCurrentReading(&mut buttons, &mut switches, &mut axes)
             .map_err(|error| error.to_string())?;
-        Ok(buttons)
+        let axis_directions = vec![0; axes.len()];
+        Ok(ControllerState {
+            buttons,
+            switches,
+            neutral_axes: axes.clone(),
+            axes,
+            axis_directions,
+        })
     }
 }
 
