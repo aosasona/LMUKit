@@ -16,6 +16,7 @@ pub struct WillaApp {
     selected: Option<usize>,
     new_name: String,
     config_path: String,
+    lmuffb_path: String,
     status: Status,
     binding_view: Option<BindingView>,
     input_lookup: Option<InputLookup>,
@@ -52,6 +53,7 @@ impl WillaApp {
         match Store::open() {
             Ok(store) => {
                 let config_path = store.settings.lmu_config_path.display().to_string();
+                let lmuffb_path = store.settings.lmuffb_path.display().to_string();
                 let profiles = store.profiles().unwrap_or_default();
                 Self {
                     store: Some(store),
@@ -59,6 +61,7 @@ impl WillaApp {
                     selected: None,
                     new_name: String::new(),
                     config_path,
+                    lmuffb_path,
                     status: Status::Ready(
                         "Choose a profile or capture LMU's current bindings.".into(),
                     ),
@@ -74,6 +77,7 @@ impl WillaApp {
                 selected: None,
                 new_name: String::new(),
                 config_path: String::new(),
+                lmuffb_path: String::new(),
                 status: Status::Error(error.to_string()),
                 binding_view: None,
                 input_lookup: None,
@@ -99,6 +103,35 @@ impl WillaApp {
                 Ok(()) => self.status = Status::Success("LMU config location saved.".into()),
                 Err(error) => self.status = Status::Error(error.to_string()),
             }
+        }
+    }
+
+    fn save_lmuffb_path(&mut self) {
+        if let Some(store) = &mut self.store {
+            store.settings.lmuffb_path = PathBuf::from(self.lmuffb_path.trim());
+            match store.save_settings() {
+                Ok(()) => self.status = Status::Success("LMUFFB location saved.".into()),
+                Err(error) => self.status = Status::Error(error.to_string()),
+            }
+        }
+    }
+
+    fn copy_companion_launch_option(&mut self, ctx: &egui::Context) {
+        let Some(store) = &self.store else {
+            return;
+        };
+        match std::env::current_exe()
+            .context("could not determine Willa's executable location")
+            .and_then(|willa| store.companion_launch_option(&willa))
+        {
+            Ok(option) => {
+                ctx.copy_text(option);
+                self.status = Status::Success(
+                    "Steam launch option copied. Paste it into LMU Properties → Launch Options."
+                        .into(),
+                );
+            }
+            Err(error) => self.status = Status::Error(error.to_string()),
         }
     }
 
@@ -347,6 +380,32 @@ impl eframe::App for WillaApp {
                         if ui.button("Save path").clicked() {
                             self.save_path();
                         }
+                    });
+                    ui.separator();
+                    ui.collapsing("Launch Willa and LMUFFB with LMU", |ui| {
+                        ui.weak(
+                            "Choose LMUFFB.exe, then copy the generated option into Steam once.",
+                        );
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.lmuffb_path)
+                                .hint_text("Path to LMUFFB.exe")
+                                .desired_width(f32::INFINITY),
+                        );
+                        ui.horizontal(|ui| {
+                            if ui.button("Browse for LMUFFB…").clicked()
+                                && let Some(path) = rfd::FileDialog::new()
+                                    .add_filter("Windows application", &["exe"])
+                                    .set_file_name("LMUFFB.exe")
+                                    .pick_file()
+                            {
+                                self.lmuffb_path = path.display().to_string();
+                                self.save_lmuffb_path();
+                            }
+                            if ui.button("Copy Steam launch option").clicked() {
+                                self.save_lmuffb_path();
+                                self.copy_companion_launch_option(ctx);
+                            }
+                        });
                     });
                 });
 

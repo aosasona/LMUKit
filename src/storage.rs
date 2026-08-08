@@ -39,6 +39,8 @@ pub struct Settings {
     pub lmu_config_path: PathBuf,
     #[serde(default)]
     pub active_profile: Option<Uuid>,
+    #[serde(default)]
+    pub lmuffb_path: PathBuf,
 }
 
 impl Default for Settings {
@@ -46,6 +48,7 @@ impl Default for Settings {
         Self {
             lmu_config_path: default_lmu_path(),
             active_profile: None,
+            lmuffb_path: PathBuf::new(),
         }
     }
 }
@@ -77,6 +80,34 @@ impl Store {
 
     pub fn save_settings(&self) -> Result<()> {
         write_json(&self.root.join("settings.json"), &self.settings)
+    }
+
+    pub fn companion_launch_option(&self, willa_exe: &Path) -> Result<String> {
+        if !willa_exe.is_file() {
+            bail!(
+                "Willa's executable could not be found at {}",
+                willa_exe.display()
+            );
+        }
+        if !self.settings.lmuffb_path.is_file() {
+            bail!(
+                "Choose LMUFFB.exe first (currently {})",
+                self.settings.lmuffb_path.display()
+            );
+        }
+        let launcher = self.root.join("launch-lmu-with-companions.cmd");
+        let willa = batch_path(willa_exe);
+        let lmuffb = batch_path(&self.settings.lmuffb_path);
+        let script = format!(
+            "@echo off\r\n\
+             tasklist /FI \"IMAGENAME eq willa.exe\" 2>NUL | find /I \"willa.exe\" >NUL\r\n\
+             if errorlevel 1 start \"\" \"{willa}\"\r\n\
+             tasklist /FI \"IMAGENAME eq LMUFFB.exe\" 2>NUL | find /I \"LMUFFB.exe\" >NUL\r\n\
+             if errorlevel 1 start \"\" \"{lmuffb}\"\r\n\
+             %*\r\n"
+        );
+        fs::write(&launcher, script).context("could not create the companion launcher")?;
+        Ok(format!("cmd /c \"\"{}\" %command%\"", launcher.display()))
     }
 
     pub fn profiles_dir(&self) -> PathBuf {
@@ -244,6 +275,10 @@ impl Store {
     fn profile_dir(&self, id: Uuid) -> PathBuf {
         self.root.join("profiles").join(id.to_string())
     }
+}
+
+fn batch_path(path: &Path) -> String {
+    path.display().to_string().replace('%', "%%")
 }
 
 fn device_matches(
@@ -457,5 +492,26 @@ mod tests {
             store.active_profile_has_unsaved_changes().unwrap(),
             Some(true)
         );
+    }
+
+    #[test]
+    fn creates_a_steam_companion_launcher() {
+        let temp = tempfile::tempdir().unwrap();
+        let willa = temp.path().join("willa.exe");
+        let lmuffb = temp.path().join("LMUFFB.exe");
+        fs::write(&willa, []).unwrap();
+        fs::write(&lmuffb, []).unwrap();
+        let mut store = Store::open_at(temp.path().join("data")).unwrap();
+        store.settings.lmuffb_path = lmuffb;
+
+        let option = store.companion_launch_option(&willa).unwrap();
+        let launcher = store.root.join("launch-lmu-with-companions.cmd");
+
+        assert!(option.starts_with("cmd /c \"\""));
+        assert!(option.ends_with(" %command%\""));
+        let script = fs::read_to_string(launcher).unwrap();
+        assert!(script.contains("LMUFFB.exe"));
+        assert!(script.contains("willa.exe"));
+        assert!(script.contains("%*"));
     }
 }
