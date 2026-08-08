@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build Windows release
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.91.1 --profile minimal
+          rustup default 1.91.1
+
+      - name: Validate version tag
+        shell: pwsh
+        run: |
+          $tagVersion = "${{ github.ref_name }}".Substring(1)
+          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $packageVersion = $metadata.packages[0].version
+          if ($tagVersion -ne $packageVersion) {
+            throw "Tag version $tagVersion does not match Cargo package version $packageVersion"
+          }
+
+      - name: Build LMUKit
+        run: cargo build --release --locked
+
+      - name: Package release
+        id: package
+        shell: pwsh
+        run: |
+          $archive = "LMUKit-${{ github.ref_name }}-windows-x86_64.zip"
+          $checksum = "$($archive).sha256"
+          Compress-Archive -Path "target/release/lmukit.exe" -DestinationPath $archive
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "$hash  $archive" | Set-Content -Path $checksum -Encoding ascii
+          "archive=$archive" >> $env:GITHUB_OUTPUT
+          "checksum=$checksum" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $assets = @(
+            "${{ steps.package.outputs.archive }}",
+            "${{ steps.package.outputs.checksum }}"
+          )
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $assets --clobber
+          } else {
+            gh release create $tag $assets --verify-tag --generate-notes --title "LMUKit $tag"
+          }

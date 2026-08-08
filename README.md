@@ -70,6 +70,13 @@ Release output is written to:
 target/x86_64-pc-windows-msvc/release/lmukit.exe
 ```
 
+Pushing a version tag such as `v0.1.0` runs the Windows release workflow. It creates a GitHub Release containing a versioned x86-64 ZIP and its SHA-256 checksum.
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 Before committing a change, run:
 
 ```sh

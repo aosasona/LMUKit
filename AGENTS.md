@@ -13,6 +13,7 @@ LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate util
 - `src/storage.rs` owns settings, profile persistence, imports, activation, backups, LMU JSON parsing, and companion-launcher generation.
 - `src/input.rs` reads Windows raw game-controller state and converts buttons, POVs, and axes to LMU input IDs. Its non-Windows implementation keeps native development and tests working.
 - `mise.toml` pins tooling and defines the supported developer commands.
+- `.github/workflows/release.yml` builds and publishes the Windows x86-64 archive for `v*` tags.
 
 Keep filesystem and parsing behavior in `storage.rs`; keep platform input details in `input.rs`; keep presentation state in `app.rs`.
 
