@@ -25,9 +25,14 @@ pub struct WillaApp {
 }
 
 struct BindingView {
+    profile: Profile,
     profile_name: String,
     bindings: Vec<Binding>,
     filter: String,
+    listener: Option<InputListener>,
+    pressed: Option<PressedInput>,
+    pressed_actions: Vec<String>,
+    input_error: Option<String>,
 }
 
 struct InputLookup {
@@ -233,10 +238,19 @@ impl WillaApp {
         };
         match store.bindings(&profile) {
             Ok(bindings) => {
+                let (listener, input_error) = match InputListener::new() {
+                    Ok(listener) => (Some(listener), None),
+                    Err(error) => (None, Some(error)),
+                };
                 self.binding_view = Some(BindingView {
-                    profile_name: profile.name,
+                    profile_name: profile.name.clone(),
+                    profile,
                     bindings,
                     filter: String::new(),
+                    listener,
+                    pressed: None,
+                    pressed_actions: Vec::new(),
+                    input_error,
                 });
             }
             Err(error) => self.status = Status::Error(error.to_string()),
@@ -305,6 +319,49 @@ impl WillaApp {
         }
     }
 
+    fn poll_binding_view(&mut self, ctx: &egui::Context) {
+        let Some(view) = &mut self.binding_view else {
+            return;
+        };
+        let Some(listener) = &mut view.listener else {
+            return;
+        };
+        match listener.poll() {
+            Ok(Some(pressed)) => {
+                view.pressed_actions = self
+                    .store
+                    .as_ref()
+                    .and_then(|store| {
+                        store
+                            .binding_matches(
+                                std::slice::from_ref(&view.profile),
+                                pressed.vendor_id,
+                                pressed.product_id,
+                                pressed.input_id,
+                            )
+                            .ok()
+                    })
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|mapping| {
+                        if mapping.alternate {
+                            format!("{} (alternate)", mapping.action)
+                        } else {
+                            mapping.action
+                        }
+                    })
+                    .collect();
+                view.pressed = Some(pressed);
+                ctx.request_repaint();
+            }
+            Ok(None) => ctx.request_repaint_after(Duration::from_millis(40)),
+            Err(error) => {
+                view.input_error = Some(error);
+                view.listener = None;
+            }
+        }
+    }
+
     fn delete_selected(&mut self) {
         let Some(profile) = self.selected.and_then(|i| self.profiles.get(i)).cloned() else {
             return;
@@ -327,6 +384,7 @@ impl eframe::App for WillaApp {
         self.check_active_profile();
         ctx.request_repaint_after(Duration::from_secs(1));
         self.poll_input_lookup(ctx);
+        self.poll_binding_view(ctx);
         let dropped_paths = ctx.input(|input| {
             input
                 .raw
@@ -631,34 +689,60 @@ impl WillaApp {
                 );
                 ui.separator();
                 let filter = view.filter.trim().to_lowercase();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    let mut shown = 0;
-                    for binding in &view.bindings {
-                        let alternate = if binding.alternate { " alternate" } else { "" };
-                        let searchable = format!(
-                            "{} {} {}{}",
-                            binding.action, binding.device, binding.input_id, alternate
-                        )
-                        .to_lowercase();
-                        if !filter.is_empty() && !searchable.contains(&filter) {
-                            continue;
-                        }
-                        shown += 1;
-                        ui.horizontal(|ui| {
-                            ui.vertical(|ui| {
-                                ui.strong(&binding.action);
-                                ui.weak(format!(
-                                    "{} · input {}{alternate}",
-                                    binding.device, binding.input_id
-                                ));
+                let list_height = (ui.available_height() - 72.0).max(120.0);
+                egui::ScrollArea::vertical()
+                    .max_height(list_height)
+                    .show(ui, |ui| {
+                        let mut shown = 0;
+                        for binding in &view.bindings {
+                            let alternate = if binding.alternate { " alternate" } else { "" };
+                            let searchable = format!(
+                                "{} {} {}{}",
+                                binding.action, binding.device, binding.input_id, alternate
+                            )
+                            .to_lowercase();
+                            if !filter.is_empty() && !searchable.contains(&filter) {
+                                continue;
+                            }
+                            shown += 1;
+                            ui.horizontal(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.strong(&binding.action);
+                                    ui.weak(format!(
+                                        "{} · input {}{alternate}",
+                                        binding.device, binding.input_id
+                                    ));
+                                });
                             });
-                        });
-                        ui.separator();
-                    }
-                    if shown == 0 {
-                        ui.weak("No matching bindings.");
-                    }
-                });
+                            ui.separator();
+                        }
+                        if shown == 0 {
+                            ui.weak("No matching bindings.");
+                        }
+                    });
+                ui.separator();
+                if let Some(error) = &view.input_error {
+                    ui.colored_label(egui::Color32::from_rgb(240, 110, 110), error);
+                } else if let Some(pressed) = &view.pressed {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.strong(&pressed.control);
+                        ui.label("→");
+                        if view.pressed_actions.is_empty() {
+                            ui.weak("Not mapped in this profile");
+                        } else {
+                            ui.colored_label(
+                                egui::Color32::from_rgb(100, 210, 140),
+                                view.pressed_actions.join(", "),
+                            );
+                        }
+                    });
+                    ui.weak(format!("LMU input {}", pressed.input_id));
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.weak("Press a button, turn the wheel, or move an axis…");
+                    });
+                }
             });
         if !open {
             self.binding_view = None;
