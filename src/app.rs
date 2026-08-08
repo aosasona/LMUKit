@@ -387,6 +387,26 @@ impl eframe::App for WillaApp {
                     } else {
                         ui.weak("Select a setup, or drop LMU preset JSON files here to import.");
                     }
+                    let active_profile = self
+                        .store
+                        .as_ref()
+                        .and_then(|store| store.settings.active_profile)
+                        .and_then(|id| self.profiles.iter().find(|profile| profile.id == id));
+                    ui.horizontal(|ui| {
+                        ui.strong("Active preset:");
+                        if let Some(profile) = active_profile {
+                            ui.colored_label(egui::Color32::from_rgb(100, 210, 140), &profile.name);
+                        } else {
+                            ui.weak("None");
+                        }
+                        if let Some(profile) = self.selected.and_then(|i| self.profiles.get(i))
+                            && active_profile.is_none_or(|active| active.id != profile.id)
+                        {
+                            ui.separator();
+                            ui.strong("Selected:");
+                            ui.label(&profile.name);
+                        }
+                    });
                     ui.separator();
                     egui::ScrollArea::vertical()
                         .max_height(220.0)
