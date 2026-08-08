@@ -4,12 +4,12 @@ This file is the repository handoff for human and LLM-assisted development. Keep
 
 ## Product intent
 
-LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate utilities. Its current feature set manages wheel-binding profiles, while the broader name leaves room for related LMU tools. The primary runtime platform is Windows; development commonly happens in WSL.
+LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate utilities. It currently includes binding-profile and companion-launcher tools, while leaving room for other LMU features. The primary runtime platform is Windows; development commonly happens in WSL.
 
 ## Architecture
 
 - `src/main.rs` configures the portrait viewport and starts eframe.
-- `src/app.rs` owns egui state, interaction flows, dialogs, and status messages.
+- `src/app.rs` owns egui state, the Profiles and Settings tabs, interaction flows, dialogs, and status messages.
 - `src/storage.rs` owns settings, profile persistence, imports, activation, backups, LMU JSON parsing, and companion-launcher generation.
 - `src/input.rs` reads Windows raw game-controller state and converts buttons, POVs, and axes to LMU input IDs. Its non-Windows implementation keeps native development and tests working.
 - `mise.toml` pins tooling and defines the supported developer commands.

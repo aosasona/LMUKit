@@ -12,6 +12,7 @@ use std::{
 
 pub struct LmuKitApp {
     store: Option<Store>,
+    active_tab: AppTab,
     profiles: Vec<Profile>,
     selected: Option<usize>,
     new_name: String,
@@ -22,6 +23,12 @@ pub struct LmuKitApp {
     input_lookup: Option<InputLookup>,
     active_profile_dirty: bool,
     last_dirty_check: Instant,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AppTab {
+    Profiles,
+    Settings,
 }
 
 struct BindingView {
@@ -66,6 +73,7 @@ impl LmuKitApp {
                 let profiles = store.profiles().unwrap_or_default();
                 Self {
                     store: Some(store),
+                    active_tab: AppTab::Profiles,
                     profiles,
                     selected: None,
                     new_name: String::new(),
@@ -80,6 +88,7 @@ impl LmuKitApp {
             }
             Err(error) => Self {
                 store: None,
+                active_tab: AppTab::Profiles,
                 profiles: Vec::new(),
                 selected: None,
                 new_name: String::new(),
@@ -392,6 +401,7 @@ impl eframe::App for LmuKitApp {
                 .collect::<Vec<_>>()
         });
         if !dropped_paths.is_empty() {
+            self.active_tab = AppTab::Profiles;
             self.import_profiles(&dropped_paths);
         }
         let hovering_files = ctx.input(|input| !input.raw.hovered_files.is_empty());
@@ -400,12 +410,17 @@ impl eframe::App for LmuKitApp {
             ui.add_space(14.0);
             ui.heading(egui::RichText::new("LMUKit").size(24.0));
             ui.weak("Tools for Le Mans Ultimate");
-            ui.add_space(12.0);
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut self.active_tab, AppTab::Profiles, "Profiles");
+                ui.selectable_value(&mut self.active_tab, AppTab::Settings, "Settings");
+            });
+            ui.add_space(8.0);
         });
 
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.add_space(10.0);
-            if self.active_profile_dirty {
+            if self.active_tab == AppTab::Profiles && self.active_profile_dirty {
                 ui.colored_label(
                     egui::Color32::from_rgb(235, 185, 80),
                     "Unsaved changes: LMU's bindings differ from the active profile.",
@@ -419,7 +434,11 @@ impl eframe::App for LmuKitApp {
                 Status::Error(text) => (text, egui::Color32::from_rgb(240, 110, 110)),
             };
             ui.colored_label(color, text);
-            ui.small("Close LMU before activating a profile. A recovery backup is created first.");
+            if self.active_tab == AppTab::Profiles {
+                ui.small(
+                    "Close LMU before activating a profile. A recovery backup is created first.",
+                );
+            }
             ui.add_space(10.0);
         });
 
@@ -427,236 +446,243 @@ impl eframe::App for LmuKitApp {
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    egui::Frame::group(ui.style())
-                        .inner_margin(14.0)
-                        .show(ui, |ui| {
-                            ui.heading("LMU configuration");
-                            ui.weak("Choose the live bindings file that LMUKit should manage.");
-                            ui.add_space(4.0);
-                            ui.add(
-                                egui::TextEdit::singleline(&mut self.config_path)
-                                    .desired_width(f32::INFINITY),
-                            );
-                            ui.horizontal_wrapped(|ui| {
-                                if ui.button("Browse…").clicked()
-                                    && let Some(path) = rfd::FileDialog::new()
-                                        .add_filter("JSON", &["json"])
-                                        .set_file_name("direct input.json")
-                                        .pick_file()
-                                {
-                                    self.config_path = path.display().to_string();
-                                    self.save_path();
-                                }
-                                if ui.button("Save path").clicked() {
-                                    self.save_path();
-                                }
-                            });
-                            ui.separator();
-                            ui.collapsing("Launch companion apps with LMU", |ui| {
-                                ui.weak("Enable each app that should start alongside LMU.");
-                                let mut changed = false;
-                                for app in &mut self.companion_apps {
-                                    ui.horizontal(|ui| {
-                                        changed |=
-                                            ui.checkbox(&mut app.enabled, &app.name).changed();
-                                        if ui.button("Browse…").clicked()
+                    if self.active_tab == AppTab::Settings {
+                        egui::Frame::group(ui.style())
+                            .inner_margin(14.0)
+                            .show(ui, |ui| {
+                                ui.heading("LMU paths");
+                                ui.weak("Choose the live bindings file that LMUKit should manage.");
+                                ui.add_space(4.0);
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut self.config_path)
+                                        .desired_width(f32::INFINITY),
+                                );
+                                ui.horizontal_wrapped(|ui| {
+                                    if ui.button("Browse…").clicked()
+                                        && let Some(path) = rfd::FileDialog::new()
+                                            .add_filter("JSON", &["json"])
+                                            .set_file_name("direct input.json")
+                                            .pick_file()
+                                    {
+                                        self.config_path = path.display().to_string();
+                                        self.save_path();
+                                    }
+                                    if ui.button("Save path").clicked() {
+                                        self.save_path();
+                                    }
+                                });
+                                ui.separator();
+                                ui.collapsing("Launch companion apps with LMU", |ui| {
+                                    ui.weak("Enable each app that should start alongside LMU.");
+                                    let mut changed = false;
+                                    for app in &mut self.companion_apps {
+                                        ui.horizontal(|ui| {
+                                            changed |=
+                                                ui.checkbox(&mut app.enabled, &app.name).changed();
+                                            if ui.button("Browse…").clicked()
+                                                && let Some(path) = rfd::FileDialog::new()
+                                                    .add_filter("Windows application", &["exe"])
+                                                    .pick_file()
+                                            {
+                                                app.path = path;
+                                                app.enabled = true;
+                                                changed = true;
+                                            }
+                                        });
+                                        let path = if app.path.as_os_str().is_empty() {
+                                            "No executable selected".into()
+                                        } else {
+                                            app.path.display().to_string()
+                                        };
+                                        ui.indent(("companion_path", &app.name), |ui| {
+                                            ui.add(
+                                                egui::Label::new(egui::RichText::new(path).weak())
+                                                    .wrap(),
+                                            );
+                                        });
+                                    }
+                                    if changed {
+                                        self.save_companion_apps();
+                                    }
+                                    ui.horizontal_wrapped(|ui| {
+                                        if ui.button("Add another app…").clicked()
                                             && let Some(path) = rfd::FileDialog::new()
                                                 .add_filter("Windows application", &["exe"])
                                                 .pick_file()
                                         {
-                                            app.path = path;
-                                            app.enabled = true;
-                                            changed = true;
+                                            let name = path
+                                                .file_stem()
+                                                .and_then(|name| name.to_str())
+                                                .unwrap_or("Companion app")
+                                                .to_owned();
+                                            self.companion_apps.push(CompanionApp {
+                                                name,
+                                                path,
+                                                enabled: true,
+                                            });
+                                            self.save_companion_apps();
+                                        }
+                                        if ui.button("Copy Steam launch option").clicked() {
+                                            self.save_companion_apps();
+                                            self.copy_companion_launch_option(ctx);
                                         }
                                     });
-                                    let path = if app.path.as_os_str().is_empty() {
-                                        "No executable selected".into()
-                                    } else {
-                                        app.path.display().to_string()
-                                    };
-                                    ui.indent(("companion_path", &app.name), |ui| {
-                                        ui.add(
-                                            egui::Label::new(egui::RichText::new(path).weak())
-                                                .wrap(),
-                                        );
-                                    });
-                                }
-                                if changed {
-                                    self.save_companion_apps();
-                                }
-                                ui.horizontal_wrapped(|ui| {
-                                    if ui.button("Add another app…").clicked()
-                                        && let Some(path) = rfd::FileDialog::new()
-                                            .add_filter("Windows application", &["exe"])
-                                            .pick_file()
-                                    {
-                                        let name = path
-                                            .file_stem()
-                                            .and_then(|name| name.to_str())
-                                            .unwrap_or("Companion app")
-                                            .to_owned();
-                                        self.companion_apps.push(CompanionApp {
-                                            name,
-                                            path,
-                                            enabled: true,
-                                        });
-                                        self.save_companion_apps();
-                                    }
-                                    if ui.button("Copy Steam launch option").clicked() {
-                                        self.save_companion_apps();
-                                        self.copy_companion_launch_option(ctx);
-                                    }
                                 });
                             });
-                        });
+                        ui.add_space(12.0);
+                    }
 
-                    ui.add_space(10.0);
-                    egui::Frame::group(ui.style())
-                        .fill(if hovering_files {
-                            egui::Color32::from_rgb(32, 53, 48)
-                        } else {
-                            ui.visuals().faint_bg_color
-                        })
-                        .inner_margin(14.0)
-                        .show(ui, |ui| {
-                            ui.heading("Saved profiles");
-                            ui.horizontal_wrapped(|ui| {
-                                if ui
-                                    .add_enabled(
-                                        self.store.is_some(),
-                                        egui::Button::new("Show in folder"),
-                                    )
-                                    .clicked()
-                                {
-                                    self.show_profiles_folder();
-                                }
-                                if ui.button("Refresh").clicked() {
-                                    self.refresh();
-                                }
-                                if ui.button("Find wheel button…").clicked() {
-                                    self.start_input_lookup();
-                                }
-                            });
-                            if hovering_files {
-                                ui.colored_label(
-                                    egui::Color32::from_rgb(120, 220, 170),
-                                    "Drop to import preset files or folders",
-                                );
+                    if self.active_tab == AppTab::Profiles {
+                        egui::Frame::group(ui.style())
+                            .fill(if hovering_files {
+                                egui::Color32::from_rgb(32, 53, 48)
                             } else {
-                                ui.weak(
-                                    "Select a setup, or drop LMU preset JSON files here to import.",
-                                );
-                            }
-                            let active_profile = self
-                                .store
-                                .as_ref()
-                                .and_then(|store| store.settings.active_profile)
-                                .and_then(|id| {
-                                    self.profiles.iter().find(|profile| profile.id == id)
+                                ui.visuals().faint_bg_color
+                            })
+                            .inner_margin(14.0)
+                            .show(ui, |ui| {
+                                ui.heading("Saved profiles");
+                                ui.horizontal_wrapped(|ui| {
+                                    if ui
+                                        .add_enabled(
+                                            self.store.is_some(),
+                                            egui::Button::new("Show in folder"),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.show_profiles_folder();
+                                    }
+                                    if ui.button("Refresh").clicked() {
+                                        self.refresh();
+                                    }
+                                    if ui.button("Find wheel button…").clicked() {
+                                        self.start_input_lookup();
+                                    }
                                 });
-                            ui.horizontal_wrapped(|ui| {
-                                ui.strong("Active preset:");
-                                if let Some(profile) = active_profile {
+                                if hovering_files {
                                     ui.colored_label(
-                                        egui::Color32::from_rgb(100, 210, 140),
-                                        &profile.name,
+                                        egui::Color32::from_rgb(120, 220, 170),
+                                        "Drop to import preset files or folders",
                                     );
                                 } else {
-                                    ui.weak("None");
+                                    ui.weak(
+                                    "Select a setup, or drop LMU preset JSON files here to import.",
+                                );
                                 }
-                                if let Some(profile) =
-                                    self.selected.and_then(|i| self.profiles.get(i))
-                                    && active_profile.is_none_or(|active| active.id != profile.id)
-                                {
-                                    ui.separator();
-                                    ui.strong("Selected:");
-                                    ui.label(&profile.name);
-                                }
-                            });
-                            ui.separator();
-                            egui::ScrollArea::vertical()
-                                .max_height(220.0)
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| {
-                                    if self.profiles.is_empty() {
-                                        ui.weak("No profiles saved yet.");
+                                let active_profile = self
+                                    .store
+                                    .as_ref()
+                                    .and_then(|store| store.settings.active_profile)
+                                    .and_then(|id| {
+                                        self.profiles.iter().find(|profile| profile.id == id)
+                                    });
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.strong("Active preset:");
+                                    if let Some(profile) = active_profile {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(100, 210, 140),
+                                            &profile.name,
+                                        );
+                                    } else {
+                                        ui.weak("None");
                                     }
-                                    let active =
-                                        self.store.as_ref().and_then(|s| s.settings.active_profile);
-                                    for (index, profile) in self.profiles.iter().enumerate() {
-                                        let is_selected = self.selected == Some(index);
-                                        let label = if active == Some(profile.id) {
-                                            format!("{}  • active", profile.name)
-                                        } else {
-                                            profile.name.clone()
-                                        };
-                                        if ui
-                                            .add_sized(
-                                                [ui.available_width(), 30.0],
-                                                egui::Button::new(label).selected(is_selected),
-                                            )
-                                            .clicked()
-                                        {
-                                            self.selected = Some(index);
-                                        }
+                                    if let Some(profile) =
+                                        self.selected.and_then(|i| self.profiles.get(i))
+                                        && active_profile
+                                            .is_none_or(|active| active.id != profile.id)
+                                    {
+                                        ui.separator();
+                                        ui.strong("Selected:");
+                                        ui.label(&profile.name);
                                     }
                                 });
-                            ui.separator();
-                            ui.horizontal_wrapped(|ui| {
+                                ui.separator();
+                                egui::ScrollArea::vertical()
+                                    .max_height(220.0)
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        if self.profiles.is_empty() {
+                                            ui.weak("No profiles saved yet.");
+                                        }
+                                        let active = self
+                                            .store
+                                            .as_ref()
+                                            .and_then(|s| s.settings.active_profile);
+                                        for (index, profile) in self.profiles.iter().enumerate() {
+                                            let is_selected = self.selected == Some(index);
+                                            let label = if active == Some(profile.id) {
+                                                format!("{}  • active", profile.name)
+                                            } else {
+                                                profile.name.clone()
+                                            };
+                                            if ui
+                                                .add_sized(
+                                                    [ui.available_width(), 30.0],
+                                                    egui::Button::new(label).selected(is_selected),
+                                                )
+                                                .clicked()
+                                            {
+                                                self.selected = Some(index);
+                                            }
+                                        }
+                                    });
+                                ui.separator();
+                                ui.horizontal_wrapped(|ui| {
+                                    if ui
+                                        .add_enabled(
+                                            self.selected.is_some(),
+                                            egui::Button::new("Activate selected"),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.activate_selected();
+                                    }
+                                    if ui
+                                        .add_enabled(
+                                            self.selected.is_some(),
+                                            egui::Button::new("View bindings…"),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.inspect_selected();
+                                    }
+                                    if ui
+                                        .add_enabled(
+                                            self.selected.is_some(),
+                                            egui::Button::new("Delete"),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.delete_selected();
+                                    }
+                                });
+                            });
+
+                        ui.add_space(10.0);
+                        egui::Frame::group(ui.style())
+                            .inner_margin(14.0)
+                            .show(ui, |ui| {
+                                ui.heading("Capture current bindings");
+                                ui.weak(
+                                    "Configure the wheel in LMU, then save that setup with a name.",
+                                );
+                                ui.add_space(4.0);
+                                let response = ui.add(
+                                    egui::TextEdit::singleline(&mut self.new_name)
+                                        .hint_text("e.g. Simagic GT Neo")
+                                        .desired_width(f32::INFINITY),
+                                );
+                                let enter = response.lost_focus()
+                                    && ui.input(|input| input.key_pressed(egui::Key::Enter));
                                 if ui
-                                    .add_enabled(
-                                        self.selected.is_some(),
-                                        egui::Button::new("Activate selected"),
-                                    )
+                                    .add_sized([120.0, 30.0], egui::Button::new("Save profile"))
                                     .clicked()
+                                    || enter
                                 {
-                                    self.activate_selected();
-                                }
-                                if ui
-                                    .add_enabled(
-                                        self.selected.is_some(),
-                                        egui::Button::new("View bindings…"),
-                                    )
-                                    .clicked()
-                                {
-                                    self.inspect_selected();
-                                }
-                                if ui
-                                    .add_enabled(
-                                        self.selected.is_some(),
-                                        egui::Button::new("Delete"),
-                                    )
-                                    .clicked()
-                                {
-                                    self.delete_selected();
+                                    self.capture();
                                 }
                             });
-                        });
-
-                    ui.add_space(10.0);
-                    egui::Frame::group(ui.style())
-                        .inner_margin(14.0)
-                        .show(ui, |ui| {
-                            ui.heading("Capture current bindings");
-                            ui.weak(
-                                "Configure the wheel in LMU, then save that setup with a name.",
-                            );
-                            ui.add_space(4.0);
-                            let response = ui.add(
-                                egui::TextEdit::singleline(&mut self.new_name)
-                                    .hint_text("e.g. Simagic GT Neo")
-                                    .desired_width(f32::INFINITY),
-                            );
-                            let enter = response.lost_focus()
-                                && ui.input(|input| input.key_pressed(egui::Key::Enter));
-                            if ui
-                                .add_sized([120.0, 30.0], egui::Button::new("Save profile"))
-                                .clicked()
-                                || enter
-                            {
-                                self.capture();
-                            }
-                        });
+                    }
 
                     ui.add_space(12.0);
                 });

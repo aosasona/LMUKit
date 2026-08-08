@@ -27,7 +27,7 @@ LMUKit stores its own profiles in the current Windows user's application-data di
 ## Using LMUKit
 
 1. Close LMU before changing profiles.
-2. Confirm the path to LMU's live `direct input.json`.
+2. Open **Settings** and confirm the path to LMU's live `direct input.json`.
 3. Configure the wheel in LMU and enter a name under **Capture current bindings**.
 4. Select a profile and choose **Activate selected** when changing setups.
 
@@ -37,7 +37,7 @@ To inspect a physical control, choose **Find wheel button…** and press or move
 
 ### Companion apps
 
-Expand **Launch companion apps with LMU**, choose each executable, and enable the apps you want. **Copy Steam launch option** creates a small launcher and copies the required command. Paste it into:
+Open **Settings**, expand **Launch companion apps with LMU**, choose each executable, and enable the apps you want. **Copy Steam launch option** creates a small launcher and copies the required command. Paste it into:
 
 **Steam → Le Mans Ultimate → Properties → Launch Options**
 
