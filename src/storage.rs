@@ -27,6 +27,13 @@ pub struct Binding {
     pub alternate: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BindingMatch {
+    pub profile_name: String,
+    pub action: String,
+    pub alternate: bool,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Settings {
     pub lmu_config_path: PathBuf,
@@ -104,14 +111,47 @@ impl Store {
     }
 
     pub fn bindings(&self, profile: &Profile) -> Result<Vec<Binding>> {
-        let path = self.profile_dir(profile.id).join(CONFIG_FILE_NAME);
-        let document: serde_json::Value = serde_json::from_slice(&fs::read(&path)?)
-            .with_context(|| format!("{} is not valid JSON", path.display()))?;
+        let document = self.profile_document(profile)?;
         let mut bindings = Vec::new();
         collect_bindings(&document, "Input", false, &mut bindings);
         collect_bindings(&document, "Alternative Input", true, &mut bindings);
         bindings.sort_by(|a, b| a.action.to_lowercase().cmp(&b.action.to_lowercase()));
         Ok(bindings)
+    }
+
+    pub fn binding_matches(
+        &self,
+        profiles: &[Profile],
+        vendor_id: u16,
+        product_id: u16,
+        input_id: u64,
+    ) -> Result<Vec<BindingMatch>> {
+        let mut matches = Vec::new();
+        for profile in profiles {
+            let document = self.profile_document(profile)?;
+            let mut bindings = Vec::new();
+            collect_bindings(&document, "Input", false, &mut bindings);
+            collect_bindings(&document, "Alternative Input", true, &mut bindings);
+            for binding in bindings {
+                if binding.input_id == input_id
+                    && device_matches(&document, &binding.device, vendor_id, product_id)
+                {
+                    matches.push(BindingMatch {
+                        profile_name: profile.name.clone(),
+                        action: binding.action,
+                        alternate: binding.alternate,
+                    });
+                }
+            }
+        }
+        matches.sort_by(|a, b| a.profile_name.cmp(&b.profile_name));
+        Ok(matches)
+    }
+
+    fn profile_document(&self, profile: &Profile) -> Result<serde_json::Value> {
+        let path = self.profile_dir(profile.id).join(CONFIG_FILE_NAME);
+        serde_json::from_slice(&fs::read(&path)?)
+            .with_context(|| format!("{} is not valid JSON", path.display()))
     }
 
     fn store_profile(&self, source: &Path, name: &str) -> Result<Profile> {
@@ -182,6 +222,27 @@ impl Store {
     fn profile_dir(&self, id: Uuid) -> PathBuf {
         self.root.join("profiles").join(id.to_string())
     }
+}
+
+fn device_matches(
+    document: &serde_json::Value,
+    device: &str,
+    vendor_id: u16,
+    product_id: u16,
+) -> bool {
+    let Some(guid) = document
+        .get("Devices")
+        .and_then(|devices| devices.get(device))
+        .and_then(|device| device.get("product guid"))
+        .and_then(serde_json::Value::as_str)
+    else {
+        return false;
+    };
+    let Some(data) = guid.strip_prefix('{').and_then(|guid| guid.get(..8)) else {
+        return false;
+    };
+    u32::from_str_radix(data, 16)
+        .is_ok_and(|id| id as u16 == vendor_id && (id >> 16) as u16 == product_id)
 }
 
 fn collect_bindings(
@@ -327,5 +388,29 @@ mod tests {
         assert_eq!(bindings[0].action, "Shift Up");
         assert!(!bindings[0].alternate);
         assert!(bindings[1].alternate);
+    }
+
+    #[test]
+    fn matches_a_button_by_device_hardware_id_across_profiles() {
+        let temp = tempfile::tempdir().unwrap();
+        let preset = temp.path().join("GT3.json");
+        fs::write(
+            &preset,
+            br#"{
+                "Devices":{"Wheel-123":{"product guid":"{05003670-0000-0000-0000-504944564944}"}},
+                "Input":{"Shift Up":{"device":"Wheel-123","id":44}}
+            }"#,
+        )
+        .unwrap();
+
+        let store = Store::open_at(temp.path().join("willa")).unwrap();
+        let profile = store.import_profile(&preset).unwrap();
+        let matches = store
+            .binding_matches(&[profile], 0x3670, 0x0500, 44)
+            .unwrap();
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].profile_name, "GT3");
+        assert_eq!(matches[0].action, "Shift Up");
     }
 }
