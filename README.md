@@ -15,6 +15,7 @@ LMUKit is a growing native Windows toolkit for Le Mans Ultimate. It brings usefu
 - Import preset JSON files or profile folders with drag and drop.
 - Activate a saved profile with an automatic recovery backup.
 - Detect and warn when the live bindings differ from the active profile.
+- Update an existing profile from LMU's live bindings while backing up its previous version.
 - Display the active preset separately from the currently selected row.
 - Browse and search every action stored in a profile.
 - Press a wheel button, move a POV, or turn an axis to compare its mapping across profiles.

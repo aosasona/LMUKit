@@ -20,7 +20,7 @@ Keep filesystem and parsing behavior in `storage.rs`; keep platform input detail
 
 ## Important invariants
 
-- Never replace LMU's live configuration without first creating a recovery backup when a live file exists.
+- Never replace LMU's live configuration without first creating a recovery backup when a live file exists. Likewise, back up a saved profile before updating it from the live configuration.
 - Treat imported files as untrusted input. Validate JSON before storing or activating it.
 - Compare parsed `serde_json::Value` values for dirty detection so formatting and object-key order do not create false positives.
 - Preserve backward compatibility for `settings.json` with `#[serde(default)]` or an explicit migration.
@@ -55,7 +55,7 @@ profiles/<uuid>/profile.json
 profiles/<uuid>/direct input.json
 ```
 
-Settings track the LMU path, active profile UUID, and companion applications. Backups are timestamped under `backups/`.
+Settings track the LMU path, active profile UUID, and companion applications. Timestamped backups under `backups/` preserve both replaced live configurations and saved profiles updated from LMU.
 
 ## Required checks
 

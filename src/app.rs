@@ -236,6 +236,51 @@ impl LmuKitApp {
         }
     }
 
+    fn update_profile_from_live(&mut self, profile: Profile) {
+        let Some(store) = &self.store else {
+            return;
+        };
+        match store.update_profile(&profile) {
+            Ok(backup) => {
+                if store.settings.active_profile == Some(profile.id) {
+                    self.active_profile_dirty = false;
+                }
+                if self
+                    .binding_view
+                    .as_ref()
+                    .is_some_and(|view| view.profile.id == profile.id)
+                {
+                    self.binding_view = None;
+                }
+                self.status = Status::Success(format!(
+                    "Updated '{}'. Previous version backed up to {}.",
+                    profile.name,
+                    backup.display()
+                ));
+            }
+            Err(error) => self.status = Status::Error(error.to_string()),
+        }
+    }
+
+    fn update_selected_from_live(&mut self) {
+        if let Some(profile) = self.selected.and_then(|i| self.profiles.get(i)).cloned() {
+            self.update_profile_from_live(profile);
+        }
+    }
+
+    fn update_active_from_live(&mut self) {
+        let active = self
+            .store
+            .as_ref()
+            .and_then(|store| store.settings.active_profile);
+        if let Some(profile) = active
+            .and_then(|id| self.profiles.iter().find(|profile| profile.id == id))
+            .cloned()
+        {
+            self.update_profile_from_live(profile);
+        }
+    }
+
     fn inspect_selected(&mut self) {
         let Some(profile) = self.selected.and_then(|i| self.profiles.get(i)).cloned() else {
             return;
@@ -421,11 +466,16 @@ impl eframe::App for LmuKitApp {
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.add_space(10.0);
             if self.active_tab == AppTab::Profiles && self.active_profile_dirty {
-                ui.colored_label(
-                    egui::Color32::from_rgb(235, 185, 80),
-                    "Unsaved changes: LMU's bindings differ from the active profile.",
-                );
-                ui.weak("Save them as a profile before activating another setup.");
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(235, 185, 80),
+                        "Unsaved changes: LMU's bindings differ from the active profile.",
+                    );
+                    if ui.button("Update active profile").clicked() {
+                        self.update_active_from_live();
+                    }
+                });
+                ui.weak("Update the active profile or capture the changes as a new profile.");
                 ui.add_space(6.0);
             }
             let (text, color) = match &self.status {
@@ -636,6 +686,18 @@ impl eframe::App for LmuKitApp {
                                         .clicked()
                                     {
                                         self.activate_selected();
+                                    }
+                                    if ui
+                                        .add_enabled(
+                                            self.selected.is_some(),
+                                            egui::Button::new("Update selected from LMU"),
+                                        )
+                                        .on_hover_text(
+                                            "Replace this saved profile with LMU's current bindings",
+                                        )
+                                        .clicked()
+                                    {
+                                        self.update_selected_from_live();
                                     }
                                     if ui
                                         .add_enabled(

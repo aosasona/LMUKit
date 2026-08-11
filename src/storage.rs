@@ -305,6 +305,35 @@ impl Store {
         Ok(backup)
     }
 
+    pub fn update_profile(&self, profile: &Profile) -> Result<PathBuf> {
+        let source = &self.settings.lmu_config_path;
+        validate_lmu_file(source)?;
+
+        let destination = self.profile_dir(profile.id).join(CONFIG_FILE_NAME);
+        if !destination.is_file() {
+            bail!("The saved profile '{}' could not be found.", profile.name);
+        }
+
+        let backup =
+            self.root
+                .join("backups")
+                .join(format!("profile-{}-{}.json", profile.id, unix_time()?));
+        fs::copy(&destination, &backup).context("could not back up the saved profile")?;
+
+        let staged = self
+            .profile_dir(profile.id)
+            .join(".direct-input-update.tmp");
+        fs::copy(source, &staged).context("could not stage LMU's current bindings")?;
+        if let Err(error) =
+            fs::remove_file(&destination).and_then(|()| fs::rename(&staged, &destination))
+        {
+            let _ = fs::copy(&backup, &destination);
+            return Err(error).context("could not update the saved profile");
+        }
+
+        Ok(backup)
+    }
+
     pub fn delete(&mut self, profile: &Profile) -> Result<()> {
         fs::remove_dir_all(self.profile_dir(profile.id))?;
         if self.settings.active_profile == Some(profile.id) {
@@ -533,6 +562,35 @@ mod tests {
         assert_eq!(
             store.active_profile_has_unsaved_changes().unwrap(),
             Some(true)
+        );
+    }
+
+    #[test]
+    fn updates_a_profile_from_live_bindings_with_a_backup() {
+        let temp = tempfile::tempdir().unwrap();
+        let live = temp.path().join("game").join(CONFIG_FILE_NAME);
+        fs::create_dir_all(live.parent().unwrap()).unwrap();
+        fs::write(&live, br#"{"Input":{"Shift Up":1}}"#).unwrap();
+
+        let mut store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        store.settings.lmu_config_path = live.clone();
+        let profile = store.capture("Wheel").unwrap();
+        store.settings.active_profile = Some(profile.id);
+        fs::write(&live, br#"{"Input":{"Shift Up":2}}"#).unwrap();
+
+        let backup = store.update_profile(&profile).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(backup).unwrap(),
+            r#"{"Input":{"Shift Up":1}}"#
+        );
+        assert_eq!(
+            fs::read_to_string(store.profile_dir(profile.id).join(CONFIG_FILE_NAME)).unwrap(),
+            r#"{"Input":{"Shift Up":2}}"#
+        );
+        assert_eq!(
+            store.active_profile_has_unsaved_changes().unwrap(),
+            Some(false)
         );
     }
 
