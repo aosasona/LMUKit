@@ -85,6 +85,9 @@ pub struct Store {
 
 impl Store {
     pub fn open() -> Result<Self> {
+        if let Some(root) = std::env::var_os("LMUKIT_DATA_DIR") {
+            return Self::open_at(PathBuf::from(root));
+        }
         let dirs = ProjectDirs::from("app", "LMUKit", "LMUKit")
             .context("could not determine LMUKit's application-data directory")?;
         Self::open_at(dirs.data_local_dir().to_path_buf())

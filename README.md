@@ -7,7 +7,7 @@ LMUKit is a growing native Windows toolkit for Le Mans Ultimate. It brings usefu
 
 <img src="assets/icon/lmukit-256.png" alt="LMUKit icon" width="128">
 
-![LMUKit desktop toolkit](assets/willa.png)
+![LMUKit profile editor showing grouped force-feedback controls](assets/lmukit-editor.png)
 
 ## Features
 
@@ -99,6 +99,8 @@ cargo test
 cargo clippy --all-targets --all-features -- -D warnings
 cargo check --target x86_64-pc-windows-msvc
 ```
+
+Set `LMUKIT_DATA_DIR` to an isolated directory when manually testing or capturing screenshots without using your normal profiles and settings.
 
 ## AI-assisted development
 

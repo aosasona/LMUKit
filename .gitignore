@@ -18,3 +18,6 @@ mise.local.toml
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Local demo and screenshot data
+/.tmp/

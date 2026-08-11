@@ -27,6 +27,7 @@ Keep filesystem and parsing behavior in `storage.rs`; keep platform input detail
 - Compare parsed `serde_json::Value` values for dirty detection so formatting and object-key order do not create false positives.
 - Preserve backward compatibility for `settings.json` with `#[serde(default)]` or an explicit migration.
 - Do not inspect, modify, or commit a developer's real profiles or Windows application data.
+- Use the `LMUKIT_DATA_DIR` environment override with synthetic data for screenshots and isolated manual testing.
 - Keep non-Windows tests and checks functional even when adding Windows-only behavior.
 - Do not silently edit Steam configuration. Generate and copy an explicit launch option for the user.
 
