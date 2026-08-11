@@ -36,6 +36,19 @@ Existing preset files can be dropped directly onto the saved-profile panel. A fi
 
 To inspect a physical control, choose **Find wheel button…** and press or move it. LMUKit will show the corresponding action—or **Not mapped**—for every saved profile.
 
+### Profile editor
+
+Select a profile and choose **Edit profile…** to open the Editor tab. The editor can:
+
+- Change or clear primary and alternate mappings by listening for a connected control.
+- Warn when the same device input is assigned more than once.
+- Edit numeric and toggle-based force-feedback fields already present in the profile.
+- Preview the complete resulting JSON while preserving fields LMUKit does not recognise.
+
+**Save** updates the stored profile and backs up its previous version. **Save and activate** also installs it as LMU's live profile using the normal recovery-backup process. LMUKit warns before navigation or app closure would discard editor changes.
+
+For safety, LMUKit only assigns controls from devices already represented in the profile. Capture the device in LMU first if it is not recognised.
+
 ### Companion apps
 
 Open **Settings**, expand **Launch companion apps with LMU**, choose each executable, and enable the apps you want. **Copy Steam launch option** creates a small launcher and copies the required command. Paste it into:

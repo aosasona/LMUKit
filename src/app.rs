@@ -21,6 +21,8 @@ pub struct LmuKitApp {
     status: Status,
     binding_view: Option<BindingView>,
     input_lookup: Option<InputLookup>,
+    profile_editor: Option<ProfileEditor>,
+    discard_prompt: Option<DiscardAction>,
     active_profile_dirty: bool,
     last_dirty_check: Instant,
 }
@@ -28,7 +30,49 @@ pub struct LmuKitApp {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AppTab {
     Profiles,
+    Editor,
     Settings,
+}
+
+struct ProfileEditor {
+    profile: Profile,
+    original: serde_json::Value,
+    document: serde_json::Value,
+    known_actions: Vec<String>,
+    section: EditorSection,
+    filter: String,
+    listener: Option<InputListener>,
+    listening_for: Option<BindingTarget>,
+    input_error: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EditorSection {
+    ForceFeedback,
+    Bindings,
+    Json,
+}
+
+#[derive(Clone)]
+struct BindingTarget {
+    action: String,
+    alternate: bool,
+}
+
+enum ProfileEditorAction {
+    Listen(BindingTarget),
+    Clear(BindingTarget),
+}
+
+struct JsonSetting {
+    path: Vec<String>,
+    label: String,
+}
+
+#[derive(Clone, Copy)]
+enum DiscardAction {
+    SwitchTab(AppTab),
+    CloseApp,
 }
 
 struct BindingView {
@@ -82,6 +126,8 @@ impl LmuKitApp {
                     status: Status::Ready("Choose a tool to get started.".into()),
                     binding_view: None,
                     input_lookup: None,
+                    profile_editor: None,
+                    discard_prompt: None,
                     active_profile_dirty: false,
                     last_dirty_check: Instant::now() - Duration::from_secs(2),
                 }
@@ -97,6 +143,8 @@ impl LmuKitApp {
                 status: Status::Error(error.to_string()),
                 binding_view: None,
                 input_lookup: None,
+                profile_editor: None,
+                discard_prompt: None,
                 active_profile_dirty: false,
                 last_dirty_check: Instant::now() - Duration::from_secs(2),
             },
@@ -309,6 +357,189 @@ impl LmuKitApp {
         }
     }
 
+    fn edit_selected(&mut self) {
+        let Some(profile) = self.selected.and_then(|i| self.profiles.get(i)).cloned() else {
+            return;
+        };
+        let Some(store) = &self.store else {
+            return;
+        };
+        match store.load_profile_document(&profile) {
+            Ok(document) => {
+                let mut known_actions: Vec<String> = Store::bindings_from_document(&document)
+                    .into_iter()
+                    .map(|binding| binding.action)
+                    .collect();
+                known_actions.extend(profile.assignments.iter().cloned());
+                known_actions.sort_by_key(|action| action.to_lowercase());
+                known_actions.dedup();
+                self.profile_editor = Some(ProfileEditor {
+                    profile,
+                    original: document.clone(),
+                    document,
+                    known_actions,
+                    section: EditorSection::Bindings,
+                    filter: String::new(),
+                    listener: None,
+                    listening_for: None,
+                    input_error: None,
+                });
+                self.active_tab = AppTab::Editor;
+            }
+            Err(error) => self.status = Status::Error(error.to_string()),
+        }
+    }
+
+    fn editor_is_dirty(&self) -> bool {
+        self.profile_editor
+            .as_ref()
+            .is_some_and(|editor| editor.document != editor.original)
+    }
+
+    fn save_editor(&mut self, activate: bool) -> bool {
+        let Some(editor) = &self.profile_editor else {
+            return false;
+        };
+        let mut profile = editor.profile.clone();
+        profile.assignments = editor.known_actions.clone();
+        let document = editor.document.clone();
+        let Some(store) = &mut self.store else {
+            return false;
+        };
+        if document == editor.original {
+            if activate {
+                match store.activate(&profile) {
+                    Ok(_) => {
+                        self.active_profile_dirty = false;
+                        self.status = Status::Success(format!("'{}' is now active.", profile.name));
+                    }
+                    Err(error) => {
+                        self.status = Status::Error(error.to_string());
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+        let backup = match store.save_profile_document(&profile, &document) {
+            Ok(backup) => backup,
+            Err(error) => {
+                self.status = Status::Error(error.to_string());
+                return false;
+            }
+        };
+        if activate && let Err(error) = store.activate(&profile) {
+            self.status = Status::Error(format!(
+                "The profile was saved, but could not be activated: {error}"
+            ));
+            if let Some(editor) = &mut self.profile_editor {
+                editor.original = document;
+            }
+            return false;
+        }
+        if let Some(editor) = &mut self.profile_editor {
+            editor.original = document;
+            editor.profile = profile.clone();
+        }
+        if let Some(saved) = self
+            .profiles
+            .iter_mut()
+            .find(|saved| saved.id == profile.id)
+        {
+            *saved = profile.clone();
+        }
+        if self
+            .binding_view
+            .as_ref()
+            .is_some_and(|view| view.profile.id == profile.id)
+        {
+            self.binding_view = None;
+        }
+        if activate {
+            self.active_profile_dirty = false;
+        }
+        self.status = Status::Success(format!(
+            "Saved '{}'. Previous version backed up to {}{}",
+            profile.name,
+            backup.display(),
+            if activate { " and activated." } else { "." }
+        ));
+        true
+    }
+
+    fn request_tab(&mut self, tab: AppTab) {
+        if self.active_tab == AppTab::Editor && tab != AppTab::Editor && self.editor_is_dirty() {
+            self.discard_prompt = Some(DiscardAction::SwitchTab(tab));
+        } else {
+            self.active_tab = tab;
+        }
+    }
+
+    fn finish_discard_action(&mut self, action: DiscardAction, ctx: &egui::Context) {
+        self.profile_editor = None;
+        self.discard_prompt = None;
+        match action {
+            DiscardAction::SwitchTab(tab) => self.active_tab = tab,
+            DiscardAction::CloseApp => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+        }
+    }
+
+    fn start_editor_binding_listener(&mut self, target: BindingTarget) {
+        let Some(editor) = &mut self.profile_editor else {
+            return;
+        };
+        match InputListener::new() {
+            Ok(listener) => {
+                editor.listener = Some(listener);
+                editor.listening_for = Some(target);
+                editor.input_error = None;
+            }
+            Err(error) => editor.input_error = Some(error),
+        }
+    }
+
+    fn poll_profile_editor(&mut self, ctx: &egui::Context) {
+        let Some(editor) = &mut self.profile_editor else {
+            return;
+        };
+        let (Some(listener), Some(target)) = (&mut editor.listener, editor.listening_for.clone())
+        else {
+            return;
+        };
+        match listener.poll() {
+            Ok(Some(pressed)) => {
+                if let Some(device) =
+                    Store::matching_device(&editor.document, pressed.vendor_id, pressed.product_id)
+                {
+                    match Store::set_binding(
+                        &mut editor.document,
+                        &target.action,
+                        target.alternate,
+                        &device,
+                        pressed.input_id,
+                    ) {
+                        Ok(()) => editor.input_error = None,
+                        Err(error) => editor.input_error = Some(error.to_string()),
+                    }
+                } else {
+                    editor.input_error = Some(
+                        "That device is not present in this profile, so LMUKit cannot safely add it."
+                            .into(),
+                    );
+                }
+                editor.listener = None;
+                editor.listening_for = None;
+                ctx.request_repaint();
+            }
+            Ok(None) => ctx.request_repaint_after(Duration::from_millis(40)),
+            Err(error) => {
+                editor.input_error = Some(error);
+                editor.listener = None;
+                editor.listening_for = None;
+            }
+        }
+    }
+
     fn start_input_lookup(&mut self) {
         let profile_names = self
             .profiles
@@ -437,6 +668,11 @@ impl eframe::App for LmuKitApp {
         ctx.request_repaint_after(Duration::from_secs(1));
         self.poll_input_lookup(ctx);
         self.poll_binding_view(ctx);
+        self.poll_profile_editor(ctx);
+        if ctx.input(|input| input.viewport().close_requested()) && self.editor_is_dirty() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.discard_prompt = Some(DiscardAction::CloseApp);
+        }
         let dropped_paths = ctx.input(|input| {
             input
                 .raw
@@ -446,8 +682,8 @@ impl eframe::App for LmuKitApp {
                 .collect::<Vec<_>>()
         });
         if !dropped_paths.is_empty() {
-            self.active_tab = AppTab::Profiles;
             self.import_profiles(&dropped_paths);
+            self.request_tab(AppTab::Profiles);
         }
         let hovering_files = ctx.input(|input| !input.raw.hovered_files.is_empty());
 
@@ -457,8 +693,25 @@ impl eframe::App for LmuKitApp {
             ui.weak("Tools for Le Mans Ultimate");
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.active_tab, AppTab::Profiles, "Profiles");
-                ui.selectable_value(&mut self.active_tab, AppTab::Settings, "Settings");
+                if ui
+                    .selectable_label(self.active_tab == AppTab::Profiles, "Profiles")
+                    .clicked()
+                {
+                    self.request_tab(AppTab::Profiles);
+                }
+                if self.profile_editor.is_some()
+                    && ui
+                        .selectable_label(self.active_tab == AppTab::Editor, "Editor")
+                        .clicked()
+                {
+                    self.request_tab(AppTab::Editor);
+                }
+                if ui
+                    .selectable_label(self.active_tab == AppTab::Settings, "Settings")
+                    .clicked()
+                {
+                    self.request_tab(AppTab::Settings);
+                }
             });
             ui.add_space(8.0);
         });
@@ -493,6 +746,10 @@ impl eframe::App for LmuKitApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            if self.active_tab == AppTab::Editor {
+                self.show_profile_editor(ui);
+                return;
+            }
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
@@ -702,6 +959,15 @@ impl eframe::App for LmuKitApp {
                                     if ui
                                         .add_enabled(
                                             self.selected.is_some(),
+                                            egui::Button::new("Edit profile…"),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.edit_selected();
+                                    }
+                                    if ui
+                                        .add_enabled(
+                                            self.selected.is_some(),
                                             egui::Button::new("View bindings…"),
                                         )
                                         .clicked()
@@ -752,10 +1018,120 @@ impl eframe::App for LmuKitApp {
 
         self.show_binding_view(ctx);
         self.show_input_lookup(ctx);
+        self.show_discard_prompt(ctx);
     }
 }
 
 impl LmuKitApp {
+    fn show_profile_editor(&mut self, ui: &mut egui::Ui) {
+        let mut save = false;
+        let mut save_and_activate = false;
+        let mut close = false;
+        let mut editor_action = None;
+        let Some(editor) = &mut self.profile_editor else {
+            self.active_tab = AppTab::Profiles;
+            return;
+        };
+        let dirty = editor.document != editor.original;
+
+        ui.horizontal_wrapped(|ui| {
+            ui.heading(format!("Edit {}", editor.profile.name));
+            if dirty {
+                ui.colored_label(egui::Color32::from_rgb(235, 185, 80), "Unsaved changes");
+            } else {
+                ui.weak("Saved");
+            }
+            ui.separator();
+            save = ui.add_enabled(dirty, egui::Button::new("Save")).clicked();
+            save_and_activate = ui.button("Save and activate").clicked();
+            close = ui.button("Close editor").clicked();
+        });
+        ui.weak("Changes affect this saved profile only until you choose Save and activate.");
+        ui.separator();
+
+        egui::SidePanel::left("profile_editor_sections")
+            .resizable(false)
+            .exact_width(150.0)
+            .show_inside(ui, |ui| {
+                ui.strong("Profile sections");
+                ui.add_space(6.0);
+                ui.selectable_value(
+                    &mut editor.section,
+                    EditorSection::ForceFeedback,
+                    "Force feedback",
+                );
+                ui.selectable_value(&mut editor.section, EditorSection::Bindings, "Bindings");
+                ui.selectable_value(&mut editor.section, EditorSection::Json, "JSON preview");
+            });
+        egui::CentralPanel::default().show_inside(ui, |ui| match editor.section {
+            EditorSection::ForceFeedback => show_force_feedback_editor(editor, ui),
+            EditorSection::Bindings => {
+                editor_action = show_bindings_editor(editor, ui);
+            }
+            EditorSection::Json => show_json_preview(editor, ui),
+        });
+
+        if let Some(action) = editor_action {
+            match action {
+                ProfileEditorAction::Listen(target) => {
+                    self.start_editor_binding_listener(target);
+                }
+                ProfileEditorAction::Clear(target) => {
+                    if let Some(editor) = &mut self.profile_editor
+                        && let Err(error) = Store::clear_binding(
+                            &mut editor.document,
+                            &target.action,
+                            target.alternate,
+                        )
+                    {
+                        editor.input_error = Some(error.to_string());
+                    }
+                }
+            }
+        }
+        if save {
+            self.save_editor(false);
+        }
+        if save_and_activate {
+            self.save_editor(true);
+        }
+        if close {
+            self.request_tab(AppTab::Profiles);
+            if !self.editor_is_dirty() {
+                self.profile_editor = None;
+            }
+        }
+    }
+
+    fn show_discard_prompt(&mut self, ctx: &egui::Context) {
+        let Some(action) = self.discard_prompt else {
+            return;
+        };
+        let mut save = false;
+        let mut discard = false;
+        let mut cancel = false;
+        egui::Window::new("Unsaved profile changes")
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label("Save your profile changes before leaving the editor?");
+                ui.weak("Discard keeps the last saved version and loses these edits.");
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    save = ui.button("Save").clicked();
+                    discard = ui.button("Discard").clicked();
+                    cancel = ui.button("Cancel").clicked();
+                });
+            });
+        let proceed = discard || (save && self.save_editor(false));
+        if proceed {
+            self.finish_discard_action(action, ctx);
+        } else if cancel {
+            self.discard_prompt = None;
+        }
+    }
+
     fn show_binding_view(&mut self, ctx: &egui::Context) {
         let Some(view) = &mut self.binding_view else {
             return;
@@ -911,6 +1287,241 @@ impl LmuKitApp {
     }
 }
 
+fn show_force_feedback_editor(editor: &mut ProfileEditor, ui: &mut egui::Ui) {
+    ui.heading("Force feedback");
+    ui.weak(
+        "LMUKit detects editable FFB values already present in this profile and preserves every unknown field.",
+    );
+    ui.add_space(6.0);
+    let settings = collect_ffb_settings(&editor.document);
+    if settings.is_empty() {
+        ui.colored_label(
+            egui::Color32::from_rgb(235, 185, 80),
+            "No recognised FFB settings were found in this preset.",
+        );
+        ui.weak(
+            "Capture a current LMU wheel profile first. LMUKit will not invent undocumented JSON fields.",
+        );
+        return;
+    }
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        for setting in settings {
+            egui::Frame::group(ui.style())
+                .inner_margin(10.0)
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.vertical(|ui| {
+                            ui.strong(&setting.label);
+                            let context = setting.path[..setting.path.len() - 1].join(" › ");
+                            if !context.is_empty() {
+                                ui.weak(context);
+                            }
+                        });
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let Some(value) = json_value_mut(&mut editor.document, &setting.path)
+                            else {
+                                return;
+                            };
+                            if let Some(current) = value.as_bool() {
+                                let mut edited = current;
+                                if ui.checkbox(&mut edited, "").changed() {
+                                    *value = serde_json::Value::Bool(edited);
+                                }
+                            } else if let Some(current) = value.as_f64() {
+                                let mut edited = current;
+                                if ui
+                                    .add(egui::DragValue::new(&mut edited).speed(0.01))
+                                    .changed()
+                                    && let Some(number) = serde_json::Number::from_f64(edited)
+                                {
+                                    *value = serde_json::Value::Number(number);
+                                }
+                            }
+                        });
+                    });
+                });
+            ui.add_space(5.0);
+        }
+    });
+}
+
+fn show_bindings_editor(
+    editor: &mut ProfileEditor,
+    ui: &mut egui::Ui,
+) -> Option<ProfileEditorAction> {
+    let mut action = None;
+    ui.heading("Bindings");
+    ui.weak("Listen for a control to replace a primary or alternate mapping.");
+    ui.add(
+        egui::TextEdit::singleline(&mut editor.filter)
+            .hint_text("Search actions…")
+            .desired_width(f32::INFINITY),
+    );
+    if let Some(target) = &editor.listening_for {
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.strong(format!(
+                "Listening for {} {}…",
+                target.action,
+                if target.alternate {
+                    "alternate"
+                } else {
+                    "primary"
+                }
+            ));
+        });
+    }
+    if let Some(error) = &editor.input_error {
+        ui.colored_label(egui::Color32::from_rgb(240, 110, 110), error);
+    }
+    ui.separator();
+
+    let bindings = Store::bindings_from_document(&editor.document);
+    let filter = editor.filter.trim().to_lowercase();
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        for binding_action in &editor.known_actions {
+            if !filter.is_empty() && !binding_action.to_lowercase().contains(&filter) {
+                continue;
+            }
+            let primary = bindings
+                .iter()
+                .find(|binding| binding.action == *binding_action && !binding.alternate);
+            let alternate = bindings
+                .iter()
+                .find(|binding| binding.action == *binding_action && binding.alternate);
+            egui::Frame::group(ui.style())
+                .inner_margin(10.0)
+                .show(ui, |ui| {
+                    ui.strong(binding_action);
+                    for (label, binding, is_alternate) in
+                        [("Primary", primary, false), ("Alternate", alternate, true)]
+                    {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(format!("{label}:"));
+                            if let Some(binding) = binding {
+                                let duplicate_count = bindings
+                                    .iter()
+                                    .filter(|other| {
+                                        other.device == binding.device
+                                            && other.input_id == binding.input_id
+                                    })
+                                    .count();
+                                ui.monospace(format!(
+                                    "{} · input {}",
+                                    binding.device, binding.input_id
+                                ));
+                                if duplicate_count > 1 {
+                                    ui.colored_label(
+                                        egui::Color32::from_rgb(235, 185, 80),
+                                        "duplicate",
+                                    );
+                                }
+                            } else {
+                                ui.weak("Unassigned");
+                            }
+                            if ui
+                                .add_enabled(editor.listener.is_none(), egui::Button::new("Listen"))
+                                .clicked()
+                            {
+                                action = Some(ProfileEditorAction::Listen(BindingTarget {
+                                    action: binding_action.clone(),
+                                    alternate: is_alternate,
+                                }));
+                            }
+                            if ui
+                                .add_enabled(binding.is_some(), egui::Button::new("Clear"))
+                                .clicked()
+                            {
+                                action = Some(ProfileEditorAction::Clear(BindingTarget {
+                                    action: binding_action.clone(),
+                                    alternate: is_alternate,
+                                }));
+                            }
+                        });
+                    }
+                });
+            ui.add_space(6.0);
+        }
+    });
+    action
+}
+
+fn show_json_preview(editor: &ProfileEditor, ui: &mut egui::Ui) {
+    ui.heading("JSON preview");
+    ui.weak("Read-only preview of the complete profile document, including preserved fields.");
+    ui.separator();
+    let json = serde_json::to_string_pretty(&editor.document)
+        .unwrap_or_else(|error| format!("Could not render JSON: {error}"));
+    egui::ScrollArea::both().show(ui, |ui| {
+        ui.add(
+            egui::Label::new(egui::RichText::new(json).monospace())
+                .selectable(true)
+                .wrap(),
+        );
+    });
+}
+
+fn collect_ffb_settings(document: &serde_json::Value) -> Vec<JsonSetting> {
+    fn visit(value: &serde_json::Value, path: &mut Vec<String>, out: &mut Vec<JsonSetting>) {
+        let Some(object) = value.as_object() else {
+            return;
+        };
+        for (key, child) in object {
+            if key == "Input" || key == "Alternative Input" {
+                continue;
+            }
+            path.push(key.clone());
+            if (child.is_number() || child.is_boolean()) && is_ffb_setting_name(key) {
+                out.push(JsonSetting {
+                    path: path.clone(),
+                    label: key.clone(),
+                });
+            } else if child.is_object() {
+                visit(child, path, out);
+            }
+            path.pop();
+        }
+    }
+
+    let mut settings = Vec::new();
+    visit(document, &mut Vec::new(), &mut settings);
+    settings.sort_by(|a, b| a.label.to_lowercase().cmp(&b.label.to_lowercase()));
+    settings
+}
+
+fn is_ffb_setting_name(name: &str) -> bool {
+    let name = name.to_lowercase();
+    [
+        "force feedback",
+        "ffb",
+        "steering torque",
+        "minimum torque",
+        "collision strength",
+        "smoothing",
+        "constant steering",
+        "vendor ffb",
+        "haptic",
+        "vibrotactile",
+        "rumble",
+        "jolt",
+        "steering resistance",
+        "steering spring",
+    ]
+    .iter()
+    .any(|term| name.contains(term))
+}
+
+fn json_value_mut<'a>(
+    value: &'a mut serde_json::Value,
+    path: &[String],
+) -> Option<&'a mut serde_json::Value> {
+    let mut current = value;
+    for segment in path {
+        current = current.as_object_mut()?.get_mut(segment)?;
+    }
+    Some(current)
+}
+
 fn open_folder(path: &std::path::Path) -> Result<()> {
     #[cfg(target_os = "windows")]
     let mut command = {
@@ -937,4 +1548,35 @@ fn open_folder(path: &std::path::Path) -> Result<()> {
         .spawn()
         .with_context(|| format!("could not open {}", path.display()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finds_editable_ffb_values_without_treating_bindings_as_settings() {
+        let mut document = serde_json::json!({
+            "Devices": {
+                "Wheel": {
+                    "FFB Strength": 0.7,
+                    "Invert FFB": false,
+                    "Unrelated calibration": 12
+                }
+            },
+            "Input": {
+                "Reset FFB": {"device": "Wheel", "id": 40}
+            }
+        });
+
+        let settings = collect_ffb_settings(&document);
+        assert_eq!(settings.len(), 2);
+        let strength = settings
+            .iter()
+            .find(|setting| setting.label == "FFB Strength")
+            .unwrap();
+        *json_value_mut(&mut document, &strength.path).unwrap() = serde_json::json!(0.8);
+        assert_eq!(document["Devices"]["Wheel"]["FFB Strength"], 0.8);
+        assert_eq!(document["Devices"]["Wheel"]["Unrelated calibration"], 12);
+    }
 }

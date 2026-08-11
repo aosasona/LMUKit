@@ -185,11 +185,88 @@ impl Store {
 
     pub fn bindings(&self, profile: &Profile) -> Result<Vec<Binding>> {
         let document = self.profile_document(profile)?;
+        Ok(Self::bindings_from_document(&document))
+    }
+
+    pub fn bindings_from_document(document: &serde_json::Value) -> Vec<Binding> {
         let mut bindings = Vec::new();
-        collect_bindings(&document, "Input", false, &mut bindings);
-        collect_bindings(&document, "Alternative Input", true, &mut bindings);
+        collect_bindings(document, "Input", false, &mut bindings);
+        collect_bindings(document, "Alternative Input", true, &mut bindings);
         bindings.sort_by(|a, b| a.action.to_lowercase().cmp(&b.action.to_lowercase()));
-        Ok(bindings)
+        bindings
+    }
+
+    pub fn load_profile_document(&self, profile: &Profile) -> Result<serde_json::Value> {
+        self.profile_document(profile)
+    }
+
+    pub fn save_profile_document(
+        &self,
+        profile: &Profile,
+        document: &serde_json::Value,
+    ) -> Result<PathBuf> {
+        if !document.is_object() {
+            bail!("A profile must contain a JSON object.");
+        }
+        let destination = self.profile_dir(profile.id).join(CONFIG_FILE_NAME);
+        if !destination.is_file() {
+            bail!("The saved profile '{}' could not be found.", profile.name);
+        }
+        let backup = self.profile_backup_path(profile)?;
+        fs::copy(&destination, &backup).context("could not back up the saved profile")?;
+
+        let staged = self
+            .profile_dir(profile.id)
+            .join(".direct-input-editor.tmp");
+        fs::write(&staged, serde_json::to_vec_pretty(document)?)
+            .context("could not stage the edited profile")?;
+        if let Err(error) = replace_file(&staged, &destination) {
+            let _ = fs::copy(&backup, &destination);
+            return Err(error).context("could not save the edited profile");
+        }
+        write_json(&self.profile_dir(profile.id).join("profile.json"), profile)
+            .context("could not save the profile's editor metadata")?;
+        Ok(backup)
+    }
+
+    pub fn matching_device(
+        document: &serde_json::Value,
+        vendor_id: u16,
+        product_id: u16,
+    ) -> Option<String> {
+        document
+            .get("Devices")?
+            .as_object()?
+            .keys()
+            .find(|device| device_matches(document, device, vendor_id, product_id))
+            .cloned()
+    }
+
+    pub fn set_binding(
+        document: &mut serde_json::Value,
+        action: &str,
+        alternate: bool,
+        device: &str,
+        input_id: u64,
+    ) -> Result<()> {
+        let mapping = binding_section_mut(document, alternate)?
+            .entry(action.to_owned())
+            .or_insert_with(|| serde_json::json!({}));
+        let mapping = mapping
+            .as_object_mut()
+            .context("the selected binding has an invalid JSON shape")?;
+        mapping.insert("device".into(), serde_json::Value::String(device.into()));
+        mapping.insert("id".into(), serde_json::Value::from(input_id));
+        Ok(())
+    }
+
+    pub fn clear_binding(
+        document: &mut serde_json::Value,
+        action: &str,
+        alternate: bool,
+    ) -> Result<()> {
+        binding_section_mut(document, alternate)?.remove(action);
+        Ok(())
     }
 
     pub fn binding_matches(
@@ -314,24 +391,26 @@ impl Store {
             bail!("The saved profile '{}' could not be found.", profile.name);
         }
 
-        let backup =
-            self.root
-                .join("backups")
-                .join(format!("profile-{}-{}.json", profile.id, unix_time()?));
+        let backup = self.profile_backup_path(profile)?;
         fs::copy(&destination, &backup).context("could not back up the saved profile")?;
 
         let staged = self
             .profile_dir(profile.id)
             .join(".direct-input-update.tmp");
         fs::copy(source, &staged).context("could not stage LMU's current bindings")?;
-        if let Err(error) =
-            fs::remove_file(&destination).and_then(|()| fs::rename(&staged, &destination))
-        {
+        if let Err(error) = replace_file(&staged, &destination) {
             let _ = fs::copy(&backup, &destination);
             return Err(error).context("could not update the saved profile");
         }
 
         Ok(backup)
+    }
+
+    fn profile_backup_path(&self, profile: &Profile) -> Result<PathBuf> {
+        Ok(self
+            .root
+            .join("backups")
+            .join(format!("profile-{}-{}.json", profile.id, unix_time()?)))
     }
 
     pub fn delete(&mut self, profile: &Profile) -> Result<()> {
@@ -346,6 +425,29 @@ impl Store {
     fn profile_dir(&self, id: Uuid) -> PathBuf {
         self.root.join("profiles").join(id.to_string())
     }
+}
+
+fn binding_section_mut(
+    document: &mut serde_json::Value,
+    alternate: bool,
+) -> Result<&mut serde_json::Map<String, serde_json::Value>> {
+    let section_name = if alternate {
+        "Alternative Input"
+    } else {
+        "Input"
+    };
+    let root = document
+        .as_object_mut()
+        .context("the profile root is not a JSON object")?;
+    root.entry(section_name)
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .with_context(|| format!("{section_name} is not a JSON object"))
+}
+
+fn replace_file(staged: &Path, destination: &Path) -> std::io::Result<()> {
+    fs::remove_file(destination)?;
+    fs::rename(staged, destination)
 }
 
 fn batch_path(path: &Path) -> String {
@@ -592,6 +694,40 @@ mod tests {
             store.active_profile_has_unsaved_changes().unwrap(),
             Some(false)
         );
+    }
+
+    #[test]
+    fn edits_bindings_and_saves_with_a_backup() {
+        let temp = tempfile::tempdir().unwrap();
+        let preset = temp.path().join("GT3.json");
+        fs::write(
+            &preset,
+            br#"{
+                "Devices":{"Wheel-123":{"product guid":"{05003670-0000-0000-0000-504944564944}"}},
+                "Input":{"Shift Up":{"device":"Wheel-123","id":44}},
+                "Alternative Input":{"Shift Up":{"device":"Wheel-123","id":45}}
+            }"#,
+        )
+        .unwrap();
+        let store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let mut profile = store.import_profile(&preset).unwrap();
+        profile.assignments = vec!["Shift Up".into()];
+        let mut document = store.load_profile_document(&profile).unwrap();
+
+        Store::set_binding(&mut document, "Shift Up", false, "Wheel-123", 52).unwrap();
+        Store::clear_binding(&mut document, "Shift Up", true).unwrap();
+        let backup = store.save_profile_document(&profile, &document).unwrap();
+
+        assert!(fs::read_to_string(backup).unwrap().contains(r#""id":44"#));
+        let bindings = store.bindings(&profile).unwrap();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].input_id, 52);
+        assert!(!bindings[0].alternate);
+        assert_eq!(
+            Store::matching_device(&document, 0x3670, 0x0500).as_deref(),
+            Some("Wheel-123")
+        );
+        assert_eq!(store.profiles().unwrap()[0].assignments, ["Shift Up"]);
     }
 
     #[test]

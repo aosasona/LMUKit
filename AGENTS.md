@@ -9,7 +9,7 @@ LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate util
 ## Architecture
 
 - `src/main.rs` configures the portrait viewport and starts eframe.
-- `src/app.rs` owns egui state, the Profiles and Settings tabs, interaction flows, dialogs, and status messages.
+- `src/app.rs` owns egui state, the Profiles, Editor, and Settings tabs, interaction flows, dialogs, and status messages.
 - `src/storage.rs` owns settings, profile persistence, imports, activation, backups, LMU JSON parsing, and companion-launcher generation.
 - `src/input.rs` reads Windows raw game-controller state and converts buttons, POVs, and axes to LMU input IDs. Its non-Windows implementation keeps native development and tests working.
 - `mise.toml` pins tooling and defines the supported developer commands.
@@ -22,6 +22,7 @@ Keep filesystem and parsing behavior in `storage.rs`; keep platform input detail
 
 - Never replace LMU's live configuration without first creating a recovery backup when a live file exists. Likewise, back up a saved profile before updating it from the live configuration.
 - Treat imported files as untrusted input. Validate JSON before storing or activating it.
+- Preserve unknown profile JSON fields when editing. Only generate mappings for devices already represented in the profile document.
 - Compare parsed `serde_json::Value` values for dirty detection so formatting and object-key order do not create false positives.
 - Preserve backward compatibility for `settings.json` with `#[serde(default)]` or an explicit migration.
 - Do not inspect, modify, or commit a developer's real profiles or Windows application data.
