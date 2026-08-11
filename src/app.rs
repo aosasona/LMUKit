@@ -5,6 +5,7 @@ use crate::{
 use anyhow::{Context, Result};
 use eframe::egui;
 use std::{
+    collections::BTreeMap,
     path::PathBuf,
     process::Command,
     time::{Duration, Instant},
@@ -67,6 +68,7 @@ enum ProfileEditorAction {
 struct JsonSetting {
     path: Vec<String>,
     label: String,
+    group: String,
 }
 
 #[derive(Clone, Copy)]
@@ -1289,9 +1291,7 @@ impl LmuKitApp {
 
 fn show_force_feedback_editor(editor: &mut ProfileEditor, ui: &mut egui::Ui) {
     ui.heading("Force feedback");
-    ui.weak(
-        "LMUKit detects editable FFB values already present in this profile and preserves every unknown field.",
-    );
+    ui.weak("Settings are grouped by device. LMU repeats FFB-shaped fields for devices that cannot produce force feedback, so change only your wheel base.");
     ui.add_space(6.0);
     let settings = collect_ffb_settings(&editor.document);
     if settings.is_empty() {
@@ -1304,45 +1304,77 @@ fn show_force_feedback_editor(editor: &mut ProfileEditor, ui: &mut egui::Ui) {
         );
         return;
     }
+    let mut groups: BTreeMap<String, Vec<JsonSetting>> = BTreeMap::new();
+    for setting in settings {
+        groups
+            .entry(setting.group.clone())
+            .or_default()
+            .push(setting);
+    }
     egui::ScrollArea::vertical().show(ui, |ui| {
-        for setting in settings {
-            egui::Frame::group(ui.style())
-                .inner_margin(10.0)
+        for (index, (group, settings)) in groups.into_iter().enumerate() {
+            egui::CollapsingHeader::new(group)
+                .default_open(index == 0)
                 .show(ui, |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.vertical(|ui| {
-                            ui.strong(&setting.label);
-                            let context = setting.path[..setting.path.len() - 1].join(" › ");
-                            if !context.is_empty() {
-                                ui.weak(context);
-                            }
-                        });
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let Some(value) = json_value_mut(&mut editor.document, &setting.path)
-                            else {
-                                return;
-                            };
-                            if let Some(current) = value.as_bool() {
-                                let mut edited = current;
-                                if ui.checkbox(&mut edited, "").changed() {
-                                    *value = serde_json::Value::Bool(edited);
-                                }
-                            } else if let Some(current) = value.as_f64() {
-                                let mut edited = current;
-                                if ui
-                                    .add(egui::DragValue::new(&mut edited).speed(0.01))
-                                    .changed()
-                                    && let Some(number) = serde_json::Number::from_f64(edited)
-                                {
-                                    *value = serde_json::Value::Number(number);
-                                }
-                            }
-                        });
-                    });
+                    for setting in settings {
+                        show_ffb_setting(&mut editor.document, &setting, ui);
+                        ui.add_space(5.0);
+                    }
                 });
-            ui.add_space(5.0);
+            ui.add_space(8.0);
         }
     });
+}
+
+fn show_ffb_setting(document: &mut serde_json::Value, setting: &JsonSetting, ui: &mut egui::Ui) {
+    egui::Frame::group(ui.style())
+        .inner_margin(10.0)
+        .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                let is_gain = setting
+                    .label
+                    .eq_ignore_ascii_case("Steering effects strength");
+                ui.vertical(|ui| {
+                    ui.strong(if is_gain { "FFB gain" } else { &setting.label });
+                    if is_gain {
+                        ui.weak("Steering effects strength");
+                    }
+                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let Some(value) = json_value_mut(document, &setting.path) else {
+                        return;
+                    };
+                    if let Some(current) = value.as_bool() {
+                        let mut edited = current;
+                        if ui.checkbox(&mut edited, "").changed() {
+                            *value = serde_json::Value::Bool(edited);
+                        }
+                    } else if let Some(current) = value.as_f64() {
+                        let mut edited = if is_gain {
+                            ffb_gain_percent(current)
+                        } else {
+                            current
+                        };
+                        let changed = if is_gain {
+                            ui.add(egui::Slider::new(&mut edited, 0.0..=100.0).suffix("%"))
+                                .on_hover_text(format!("LMU raw value: {current}"))
+                                .changed()
+                        } else {
+                            ui.add(egui::DragValue::new(&mut edited).speed(0.01))
+                                .changed()
+                        };
+                        let stored = if is_gain {
+                            ffb_gain_raw(edited)
+                        } else {
+                            edited
+                        };
+                        if changed && let Some(number) = serde_json::Number::from_f64(stored) {
+                            *value = serde_json::Value::Number(number);
+                        }
+                    }
+                });
+            });
+        });
 }
 
 fn show_bindings_editor(
@@ -1462,7 +1494,13 @@ fn show_json_preview(editor: &ProfileEditor, ui: &mut egui::Ui) {
 }
 
 fn collect_ffb_settings(document: &serde_json::Value) -> Vec<JsonSetting> {
-    fn visit(value: &serde_json::Value, path: &mut Vec<String>, out: &mut Vec<JsonSetting>) {
+    fn visit(
+        document: &serde_json::Value,
+        value: &serde_json::Value,
+        path: &mut Vec<String>,
+        in_ffb_section: bool,
+        out: &mut Vec<JsonSetting>,
+    ) {
         let Some(object) = value.as_object() else {
             return;
         };
@@ -1471,22 +1509,52 @@ fn collect_ffb_settings(document: &serde_json::Value) -> Vec<JsonSetting> {
                 continue;
             }
             path.push(key.clone());
-            if (child.is_number() || child.is_boolean()) && is_ffb_setting_name(key) {
+            let child_is_ffb = in_ffb_section || is_ffb_container_name(key);
+            if (child.is_number() || child.is_boolean())
+                && (child_is_ffb || is_ffb_setting_name(key))
+            {
                 out.push(JsonSetting {
                     path: path.clone(),
                     label: key.clone(),
+                    group: ffb_group_name(document, path),
                 });
             } else if child.is_object() {
-                visit(child, path, out);
+                visit(document, child, path, child_is_ffb, out);
             }
             path.pop();
         }
     }
 
     let mut settings = Vec::new();
-    visit(document, &mut Vec::new(), &mut settings);
-    settings.sort_by(|a, b| a.label.to_lowercase().cmp(&b.label.to_lowercase()));
+    visit(document, document, &mut Vec::new(), false, &mut settings);
+    settings.sort_by(|a, b| {
+        a.group
+            .to_lowercase()
+            .cmp(&b.group.to_lowercase())
+            .then_with(|| a.label.to_lowercase().cmp(&b.label.to_lowercase()))
+    });
     settings
+}
+
+fn ffb_group_name(document: &serde_json::Value, path: &[String]) -> String {
+    if path.first().is_some_and(|part| part == "Devices") && path.len() >= 3 {
+        let key = &path[1];
+        let display_name = document["Devices"][key]
+            .get("name")
+            .or_else(|| document["Devices"][key].get("Name"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(key);
+        return display_name.to_owned();
+    }
+    if path.first().is_some_and(|part| is_ffb_container_name(part)) {
+        return "Profile force feedback".into();
+    }
+    path.first().cloned().unwrap_or_else(|| "Profile".into())
+}
+
+fn is_ffb_container_name(name: &str) -> bool {
+    let name = name.to_lowercase();
+    name.contains("force feedback") || name == "ffb"
 }
 
 fn is_ffb_setting_name(name: &str) -> bool {
@@ -1494,6 +1562,7 @@ fn is_ffb_setting_name(name: &str) -> bool {
     [
         "force feedback",
         "ffb",
+        "steering effects strength",
         "steering torque",
         "minimum torque",
         "collision strength",
@@ -1509,6 +1578,14 @@ fn is_ffb_setting_name(name: &str) -> bool {
     ]
     .iter()
     .any(|term| name.contains(term))
+}
+
+fn ffb_gain_percent(raw: f64) -> f64 {
+    raw / 100.0
+}
+
+fn ffb_gain_raw(percent: f64) -> f64 {
+    percent * 100.0
 }
 
 fn json_value_mut<'a>(
@@ -1559,10 +1636,20 @@ mod tests {
         let mut document = serde_json::json!({
             "Devices": {
                 "Wheel": {
+                    "name": "Wheel base",
                     "FFB Strength": 0.7,
                     "Invert FFB": false,
                     "Unrelated calibration": 12
+                },
+                "Pedals": {
+                    "name": "Pedals",
+                    "FFB Strength": 0.5
                 }
+            },
+            "Force Feedback": {
+                "Enabled": true,
+                "Steering effects strength": 5000.0,
+                "Steering bump stop degrees": 30.0
             },
             "Input": {
                 "Reset FFB": {"device": "Wheel", "id": 40}
@@ -1570,10 +1657,27 @@ mod tests {
         });
 
         let settings = collect_ffb_settings(&document);
-        assert_eq!(settings.len(), 2);
+        assert_eq!(settings.len(), 6);
+        assert!(
+            settings.iter().any(|setting| {
+                setting.label == "FFB Strength" && setting.group == "Wheel base"
+            })
+        );
+        assert!(
+            settings
+                .iter()
+                .any(|setting| { setting.label == "FFB Strength" && setting.group == "Pedals" })
+        );
+        let gain = settings
+            .iter()
+            .find(|setting| setting.label == "Steering effects strength")
+            .unwrap();
+        assert_eq!(gain.group, "Profile force feedback");
+        assert_eq!(ffb_gain_percent(5000.0), 50.0);
+        assert_eq!(ffb_gain_raw(65.0), 6500.0);
         let strength = settings
             .iter()
-            .find(|setting| setting.label == "FFB Strength")
+            .find(|setting| setting.label == "FFB Strength" && setting.group == "Wheel base")
             .unwrap();
         *json_value_mut(&mut document, &strength.path).unwrap() = serde_json::json!(0.8);
         assert_eq!(document["Devices"]["Wheel"]["FFB Strength"], 0.8);

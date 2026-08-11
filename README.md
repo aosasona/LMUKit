@@ -42,7 +42,7 @@ Select a profile and choose **Edit profile…** to open the Editor tab. The edit
 
 - Change or clear primary and alternate mappings by listening for a connected control.
 - Warn when the same device input is assigned more than once.
-- Edit numeric and toggle-based force-feedback fields already present in the profile.
+- Edit force-feedback fields grouped by device, including a percentage-based **FFB gain** control for LMU's `Steering effects strength` value.
 - Preview the complete resulting JSON while preserving fields LMUKit does not recognise.
 
 **Save** updates the stored profile and backs up its previous version. **Save and activate** also installs it as LMU's live profile using the normal recovery-backup process. LMUKit warns before navigation or app closure would discard editor changes.

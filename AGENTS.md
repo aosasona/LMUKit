@@ -23,6 +23,7 @@ Keep filesystem and parsing behavior in `storage.rs`; keep platform input detail
 - Never replace LMU's live configuration without first creating a recovery backup when a live file exists. Likewise, back up a saved profile before updating it from the live configuration.
 - Treat imported files as untrusted input. Validate JSON before storing or activating it.
 - Preserve unknown profile JSON fields when editing. Only generate mappings for devices already represented in the profile document.
+- Group detected FFB settings by their owning device. LMU's `Steering effects strength` uses a raw `0..10000` value and is presented as a `0..100%` gain control.
 - Compare parsed `serde_json::Value` values for dirty detection so formatting and object-key order do not create false positives.
 - Preserve backward compatibility for `settings.json` with `#[serde(default)]` or an explicit migration.
 - Do not inspect, modify, or commit a developer's real profiles or Windows application data.
