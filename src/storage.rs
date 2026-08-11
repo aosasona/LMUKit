@@ -38,6 +38,8 @@ pub struct BindingMatch {
 pub struct Settings {
     pub lmu_config_path: PathBuf,
     #[serde(default)]
+    pub lmu_settings_path: PathBuf,
+    #[serde(default)]
     pub active_profile: Option<Uuid>,
     #[serde(default, skip_serializing)]
     pub lmuffb_path: PathBuf,
@@ -56,6 +58,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             lmu_config_path: default_lmu_path(),
+            lmu_settings_path: default_lmu_settings_path(),
             active_profile: None,
             lmuffb_path: PathBuf::new(),
             companion_apps: default_companion_apps(),
@@ -103,6 +106,9 @@ impl Store {
         } else {
             Settings::default()
         };
+        if settings.lmu_settings_path.as_os_str().is_empty() {
+            settings.lmu_settings_path = settings.lmu_config_path.with_file_name("Settings.JSON");
+        }
         if !settings.lmuffb_path.as_os_str().is_empty()
             && let Some(lmuffb) = settings
                 .companion_apps
@@ -117,6 +123,48 @@ impl Store {
 
     pub fn save_settings(&self) -> Result<()> {
         write_json(&self.root.join("settings.json"), &self.settings)
+    }
+
+    pub fn load_lmu_settings_document(&self) -> Result<serde_json::Value> {
+        let path = &self.settings.lmu_settings_path;
+        let document: serde_json::Value = serde_json::from_slice(
+            &fs::read(path).with_context(|| format!("could not read {}", path.display()))?,
+        )
+        .with_context(|| format!("{} is not valid JSON", path.display()))?;
+        if !document.is_object() {
+            bail!("{} does not contain a JSON object", path.display());
+        }
+        Ok(document)
+    }
+
+    pub fn save_lmu_settings_document(&self, document: &serde_json::Value) -> Result<PathBuf> {
+        if !document.is_object() {
+            bail!("LMU settings must contain a JSON object.");
+        }
+        let destination = &self.settings.lmu_settings_path;
+        if !destination.is_file() {
+            bail!(
+                "No LMU Settings.JSON was found at {}",
+                destination.display()
+            );
+        }
+        let parent = destination
+            .parent()
+            .context("LMU Settings.JSON path has no parent directory")?;
+        let backup = self
+            .root
+            .join("backups")
+            .join(format!("settings-{}.json", unix_time()?));
+        fs::copy(destination, &backup).context("could not back up LMU's Settings.JSON")?;
+
+        let staged = parent.join(".lmukit-settings.tmp");
+        fs::write(&staged, serde_json::to_vec_pretty(document)?)
+            .context("could not stage LMU's edited settings")?;
+        if let Err(error) = replace_file(&staged, destination) {
+            let _ = fs::copy(&backup, destination);
+            return Err(error).context("could not save LMU's Settings.JSON");
+        }
+        Ok(backup)
     }
 
     pub fn companion_launch_option(&self, lmukit_exe: &Path) -> Result<String> {
@@ -539,6 +587,10 @@ pub fn default_lmu_path() -> PathBuf {
     )
 }
 
+pub fn default_lmu_settings_path() -> PathBuf {
+    default_lmu_path().with_file_name("Settings.JSON")
+}
+
 fn validate_lmu_file(path: &Path) -> Result<()> {
     if !path.is_file() {
         bail!("No LMU config was found at {}", path.display());
@@ -731,6 +783,58 @@ mod tests {
             Some("Wheel-123")
         );
         assert_eq!(store.profiles().unwrap()[0].assignments, ["Shift Up"]);
+    }
+
+    #[test]
+    fn edits_lmu_settings_with_descriptions_and_a_backup() {
+        let temp = tempfile::tempdir().unwrap();
+        let settings_path = temp.path().join("game").join("Settings.JSON");
+        fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+        fs::write(
+            &settings_path,
+            br#"{
+                "Visible Vehicles": 20,
+                "Visible Vehicles#": "Maximum cars drawn",
+                "Fullscreen": true
+            }"#,
+        )
+        .unwrap();
+        let mut store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        store.settings.lmu_settings_path = settings_path.clone();
+        let mut document = store.load_lmu_settings_document().unwrap();
+        document["Visible Vehicles"] = serde_json::json!(15);
+
+        let backup = store.save_lmu_settings_document(&document).unwrap();
+
+        let previous: serde_json::Value =
+            serde_json::from_slice(&fs::read(backup).unwrap()).unwrap();
+        let saved: serde_json::Value =
+            serde_json::from_slice(&fs::read(settings_path).unwrap()).unwrap();
+        assert_eq!(previous["Visible Vehicles"], 20);
+        assert_eq!(saved["Visible Vehicles"], 15);
+        assert_eq!(saved["Visible Vehicles#"], "Maximum cars drawn");
+    }
+
+    #[test]
+    fn derives_the_lmu_settings_path_for_legacy_lmukit_settings() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("lmukit");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("settings.json"),
+            br#"{
+                "lmu_config_path": "D:/LMU/UserData/player/direct input.json",
+                "companion_apps": []
+            }"#,
+        )
+        .unwrap();
+
+        let store = Store::open_at(root).unwrap();
+
+        assert_eq!(
+            store.settings.lmu_settings_path,
+            PathBuf::from("D:/LMU/UserData/player/Settings.JSON")
+        );
     }
 
     #[test]

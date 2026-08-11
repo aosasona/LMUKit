@@ -16,6 +16,7 @@ LMUKit is a growing native Windows toolkit for Le Mans Ultimate. It brings usefu
 - Activate a saved profile with an automatic recovery backup.
 - Detect and warn when the live bindings differ from the active profile.
 - Update an existing profile from LMU's live bindings while backing up its previous version.
+- Browse and edit LMU's `Settings.JSON` with inline descriptions from matching `Option#` fields.
 - Display the active preset separately from the currently selected row.
 - Browse and search every action stored in a profile.
 - Press a wheel button, move a POV, or turn an axis to compare its mapping across profiles.
@@ -48,6 +49,12 @@ Select a profile and choose **Edit profile…** to open the Editor tab. The edit
 **Save** updates the stored profile and backs up its previous version. **Save and activate** also installs it as LMU's live profile using the normal recovery-backup process. LMUKit warns before navigation or app closure would discard editor changes.
 
 For safety, LMUKit only assigns controls from devices already represented in the profile. Capture the device in LMU first if it is not recognised.
+
+### Game settings
+
+Open **Game settings** to edit LMU's `UserData/player/Settings.JSON` without working directly in a text editor. LMUKit supports boolean, numeric, and string options, groups nested settings, and displays a matching `Option#` field as the option's description instead of exposing it as another setting.
+
+Use the search field to find text in names or descriptions. Saving preserves unsupported JSON data and creates a recovery backup first. Close LMU before saving because the game may overwrite its settings while running.
 
 ### Companion apps
 

@@ -18,11 +18,13 @@ pub struct LmuKitApp {
     selected: Option<usize>,
     new_name: String,
     config_path: String,
+    lmu_settings_path: String,
     companion_apps: Vec<CompanionApp>,
     status: Status,
     binding_view: Option<BindingView>,
     input_lookup: Option<InputLookup>,
     profile_editor: Option<ProfileEditor>,
+    game_settings_editor: Option<GameSettingsEditor>,
     discard_prompt: Option<DiscardAction>,
     active_profile_dirty: bool,
     last_dirty_check: Instant,
@@ -32,6 +34,7 @@ pub struct LmuKitApp {
 enum AppTab {
     Profiles,
     Editor,
+    GameSettings,
     Settings,
 }
 
@@ -68,6 +71,19 @@ enum ProfileEditorAction {
 struct JsonSetting {
     path: Vec<String>,
     label: String,
+    group: String,
+}
+
+struct GameSettingsEditor {
+    original: serde_json::Value,
+    document: serde_json::Value,
+    filter: String,
+}
+
+struct DescribedSetting {
+    path: Vec<String>,
+    label: String,
+    description: Option<String>,
     group: String,
 }
 
@@ -115,6 +131,7 @@ impl LmuKitApp {
         match Store::open() {
             Ok(store) => {
                 let config_path = store.settings.lmu_config_path.display().to_string();
+                let lmu_settings_path = store.settings.lmu_settings_path.display().to_string();
                 let companion_apps = store.settings.companion_apps.clone();
                 let profiles = store.profiles().unwrap_or_default();
                 Self {
@@ -124,11 +141,13 @@ impl LmuKitApp {
                     selected: None,
                     new_name: String::new(),
                     config_path,
+                    lmu_settings_path,
                     companion_apps,
                     status: Status::Ready("Choose a tool to get started.".into()),
                     binding_view: None,
                     input_lookup: None,
                     profile_editor: None,
+                    game_settings_editor: None,
                     discard_prompt: None,
                     active_profile_dirty: false,
                     last_dirty_check: Instant::now() - Duration::from_secs(2),
@@ -141,11 +160,13 @@ impl LmuKitApp {
                 selected: None,
                 new_name: String::new(),
                 config_path: String::new(),
+                lmu_settings_path: String::new(),
                 companion_apps: Vec::new(),
                 status: Status::Error(error.to_string()),
                 binding_view: None,
                 input_lookup: None,
                 profile_editor: None,
+                game_settings_editor: None,
                 discard_prompt: None,
                 active_profile_dirty: false,
                 last_dirty_check: Instant::now() - Duration::from_secs(2),
@@ -165,8 +186,9 @@ impl LmuKitApp {
     fn save_path(&mut self) {
         if let Some(store) = &mut self.store {
             store.settings.lmu_config_path = PathBuf::from(self.config_path.trim());
+            store.settings.lmu_settings_path = PathBuf::from(self.lmu_settings_path.trim());
             match store.save_settings() {
-                Ok(()) => self.status = Status::Success("LMU config location saved.".into()),
+                Ok(()) => self.status = Status::Success("LMU paths saved.".into()),
                 Err(error) => self.status = Status::Error(error.to_string()),
             }
         }
@@ -398,6 +420,69 @@ impl LmuKitApp {
             .is_some_and(|editor| editor.document != editor.original)
     }
 
+    fn game_settings_is_dirty(&self) -> bool {
+        self.game_settings_editor
+            .as_ref()
+            .is_some_and(|editor| editor.document != editor.original)
+    }
+
+    fn active_editor_is_dirty(&self) -> bool {
+        match self.active_tab {
+            AppTab::Editor => self.editor_is_dirty(),
+            AppTab::GameSettings => self.game_settings_is_dirty(),
+            AppTab::Profiles | AppTab::Settings => false,
+        }
+    }
+
+    fn open_game_settings(&mut self) {
+        let Some(store) = &self.store else {
+            return;
+        };
+        match store.load_lmu_settings_document() {
+            Ok(document) => {
+                self.game_settings_editor = Some(GameSettingsEditor {
+                    original: document.clone(),
+                    document,
+                    filter: String::new(),
+                });
+                self.status = Status::Ready("LMU Settings.JSON loaded.".into());
+            }
+            Err(error) => {
+                self.game_settings_editor = None;
+                self.status = Status::Error(error.to_string());
+            }
+        }
+    }
+
+    fn save_game_settings(&mut self) -> bool {
+        let Some(editor) = &self.game_settings_editor else {
+            return false;
+        };
+        if editor.document == editor.original {
+            return true;
+        }
+        let document = editor.document.clone();
+        let Some(store) = &self.store else {
+            return false;
+        };
+        match store.save_lmu_settings_document(&document) {
+            Ok(backup) => {
+                if let Some(editor) = &mut self.game_settings_editor {
+                    editor.original = document;
+                }
+                self.status = Status::Success(format!(
+                    "LMU settings saved. Previous version backed up to {}.",
+                    backup.display()
+                ));
+                true
+            }
+            Err(error) => {
+                self.status = Status::Error(error.to_string());
+                false
+            }
+        }
+    }
+
     fn save_editor(&mut self, activate: bool) -> bool {
         let Some(editor) = &self.profile_editor else {
             return false;
@@ -470,18 +555,38 @@ impl LmuKitApp {
     }
 
     fn request_tab(&mut self, tab: AppTab) {
-        if self.active_tab == AppTab::Editor && tab != AppTab::Editor && self.editor_is_dirty() {
+        if tab != self.active_tab && self.active_editor_is_dirty() {
             self.discard_prompt = Some(DiscardAction::SwitchTab(tab));
         } else {
             self.active_tab = tab;
+            if tab == AppTab::GameSettings && self.game_settings_editor.is_none() {
+                self.open_game_settings();
+            }
+        }
+    }
+
+    fn save_active_editor(&mut self) -> bool {
+        match self.active_tab {
+            AppTab::Editor => self.save_editor(false),
+            AppTab::GameSettings => self.save_game_settings(),
+            AppTab::Profiles | AppTab::Settings => true,
         }
     }
 
     fn finish_discard_action(&mut self, action: DiscardAction, ctx: &egui::Context) {
-        self.profile_editor = None;
+        match self.active_tab {
+            AppTab::Editor => self.profile_editor = None,
+            AppTab::GameSettings => self.game_settings_editor = None,
+            AppTab::Profiles | AppTab::Settings => {}
+        }
         self.discard_prompt = None;
         match action {
-            DiscardAction::SwitchTab(tab) => self.active_tab = tab,
+            DiscardAction::SwitchTab(tab) => {
+                self.active_tab = tab;
+                if tab == AppTab::GameSettings {
+                    self.open_game_settings();
+                }
+            }
             DiscardAction::CloseApp => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
         }
     }
@@ -671,7 +776,7 @@ impl eframe::App for LmuKitApp {
         self.poll_input_lookup(ctx);
         self.poll_binding_view(ctx);
         self.poll_profile_editor(ctx);
-        if ctx.input(|input| input.viewport().close_requested()) && self.editor_is_dirty() {
+        if ctx.input(|input| input.viewport().close_requested()) && self.active_editor_is_dirty() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.discard_prompt = Some(DiscardAction::CloseApp);
         }
@@ -707,6 +812,12 @@ impl eframe::App for LmuKitApp {
                         .clicked()
                 {
                     self.request_tab(AppTab::Editor);
+                }
+                if ui
+                    .selectable_label(self.active_tab == AppTab::GameSettings, "Game settings")
+                    .clicked()
+                {
+                    self.request_tab(AppTab::GameSettings);
                 }
                 if ui
                     .selectable_label(self.active_tab == AppTab::Settings, "Settings")
@@ -752,6 +863,10 @@ impl eframe::App for LmuKitApp {
                 self.show_profile_editor(ui);
                 return;
             }
+            if self.active_tab == AppTab::GameSettings {
+                self.show_game_settings_editor(ui);
+                return;
+            }
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
@@ -774,9 +889,28 @@ impl eframe::App for LmuKitApp {
                                             .pick_file()
                                     {
                                         self.config_path = path.display().to_string();
+                                        self.lmu_settings_path =
+                                            path.with_file_name("Settings.JSON").display().to_string();
                                         self.save_path();
                                     }
-                                    if ui.button("Save path").clicked() {
+                                });
+                                ui.add_space(8.0);
+                                ui.strong("LMU Settings.JSON");
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut self.lmu_settings_path)
+                                        .desired_width(f32::INFINITY),
+                                );
+                                ui.horizontal_wrapped(|ui| {
+                                    if ui.button("Browse Settings.JSON…").clicked()
+                                        && let Some(path) = rfd::FileDialog::new()
+                                            .add_filter("JSON", &["json"])
+                                            .set_file_name("Settings.JSON")
+                                            .pick_file()
+                                    {
+                                        self.lmu_settings_path = path.display().to_string();
+                                        self.save_path();
+                                    }
+                                    if ui.button("Save paths").clicked() {
                                         self.save_path();
                                     }
                                 });
@@ -1025,6 +1159,88 @@ impl eframe::App for LmuKitApp {
 }
 
 impl LmuKitApp {
+    fn show_game_settings_editor(&mut self, ui: &mut egui::Ui) {
+        let Some(editor) = &mut self.game_settings_editor else {
+            ui.heading("Game settings");
+            ui.colored_label(
+                egui::Color32::from_rgb(240, 110, 110),
+                "LMU's Settings.JSON could not be loaded.",
+            );
+            ui.weak(&self.lmu_settings_path);
+            ui.horizontal(|ui| {
+                if ui.button("Try again").clicked() {
+                    self.open_game_settings();
+                }
+                if ui.button("Configure path…").clicked() {
+                    self.request_tab(AppTab::Settings);
+                }
+            });
+            return;
+        };
+        let dirty = editor.document != editor.original;
+        let mut save = false;
+        let mut reload = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.heading("Game settings");
+            if dirty {
+                ui.colored_label(egui::Color32::from_rgb(235, 185, 80), "Unsaved changes");
+            } else {
+                ui.weak("Saved");
+            }
+            ui.separator();
+            save = ui.add_enabled(dirty, egui::Button::new("Save")).clicked();
+            reload = ui
+                .add_enabled(!dirty, egui::Button::new("Reload"))
+                .on_hover_text(if dirty {
+                    "Save or discard your changes before reloading"
+                } else {
+                    "Reload Settings.JSON from disk"
+                })
+                .clicked();
+        });
+        ui.weak(format!("Source: {}", self.lmu_settings_path));
+        ui.colored_label(
+            egui::Color32::from_rgb(235, 185, 80),
+            "Close LMU before saving; the game may overwrite settings while it is running.",
+        );
+        ui.add(
+            egui::TextEdit::singleline(&mut editor.filter)
+                .hint_text("Search setting names and descriptions…")
+                .desired_width(f32::INFINITY),
+        );
+        ui.separator();
+
+        let fields = collect_described_settings(&editor.document, &editor.filter);
+        if fields.is_empty() {
+            ui.weak("No editable settings match this search.");
+        } else {
+            let mut groups: BTreeMap<String, Vec<DescribedSetting>> = BTreeMap::new();
+            for field in fields {
+                groups.entry(field.group.clone()).or_default().push(field);
+            }
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for (index, (group, fields)) in groups.into_iter().enumerate() {
+                    egui::CollapsingHeader::new(group)
+                        .default_open(index == 0)
+                        .show(ui, |ui| {
+                            for field in fields {
+                                show_described_setting(&mut editor.document, &field, ui);
+                                ui.add_space(5.0);
+                            }
+                        });
+                    ui.add_space(8.0);
+                }
+            });
+        }
+
+        if save {
+            self.save_game_settings();
+        }
+        if reload {
+            self.open_game_settings();
+        }
+    }
+
     fn show_profile_editor(&mut self, ui: &mut egui::Ui) {
         let mut save = false;
         let mut save_and_activate = false;
@@ -1112,12 +1328,12 @@ impl LmuKitApp {
         let mut save = false;
         let mut discard = false;
         let mut cancel = false;
-        egui::Window::new("Unsaved profile changes")
+        egui::Window::new("Unsaved changes")
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
-                ui.label("Save your profile changes before leaving the editor?");
+                ui.label("Save your changes before leaving this editor?");
                 ui.weak("Discard keeps the last saved version and loses these edits.");
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
@@ -1126,7 +1342,7 @@ impl LmuKitApp {
                     cancel = ui.button("Cancel").clicked();
                 });
             });
-        let proceed = discard || (save && self.save_editor(false));
+        let proceed = discard || (save && self.save_active_editor());
         if proceed {
             self.finish_discard_action(action, ctx);
         } else if cancel {
@@ -1287,6 +1503,124 @@ impl LmuKitApp {
             self.input_lookup = None;
         }
     }
+}
+
+fn collect_described_settings(document: &serde_json::Value, filter: &str) -> Vec<DescribedSetting> {
+    fn visit(
+        value: &serde_json::Value,
+        path: &mut Vec<String>,
+        filter: &str,
+        out: &mut Vec<DescribedSetting>,
+    ) {
+        let Some(object) = value.as_object() else {
+            return;
+        };
+        for (key, child) in object {
+            if key.ends_with('#') {
+                continue;
+            }
+            path.push(key.clone());
+            if child.is_boolean() || child.is_number() || child.is_string() {
+                let description = object
+                    .get(&format!("{key}#"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned);
+                let group = if path.len() == 1 {
+                    "General".into()
+                } else {
+                    path[..path.len() - 1].join(" › ")
+                };
+                let searchable = format!(
+                    "{group} {key} {}",
+                    description.as_deref().unwrap_or_default()
+                )
+                .to_lowercase();
+                if filter.is_empty() || searchable.contains(filter) {
+                    out.push(DescribedSetting {
+                        path: path.clone(),
+                        label: key.clone(),
+                        description,
+                        group,
+                    });
+                }
+            } else if child.is_object() {
+                visit(child, path, filter, out);
+            }
+            path.pop();
+        }
+    }
+
+    let mut fields = Vec::new();
+    visit(
+        document,
+        &mut Vec::new(),
+        &filter.trim().to_lowercase(),
+        &mut fields,
+    );
+    fields.sort_by(|a, b| {
+        a.group
+            .to_lowercase()
+            .cmp(&b.group.to_lowercase())
+            .then_with(|| a.label.to_lowercase().cmp(&b.label.to_lowercase()))
+    });
+    fields
+}
+
+fn show_described_setting(
+    document: &mut serde_json::Value,
+    field: &DescribedSetting,
+    ui: &mut egui::Ui,
+) {
+    egui::Frame::group(ui.style())
+        .inner_margin(10.0)
+        .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.vertical(|ui| {
+                    ui.strong(&field.label);
+                    if let Some(description) = &field.description {
+                        ui.add(egui::Label::new(egui::RichText::new(description).weak()).wrap());
+                    }
+                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let Some(value) = json_value_mut(document, &field.path) else {
+                        return;
+                    };
+                    if let Some(current) = value.as_bool() {
+                        let mut edited = current;
+                        if ui.checkbox(&mut edited, "").changed() {
+                            *value = serde_json::Value::Bool(edited);
+                        }
+                    } else if let Some(current) = value.as_i64() {
+                        let mut edited = current;
+                        if ui.add(egui::DragValue::new(&mut edited)).changed() {
+                            *value = serde_json::Value::from(edited);
+                        }
+                    } else if let Some(current) = value.as_u64() {
+                        let mut edited = current;
+                        if ui.add(egui::DragValue::new(&mut edited)).changed() {
+                            *value = serde_json::Value::from(edited);
+                        }
+                    } else if let Some(current) = value.as_f64() {
+                        let mut edited = current;
+                        if ui
+                            .add(egui::DragValue::new(&mut edited).speed(0.01))
+                            .changed()
+                            && let Some(number) = serde_json::Number::from_f64(edited)
+                        {
+                            *value = serde_json::Value::Number(number);
+                        }
+                    } else if let Some(current) = value.as_str() {
+                        let mut edited = current.to_owned();
+                        if ui
+                            .add(egui::TextEdit::singleline(&mut edited).desired_width(240.0))
+                            .changed()
+                        {
+                            *value = serde_json::Value::String(edited);
+                        }
+                    }
+                });
+            });
+        });
 }
 
 fn show_force_feedback_editor(editor: &mut ProfileEditor, ui: &mut egui::Ui) {
@@ -1682,5 +2016,31 @@ mod tests {
         *json_value_mut(&mut document, &strength.path).unwrap() = serde_json::json!(0.8);
         assert_eq!(document["Devices"]["Wheel"]["FFB Strength"], 0.8);
         assert_eq!(document["Devices"]["Wheel"]["Unrelated calibration"], 12);
+    }
+
+    #[test]
+    fn pairs_lmu_settings_with_hash_descriptions() {
+        let mut document = serde_json::json!({
+            "Visible Vehicles": 20,
+            "Visible Vehicles#": "Maximum cars drawn",
+            "Display": {
+                "Fullscreen": true,
+                "Fullscreen#": "Run without window borders"
+            },
+            "Driver Name": "Test Driver"
+        });
+
+        let fields = collect_described_settings(&document, "cars drawn");
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].label, "Visible Vehicles");
+        assert_eq!(fields[0].description.as_deref(), Some("Maximum cars drawn"));
+        assert_eq!(fields[0].group, "General");
+        *json_value_mut(&mut document, &fields[0].path).unwrap() = serde_json::json!(15);
+        assert_eq!(document["Visible Vehicles"], 15);
+        assert_eq!(document["Visible Vehicles#"], "Maximum cars drawn");
+
+        let nested = collect_described_settings(&document, "fullscreen");
+        assert_eq!(nested.len(), 1);
+        assert_eq!(nested[0].group, "Display");
     }
 }

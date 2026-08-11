@@ -4,13 +4,13 @@ This file is the repository handoff for human and LLM-assisted development. Keep
 
 ## Product intent
 
-LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate utilities. It currently includes binding-profile and companion-launcher tools, while leaving room for other LMU features. The primary runtime platform is Windows; development commonly happens in WSL.
+LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate utilities. It currently includes binding-profile, game-settings, and companion-launcher tools, while leaving room for other LMU features. The primary runtime platform is Windows; development commonly happens in WSL.
 
 ## Architecture
 
 - `src/main.rs` configures the responsive editor-capable viewport and starts eframe.
-- `src/app.rs` owns egui state, the Profiles, Editor, and Settings tabs, interaction flows, dialogs, and status messages.
-- `src/storage.rs` owns settings, profile persistence, imports, activation, backups, LMU JSON parsing, and companion-launcher generation.
+- `src/app.rs` owns egui state, the Profiles, Editor, Game settings, and Settings tabs, interaction flows, dialogs, and status messages.
+- `src/storage.rs` owns LMUKit settings, profile persistence, imports, activation, backups, LMU JSON parsing, `Settings.JSON` persistence, and companion-launcher generation.
 - `src/input.rs` reads Windows raw game-controller state and converts buttons, POVs, and axes to LMU input IDs. Its non-Windows implementation keeps native development and tests working.
 - `mise.toml` pins tooling and defines the supported developer commands.
 - `.github/workflows/release.yml` builds and publishes the Windows x86-64 archive for `v*` tags.
@@ -23,6 +23,7 @@ Keep filesystem and parsing behavior in `storage.rs`; keep platform input detail
 - Never replace LMU's live configuration without first creating a recovery backup when a live file exists. Likewise, back up a saved profile before updating it from the live configuration.
 - Treat imported files as untrusted input. Validate JSON before storing or activating it.
 - Preserve unknown profile JSON fields when editing. Only generate mappings for devices already represented in the profile document.
+- Preserve unknown `Settings.JSON` values and its `Option#` description fields. Back up the live file before every save.
 - Group detected FFB settings by their owning device. LMU's `Steering effects strength` uses a raw `0..10000` value and is presented as a `0..100%` gain control.
 - Compare parsed `serde_json::Value` values for dirty detection so formatting and object-key order do not create false positives.
 - Preserve backward compatibility for `settings.json` with `#[serde(default)]` or an explicit migration.
