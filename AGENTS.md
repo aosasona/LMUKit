@@ -8,7 +8,7 @@ LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate util
 
 ## Architecture
 
-- `src/main.rs` configures the portrait viewport and starts eframe.
+- `src/main.rs` configures the responsive editor-capable viewport and starts eframe.
 - `src/app.rs` owns egui state, the Profiles, Editor, and Settings tabs, interaction flows, dialogs, and status messages.
 - `src/storage.rs` owns settings, profile persistence, imports, activation, backups, LMU JSON parsing, and companion-launcher generation.
 - `src/input.rs` reads Windows raw game-controller state and converts buttons, POVs, and axes to LMU input IDs. Its non-Windows implementation keeps native development and tests working.

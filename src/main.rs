@@ -11,9 +11,9 @@ fn main() -> eframe::Result<()> {
         .expect("embedded LMUKit icon should be a valid PNG");
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([620.0, 780.0])
-            .with_min_inner_size([520.0, 680.0])
-            .with_max_inner_size([760.0, 1000.0])
+            .with_inner_size([780.0, 860.0])
+            .with_min_inner_size([680.0, 720.0])
+            .with_max_inner_size([1100.0, 1200.0])
             .with_icon(icon),
         ..Default::default()
     };
