@@ -1614,6 +1614,7 @@ main {
   font-size: 19px;
 }
 .brand small,
+.game-state small,
 .game-state strong,
 .nav-item,
 .ghost,
@@ -1827,6 +1828,93 @@ footer {
   width: 1px;
   background: var(--line);
   margin: 0 5px;
+}
+
+/* Final desktop type scale: keep secondary text compact without becoming microcopy. */
+body {
+  font-size: 14px;
+}
+.titlebar-brand,
+.brand-mark span {
+  font-size: 11px;
+}
+.brand small,
+.metric-card span,
+.metric-card small,
+.profile-number,
+.mini-profile small,
+.quick-actions small,
+.category-browser span,
+.category-browser button,
+.profile-tags span,
+.profile-card header small,
+.active-badge,
+.profile-card-meta,
+.identity-field > span,
+.tag-picker > span,
+.profile-table-head,
+.profile-main small,
+.selected-context small,
+.device-manager-head > small,
+.device-row small,
+.device-note,
+.migration-note,
+.binding-summary span,
+.binding-device header em,
+.binding-row small,
+.binding-row code,
+.binding-row button,
+.control-pill,
+.lookup-matches strong,
+.lookup-matches span,
+.lookup-matches .no-match,
+footer {
+  font-size: 11px;
+}
+.nav-label,
+.eyebrow,
+.chip,
+.text-button,
+kbd,
+.tag-picker-options button,
+.tag-picker-no-results,
+.tag-picker-chips button,
+.action-menu > div button {
+  font-size: 12px;
+}
+.profile-row,
+.prepared {
+  font-size: 12px;
+}
+.nav-item,
+.game-state strong,
+.keyboard-hint,
+.ghost,
+.primary,
+.secondary,
+.mini-profile strong,
+.quick-actions strong,
+.profile-card header strong,
+.category-editor h4,
+.device-row strong,
+.binding-row strong,
+.lookup-control strong,
+.confirm-dialog p {
+  font-size: 13px;
+}
+.danger {
+  min-height: 38px;
+  font-size: 13px;
+}
+.section-head h3,
+.device-manager-head h3 {
+  font-size: 17px;
+}
+.lookup-control span {
+  font-size: 10px;
+}
+.binding-device h3 {
+  font-size: 14px;
 }
 @media (max-width: 1080px) {
   .dashboard-grid {
