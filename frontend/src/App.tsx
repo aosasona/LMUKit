@@ -591,6 +591,7 @@ export default function App() {
                 baseline={profileDocumentBaseline}
                 loading={profileDocumentLoading}
                 busy={busy}
+                wheelImageRevision={wheelImageRevision}
                 onClear={clearBinding}
                 onAssign={assignBinding}
                 onChange={setProfileDocument}

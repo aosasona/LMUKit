@@ -138,8 +138,8 @@ export function BindingEditorPage({
     <section className="binding-editor">
       <div className="binding-toolbar">
         <div>
-          <span className="eyebrow">Editing profile</span>
-          <h2>{profile.name}</h2>
+          <span className="eyebrow">Control mappings</span>
+          <h2>Bindings</h2>
         </div>
         <div className="binding-toolbar-actions">
           <button

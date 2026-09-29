@@ -1,6 +1,7 @@
 import { AlertTriangle, Code2, Save, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { ForceFeedbackEditor } from "../components/ForceFeedbackEditor";
+import { WheelImage } from "../components/WheelImage";
 import type {
   Binding,
   BindingAssignmentCandidate,
@@ -18,6 +19,7 @@ export function ProfileEditorPage({
   baseline,
   loading,
   busy,
+  wheelImageRevision,
   onClear,
   onAssign,
   onChange,
@@ -29,6 +31,7 @@ export function ProfileEditorPage({
   baseline: JsonObject | null;
   loading: boolean;
   busy: boolean;
+  wheelImageRevision: number;
   onClear: (profile: Profile, binding: Binding) => void;
   onAssign: (
     profile: Profile,
@@ -48,6 +51,39 @@ export function ProfileEditorPage({
 
   return (
     <section className="profile-editor-page">
+      {profile && (
+        <header className="profile-editor-context">
+          <WheelImage
+            wheelId={profile.wheelId}
+            hasImage={profile.hasWheelImage}
+            alt={`${profile.wheelName ?? profile.name} wheel`}
+            className="profile-editor-wheel"
+            revision={wheelImageRevision}
+          />
+          <div>
+            <span className="eyebrow">Editing profile</span>
+            <h2>{profile.name}</h2>
+            <div className="profile-editor-context-tags">
+              {(profile.wheelName || profile.wheelBrand) && (
+                <span className="wheel-tag">
+                  {[profile.wheelBrand, profile.wheelName]
+                    .filter(Boolean)
+                    .join(" ")}
+                </span>
+              )}
+              {profile.classTags.map((tag) => (
+                <span className="class-tag" key={tag}>
+                  {tag}
+                </span>
+              ))}
+              {!profile.classTags.length && <span>Generic</span>}
+            </div>
+          </div>
+          <span className={dirty ? "editor-state dirty" : "editor-state"}>
+            {dirty ? "Unsaved changes" : "Saved profile"}
+          </span>
+        </header>
+      )}
       <div className="profile-editor-tabs">
         <button
           className={section === "bindings" ? "active" : ""}
