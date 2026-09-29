@@ -302,10 +302,12 @@ export function ProfilesPage(props: Props) {
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   disabled={busy || !selected.wheelId}
+                  onClick={(event) => {
+                    event.currentTarget.value = "";
+                  }}
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (file) onSaveWheelImage(selected, file);
-                    event.target.value = "";
                   }}
                 />
               </label>

@@ -297,17 +297,24 @@ impl Store {
     pub fn save_wheel_image(&self, wheel: &mut Wheel, bytes: &[u8]) -> Result<()> {
         validate_image_bytes(bytes)?;
         let extension = image_extension(bytes).expect("validated wheel image");
-        if let Some(existing) = &wheel.image {
-            let path = self.safe_wheel_asset_path(wheel.id, existing)?;
+        let filename = format!("wheel-image.{extension}");
+        let directory = self.wheel_dir(wheel.id);
+        fs::create_dir_all(&directory)?;
+        let destination = directory.join(&filename);
+        let staged = directory.join(format!(".wheel-image.{extension}.tmp"));
+        fs::write(&staged, bytes).context("could not stage the wheel image")?;
+        replace_file(&staged, &destination).context("could not save the wheel image")?;
+        let previous = wheel.image.replace(filename);
+        self.save_wheel(wheel)?;
+        if let Some(previous) = previous
+            && previous != wheel.image.as_deref().unwrap_or_default()
+        {
+            let path = self.safe_wheel_asset_path(wheel.id, &previous)?;
             if path.is_file() {
-                fs::remove_file(path).context("could not replace the previous wheel image")?;
+                fs::remove_file(path).context("could not remove the previous wheel image")?;
             }
         }
-        let filename = format!("wheel-image.{extension}");
-        fs::write(self.wheel_dir(wheel.id).join(&filename), bytes)
-            .context("could not save the wheel image")?;
-        wheel.image = Some(filename);
-        self.save_wheel(wheel)
+        Ok(())
     }
 
     pub fn wheel_image(&self, wheel: &Wheel) -> Result<Option<Vec<u8>>> {
@@ -815,7 +822,9 @@ fn binding_section_mut(
 }
 
 fn replace_file(staged: &Path, destination: &Path) -> std::io::Result<()> {
-    fs::remove_file(destination)?;
+    if destination.exists() {
+        fs::remove_file(destination)?;
+    }
     fs::rename(staged, destination)
 }
 
@@ -1292,6 +1301,8 @@ mod tests {
             .unwrap();
         let png = b"\x89PNG\r\n\x1a\nsynthetic";
         store.save_wheel_image(&mut wheel, png).unwrap();
+        let replacement = b"\x89PNG\r\n\x1a\nreplacement";
+        store.save_wheel_image(&mut wheel, replacement).unwrap();
         store
             .assign_profile_wheel(first.id, Some(wheel.id))
             .unwrap();
@@ -1305,7 +1316,7 @@ mod tests {
                 .iter()
                 .all(|profile| profile.wheel_id == Some(wheel.id))
         );
-        assert_eq!(store.wheel_image(&wheel).unwrap().unwrap(), png);
+        assert_eq!(store.wheel_image(&wheel).unwrap().unwrap(), replacement);
 
         drop(store);
         let reopened = Store::open_at(root).unwrap();
