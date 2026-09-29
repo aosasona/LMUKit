@@ -1,88 +1,87 @@
 > [!WARNING]
-> **LLM usage disclosure:** LMUKit is developed with substantial assistance from large language models. LLM-generated code and documentation are reviewed and tested before being committed, but users should evaluate the software accordingly.
+> **Extensive AI usage disclosure:** LMUKit is developed with extensive large-language-model assistance across product design, implementation, testing, documentation, and maintenance. The project is human-directed and changes are reviewed and tested before commit, but users should evaluate the software and its source with that development process in mind.
 
 # LMUKit
 
-LMUKit is a modern Windows toolkit for Le Mans Ultimate. It brings profiles, control mappings, game settings, and companion tools into one focused race workspace.
+LMUKit is a modern Windows toolkit for Le Mans Ultimate. It brings binding profiles, reusable wheel metadata, control inspection, game settings, and companion-app launching into one focused race workspace.
 
-<img src="assets/icon/lmukit.png" alt="LMUKit icon" width="128">
+<img src="assets/icon/lmukit.png" alt="LMUKit icon" width="112">
 
-The interface is being rebuilt with Tauri and React. Existing LMUKit profiles, settings, and recovery backups remain compatible; the previous egui application is preserved on the `legacy/egui-v0.2` branch while features move into the new workspace.
+![LMUKit overview showing the active Hypercar profile, wheel image, garage, and quick actions](assets/lmukit-overview.png)
 
-The rewrite currently includes the responsive workspace, reusable wheel library, profile discovery, validated preset import and drag/drop, live-binding capture and update, profile deletion and folder reveal, device-grouped binding browsing, live wheel-control lookup across profiles, searchable game-settings editing, safe profile activation, global shortcuts, LMU paths, and companion/VR launch setup. Full binding remapping is the remaining substantial legacy workflow to migrate before the Tauri version replaces the current release.
+_The screenshot uses isolated synthetic profile data; no personal LMU files are included in the repository._
 
-## Features
+## Current features
 
-- Capture LMU's current `direct input.json` as a named profile.
-- Import preset JSON files or profile folders with drag and drop.
-- Activate a saved profile with an automatic recovery backup.
-- Assign `Ctrl+Alt+1` through `Ctrl+Alt+9` to profiles for direct switching.
-- Open a compact searchable profile switcher with `Ctrl+Alt+Space`.
-- Detect and warn when the live bindings differ from the active profile.
-- Update an existing profile from LMU's live bindings while backing up its previous version.
-- Browse and edit LMU's `Settings.JSON` with inline descriptions from matching `Option#` fields.
-- Display the active preset separately from the currently selected row.
-- Create and manage reusable wheels with a brand, model, and managed PNG, JPEG, or WebP image, then assign the same wheel to multiple profiles. Linked profiles display the shared wheel image throughout the workspace.
-- Select any combination of built-in WEC/ELMS classes and optional custom tags per profile before browsing them in a filterable card grid.
-- Rename profiles in place and narrow the garage with searchable wheel and class filters. Active profiles clearly indicate when LMU's live bindings have diverged.
-- Adjust the application-wide text scale from the Settings tab; the preference is saved between launches.
-- Browse and search every action stored in a profile.
-- Press a wheel button, move a POV, or turn an axis to compare its mapping across profiles.
-- Open the managed profile directory for manual backup or copying.
-- Launch LMUKit, LMUFFB, Crew Chief, or other selected companion apps with LMU through one Steam launch option.
-- Support custom LMU installations and non-default Steam libraries.
+- Capture LMU's live `direct input.json` as a named profile.
+- Import validated preset JSON files by file picker or drag and drop.
+- Activate a saved profile for LMU's next launch, always backing up the live file first.
+- Detect when LMU's live bindings differ from the active saved profile and safely update either side.
+- Organise profiles in a searchable card grid using reusable wheels, built-in WEC/ELMS class tags, and custom tags.
+- Create a shared wheel library with brand, model, and managed PNG, JPEG, or WebP images. One wheel can be reused by several profiles.
+- Browse bindings by device, clear unwanted mappings with a recovery backup, and press or move a physical control to compare its mapping across every profile.
+- Remove obsolete devices and all of their bindings from a saved profile after confirmation.
+- Browse and edit LMU's `Settings.JSON`, including descriptions from matching `Option#` fields, while preserving unsupported JSON values.
+- Assign `Ctrl+Alt+1` through `Ctrl+Alt+9` to profiles and open the compact switcher with `Ctrl+Alt+Space`.
+- Configure Desktop or native OpenXR (`+XR`) launching and start LMUKit, LMUFFB, Crew Chief, RaceLab, or custom companion applications through one explicit Steam launch option.
+- Autosave LMU paths, launch mode, and companion-app setup.
+- Scale the entire interface from Settings.
 
-LMUKit stores its own profiles in the current Windows user's application-data directory. Use **Show in folder** to open the exact location.
+LMUKit stores profiles, managed wheel images, settings, and timestamped recovery backups in the current Windows user's application-data directory. Use the **Folder** button on Profiles to open the exact location.
 
 ## Using LMUKit
 
-1. Close LMU before changing profiles.
-2. Open **Settings** and confirm the path to LMU's live `direct input.json`.
-3. Configure the wheel in LMU and enter a name under **Capture current bindings**.
-4. Select a profile and choose **Activate selected** when changing setups.
+### Profiles
 
-LMU does not reload its bindings file while running. Close LMU before activating a profile; LMUKit installs the selected file for the next game launch and creates a recovery backup first.
+1. Close LMU before replacing its bindings.
+2. Open **Settings** and confirm the paths to `direct input.json` and `Settings.JSON`.
+3. Configure your controls in LMU, enter a profile name on **Profiles**, and choose **Capture LMU**.
+4. Assign a reusable wheel and any relevant classes or tags in the selected profile's setup panel.
+5. Choose **Use profile** to prepare those bindings for the next LMU launch.
 
-### Faster profile switching
+LMU does not hot-reload `direct input.json`. LMUKit therefore prepares the selected profile for the next launch; it does not claim to switch bindings inside a running session.
 
-Open **Settings → Profile keyboard shortcuts** to assign `Ctrl+Alt+1` through `Ctrl+Alt+9` to individual profiles. Shortcut assignments are unique, so assigning a number to a different profile moves it automatically.
+Existing presets can be dropped anywhere on the Profiles workspace. Imported JSON is validated before LMUKit stores or activates it.
 
-Press `Ctrl+Alt+Space` anywhere in Windows to open the compact switcher. Search by profile name, use the arrow keys to move, and press Enter to activate the highlighted profile. Direct shortcuts and the compact switcher both prepare the selected profile for the next LMU launch; they cannot change bindings in a running LMU session.
+### Wheels and categories
 
-Existing preset files can be dropped directly onto the saved-profile panel. A file is named from its filename; a folder should contain `direct input.json`.
+Use **Wheels** to create reusable hardware entries, edit their brand and name, and add or replace their image. Profiles linked to that wheel share the same metadata and image throughout the app.
 
-To inspect a physical control, choose **Find wheel button…** and press or move it. LMUKit will show the corresponding action—or **Not mapped**—for every saved profile.
+Each profile has one searchable tag picker. Select any combination of `GT3`, `GTE`, `LMP3`, `LMP2`, and `HY`, or type a custom tag. Leaving the class selection empty makes the profile generic.
 
-### Profile editor
+### Bindings
 
-Select a profile and choose **Edit profile…** to open the Editor tab. The editor can:
+The **Binding editor** currently provides device-grouped browsing, search, safe binding removal, and live control lookup. **Find a wheel control** waits for a button, POV, or axis movement and then shows the matching action for each saved profile; the operation can be cancelled at any time.
 
-- Change or clear primary and alternate mappings by listening for a connected control.
-- Warn when the same device input is assigned more than once.
-- Edit force-feedback fields grouped by device, including a percentage-based **FFB gain** control for LMU's `Steering effects strength` value.
-- Preview the complete resulting JSON while preserving fields LMUKit does not recognise.
+Adding or replacing a mapping outside LMU is the main remaining binding-editor workflow planned for the Tauri interface. Until that lands, create new mappings in LMU and capture or update the profile from its live configuration.
 
-**Save** updates the stored profile and backs up its previous version. **Save and activate** also installs it as LMU's live profile using the normal recovery-backup process. LMUKit warns before navigation or app closure would discard editor changes.
+### Faster profile access
 
-For safety, LMUKit only assigns controls from devices already represented in the profile. Capture the device in LMU first if it is not recognised.
+Open **Settings → Profile keyboard shortcuts** to assign `Ctrl+Alt+1` through `Ctrl+Alt+9`. Assignments are unique, so reusing a number moves it to the newly selected profile.
+
+Press `Ctrl+Alt+Space` anywhere in Windows to open the compact profile switcher. These shortcuts still prepare a profile for LMU's next launch; they do not alter a running LMU session.
 
 ### Game settings
 
-Open **Game settings** to edit LMU's `UserData/player/Settings.JSON` without working directly in a text editor. LMUKit supports boolean, numeric, and string options, groups nested settings, and displays a matching `Option#` field as the option's description instead of exposing it as another setting.
+Open **Game settings** to search and edit LMU's `UserData/player/Settings.JSON`. Boolean, numeric, string, and nested values are supported, while matching `Option#` fields are shown as descriptions rather than duplicate settings.
 
-Use the search field to find text in names or descriptions. Saving preserves unsupported JSON data and creates a recovery backup first. Close LMU before saving because the game may overwrite its settings while running.
+Saving preserves unknown JSON data and creates a recovery backup first. Close LMU before saving because the game may overwrite its settings while running.
 
-### Companion apps
+### LMU and companion apps
 
-Open **Settings → LMU and companion apps**, choose Desktop or VR (OpenXR), then add and enable the helper applications you want. VR mode passes LMU's native `+XR` launch argument. Paths, launch mode, and companion-app changes save automatically. **Copy Steam launch option** creates a small launcher and copies the required command. Paste it into:
+Open **Settings → LMU and companion apps**, choose **Desktop** or **VR (OpenXR)**, then add and enable the helpers you want. Paths, launch mode, and companion-app changes save automatically.
+
+**Copy Steam launch option** creates LMUKit's launcher and copies the command. Paste it into:
 
 **Steam → Le Mans Ultimate → Properties → Launch Options**
 
-The launcher avoids opening duplicate LMUKit or companion-app processes.
+VR mode passes LMU's native `+XR` argument. The launcher avoids opening duplicate LMUKit or companion-app processes. LMUKit never edits Steam configuration silently.
 
 ## Development
 
-The repository uses [mise](https://mise.jdx.dev/) to pin Rust, Node.js, pnpm, and developer commands. The desktop shell is Tauri 2, the interface is React and TypeScript, and compatibility-sensitive filesystem logic lives in the independent `lmukit-core` Rust crate.
+The primary runtime is Windows, while development commonly happens in WSL. The desktop shell uses Tauri 2, the interface uses React and TypeScript, and compatibility-sensitive storage behavior lives in the independent `lmukit-core` Rust crate.
+
+The repository uses [mise](https://mise.jdx.dev/) to pin Rust, Node.js, pnpm, and the supported commands:
 
 ```sh
 mise trust
@@ -91,32 +90,19 @@ pnpm install
 mise run dev
 ```
 
-Useful tasks:
+| Command          | Purpose                                                  |
+| ---------------- | -------------------------------------------------------- |
+| `mise run dev`   | Cross-build and launch the Windows debug app from WSL    |
+| `mise run build` | Build the frontend and Windows x86-64 release executable |
+| `mise run test`  | Run `lmukit-core` tests                                  |
+| `mise run check` | Check `lmukit-core`                                      |
+| `mise run fmt`   | Check Rust formatting                                    |
+| `mise run lint`  | Run Clippy with warnings denied                          |
+| `pnpm build`     | Type-check and build the React interface                 |
 
-| Command          | Purpose                                       |
-| ---------------- | --------------------------------------------- |
-| `mise run dev`   | Launch the Tauri development app              |
-| `mise run build` | Build the frontend and Windows desktop bundle |
-| `mise run test`  | Run Rust compatibility-layer tests            |
-| `mise run check` | Check the Rust workspace                      |
-| `mise run fmt`   | Check Rust formatting                         |
-| `mise run lint`  | Run Clippy with warnings denied               |
-| `pnpm build`     | Type-check and build the React interface      |
+Use `LMUKIT_DATA_DIR` with an isolated directory for screenshots and manual tests. Never test development builds against personal profiles or live Windows application data.
 
-Release output is written to:
-
-```text
-target/release/lmukit.exe
-```
-
-Pushing a version tag such as `v0.1.0` runs the Windows release workflow. It creates a GitHub Release containing a versioned x86-64 ZIP and its SHA-256 checksum.
-
-```sh
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Before committing a change, run:
+Before handing off a code change, run:
 
 ```sh
 cargo fmt --all --check
@@ -126,17 +112,31 @@ pnpm build
 cargo xwin check -p lmukit --target x86_64-pc-windows-msvc
 ```
 
-Set `LMUKIT_DATA_DIR` to an isolated directory when manually testing or capturing screenshots without using your normal profiles and settings.
+Repository architecture, data-format invariants, and guidance for human and AI-assisted contributors are maintained in [AGENTS.md](AGENTS.md).
+
+## Releases
+
+Pushing a tag matching `v*` runs the Windows release workflow. The tag version must match the Cargo and Tauri package versions. After all formatting, test, lint, frontend, and Windows build checks pass, GitHub Actions creates a release containing:
+
+- a portable Windows x86-64 ZIP;
+- the Tauri NSIS installer;
+- SHA-256 checksum files for both packages.
+
+```sh
+git tag v0.3.0
+git push origin v0.3.0
+```
 
 ## AI-assisted development
 
-LMUKit is developed with LLM assistance. Generated code and documentation are treated like any other contribution: changes should be scoped, reviewed, tested on both the native and Windows targets, and committed in small units with descriptive messages.
+Large language models are used extensively in LMUKit's development—not merely for occasional completion. They assist with architecture exploration, UI and product iteration, Rust and TypeScript implementation, test creation, debugging, documentation, and repository maintenance.
 
-Repository-specific guidance for future human and LLM contributors is in [AGENTS.md](AGENTS.md).
+The human maintainer directs the product, reviews changes, runs the required checks, and decides what is committed and released. Even with that review, AI-assisted work can contain mistakes or incorrect assumptions. Issues and code review are welcome, and the repository history is intentionally kept in small, descriptive commits to make the work auditable.
 
 ## Planned work
 
-LMU exposes player vehicle and class information through its built-in Windows shared-memory interface. Because LMU does not hot-reload `direct input.json`, future detection should recommend or prepare a profile for the next launch rather than swapping controls during a running session.
+- Add and replace bindings from the Tauri binding editor, not only inspect and clear them.
+- Read LMU's `Local\\LMUSharedMem` data to identify the active vehicle and class, while respecting that LMU does not hot-reload binding profiles.
 
 ## License
 
