@@ -498,6 +498,16 @@ fn profile_bindings(
 }
 
 #[tauri::command]
+fn binding_action_catalogue(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())?
+        .binding_action_catalogue()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn clear_profile_binding(
     profile_id: Uuid,
     action: String,
@@ -787,6 +797,7 @@ pub fn run() {
             delete_profile,
             reveal_profiles,
             profile_bindings,
+            binding_action_catalogue,
             clear_profile_binding,
             assign_profile_binding,
             set_profile_categories,

@@ -2,6 +2,7 @@ use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -637,6 +638,32 @@ impl Store {
         bindings
     }
 
+    pub fn binding_actions_from_document(document: &serde_json::Value) -> Vec<String> {
+        let mut actions = BTreeSet::new();
+        for section in ["Input", "Alternative Input"] {
+            if let Some(entries) = document.get(section).and_then(serde_json::Value::as_object) {
+                actions.extend(entries.keys().cloned());
+            }
+        }
+        actions.into_iter().collect()
+    }
+
+    pub fn binding_action_catalogue(&self) -> Result<Vec<String>> {
+        let mut actions = BTreeSet::new();
+        for profile in self.profiles()? {
+            actions.extend(Self::binding_actions_from_document(
+                &self.load_profile_document(&profile)?,
+            ));
+        }
+        if self.settings.lmu_config_path.is_file()
+            && let Ok(bytes) = fs::read(&self.settings.lmu_config_path)
+            && let Ok(document) = serde_json::from_slice::<serde_json::Value>(&bytes)
+        {
+            actions.extend(Self::binding_actions_from_document(&document));
+        }
+        Ok(actions.into_iter().collect())
+    }
+
     pub fn load_profile_document(&self, profile: &Profile) -> Result<serde_json::Value> {
         self.profile_document(profile)
     }
@@ -710,14 +737,9 @@ impl Store {
         input_id: u64,
     ) -> Result<PathBuf> {
         let mut document = self.load_profile_document(profile)?;
-        let action_exists = ["Input", "Alternative Input"].iter().any(|section| {
-            document
-                .get(section)
-                .and_then(serde_json::Value::as_object)
-                .is_some_and(|bindings| bindings.contains_key(action))
-        });
-        if !action_exists {
-            bail!("the selected action no longer exists in this profile");
+        let action = action.trim();
+        if action.is_empty() || action.len() > 128 || action.chars().any(char::is_control) {
+            bail!("enter a valid LMU action name of 128 characters or fewer");
         }
         let device_exists = document
             .get("Devices")
@@ -1410,6 +1432,49 @@ mod tests {
         );
         assert_eq!(document["Unknown"]["preserved"], true);
         assert!(fs::read_to_string(backup).unwrap().contains(r#""id":44"#));
+    }
+
+    #[test]
+    fn creates_a_binding_for_a_new_action() {
+        let temp = tempfile::tempdir().unwrap();
+        let preset = temp.path().join("GT3.json");
+        fs::write(
+            &preset,
+            br#"{
+                "Devices":{"Wheel-123":{"name":"GT Wheel"}},
+                "Input":{"Shift Up":{"device":"Wheel-123","id":44}},
+                "Alternative Input":{}
+            }"#,
+        )
+        .unwrap();
+        let store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let profile = store.import_profile(&preset).unwrap();
+
+        store
+            .assign_profile_binding(&profile, "Pit Request", false, "Wheel-123", 52)
+            .unwrap();
+
+        let document = store.load_profile_document(&profile).unwrap();
+        assert_eq!(document["Input"]["Pit Request"]["id"], 52);
+        assert_eq!(
+            Store::binding_actions_from_document(&document),
+            ["Pit Request", "Shift Up"]
+        );
+    }
+
+    #[test]
+    fn rejects_an_invalid_new_action_name() {
+        let temp = tempfile::tempdir().unwrap();
+        let preset = temp.path().join("GT3.json");
+        fs::write(&preset, br#"{"Devices":{"Wheel-123":{}},"Input":{}}"#).unwrap();
+        let store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let profile = store.import_profile(&preset).unwrap();
+
+        assert!(
+            store
+                .assign_profile_binding(&profile, "  ", false, "Wheel-123", 52)
+                .is_err()
+        );
     }
 
     #[test]
