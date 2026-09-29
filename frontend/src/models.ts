@@ -44,6 +44,7 @@ export type Snapshot = {
   lmuConfigPath: string;
   lmuSettingsPath: string;
   activeProfileDirty: boolean | null;
+  uiFontScale: number;
 };
 
 export type Page = "home" | "profiles" | "bindings" | "game" | "settings";
@@ -55,4 +56,5 @@ export const emptySnapshot: Snapshot = {
   lmuConfigPath: "",
   lmuSettingsPath: "",
   activeProfileDirty: null,
+  uiFontScale: 1,
 };

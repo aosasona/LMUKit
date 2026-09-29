@@ -70,6 +70,8 @@ pub struct Settings {
     pub lmuffb_path: PathBuf,
     #[serde(default = "default_companion_apps")]
     pub companion_apps: Vec<CompanionApp>,
+    #[serde(default = "default_ui_font_scale")]
+    pub ui_font_scale: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -87,8 +89,13 @@ impl Default for Settings {
             active_profile: None,
             lmuffb_path: PathBuf::new(),
             companion_apps: default_companion_apps(),
+            ui_font_scale: default_ui_font_scale(),
         }
     }
+}
+
+fn default_ui_font_scale() -> f32 {
+    1.0
 }
 
 fn default_companion_apps() -> Vec<CompanionApp> {
@@ -134,6 +141,9 @@ impl Store {
         };
         if settings.lmu_settings_path.as_os_str().is_empty() {
             settings.lmu_settings_path = settings.lmu_config_path.with_file_name("Settings.JSON");
+        }
+        if !(0.85..=1.4).contains(&settings.ui_font_scale) {
+            settings.ui_font_scale = default_ui_font_scale();
         }
         if !settings.lmuffb_path.as_os_str().is_empty()
             && let Some(lmuffb) = settings
@@ -1400,6 +1410,7 @@ mod tests {
             store.settings.lmu_settings_path,
             PathBuf::from("D:/LMU/UserData/player/Settings.JSON")
         );
+        assert_eq!(store.settings.ui_font_scale, 1.0);
     }
 
     #[test]

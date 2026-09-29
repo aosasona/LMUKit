@@ -24,6 +24,7 @@ The rewrite currently includes the responsive workspace, profile discovery, vali
 - Display the active preset separately from the currently selected row.
 - Create reusable wheels with a brand, model, and managed PNG, JPEG, or WebP image, then assign the same wheel to multiple profiles.
 - Select any combination of built-in WEC/ELMS classes and optional custom tags per profile before browsing them in a filterable card grid.
+- Adjust the application-wide text scale from the Settings tab; the preference is saved between launches.
 - Browse and search every action stored in a profile.
 - Press a wheel button, move a POV, or turn an axis to compare its mapping across profiles.
 - Open the managed profile directory for manual backup or copying.

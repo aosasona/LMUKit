@@ -21,6 +21,7 @@ struct AppSnapshot {
     lmu_config_path: String,
     lmu_settings_path: String,
     active_profile_dirty: Option<bool>,
+    ui_font_scale: f32,
 }
 
 #[derive(Serialize)]
@@ -106,7 +107,18 @@ fn snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, String> {
         active_profile_dirty: store
             .active_profile_has_unsaved_changes()
             .map_err(|error| error.to_string())?,
+        ui_font_scale: store.settings.ui_font_scale,
     })
+}
+
+#[tauri::command]
+fn set_ui_font_scale(scale: f32, state: State<'_, AppState>) -> Result<(), String> {
+    if !(0.85..=1.4).contains(&scale) {
+        return Err("Font scale must be between 85% and 140%.".to_owned());
+    }
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    store.settings.ui_font_scale = scale;
+    store.save_settings().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -508,7 +520,8 @@ pub fn run() {
             clear_profile_binding,
             set_profile_categories,
             find_binding_matches,
-            cancel_binding_lookup
+            cancel_binding_lookup,
+            set_ui_font_scale
         ])
         .run(tauri::generate_context!())
         .expect("error while running LMUKit");

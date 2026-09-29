@@ -9,6 +9,7 @@ import { BindingEditorPage } from "./pages/BindingEditorPage";
 import { ComingSoonPage, pageTitle } from "./pages/ComingSoonPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
+import { SettingsPage } from "./pages/SettingsPage";
 
 export default function App() {
   const [page, setPage] = useState<Page>("home");
@@ -57,6 +58,12 @@ export default function App() {
   useEffect(() => {
     void refresh();
   }, []);
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--font-scale",
+      snapshot.uiFontScale.toString(),
+    );
+  }, [snapshot.uiFontScale]);
   useEffect(() => {
     let url: string | null = null;
     let cancelled = false;
@@ -242,6 +249,12 @@ export default function App() {
         `${binding.alternate ? "Alternate " : ""}${binding.action} binding cleared. A backup was created.`,
       );
     });
+  const saveFontScale = (scale: number) =>
+    withBusy(async () => {
+      await invoke("set_ui_font_scale", { scale });
+      setSnapshot((current) => ({ ...current, uiFontScale: scale }));
+      setNotice(`Text size set to ${Math.round(scale * 100)}%.`);
+    });
 
   return (
     <div className="window-shell">
@@ -315,8 +328,15 @@ export default function App() {
                 onClear={clearBinding}
               />
             )}
-            {(page === "game" || page === "settings") && (
+            {page === "game" && (
               <ComingSoonPage page={page} selected={selected} />
+            )}
+            {page === "settings" && (
+              <SettingsPage
+                fontScale={snapshot.uiFontScale}
+                busy={busy}
+                onSaveFontScale={saveFontScale}
+              />
             )}
           </div>
           <footer>
