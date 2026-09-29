@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CircleGauge,
   Gamepad2,
+  Image as ImageIcon,
   Keyboard,
   LayoutDashboard,
   Minus,
@@ -27,6 +28,7 @@ type Profile = {
   hotkeySlot: number | null;
   bindingCount: number;
   devices: Device[];
+  hasWheelImage: boolean;
 };
 
 type Device = {
@@ -66,6 +68,7 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("Ready");
+  const [wheelImageUrl, setWheelImageUrl] = useState<string | null>(null);
 
   async function refresh() {
     try {
@@ -88,6 +91,28 @@ export default function App() {
     const needle = query.trim().toLowerCase();
     return snapshot.profiles.filter((profile) => profile.name.toLowerCase().includes(needle));
   }, [query, snapshot.profiles]);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    if (!selected?.hasWheelImage) {
+      setWheelImageUrl(null);
+      return;
+    }
+    void invoke<number[] | null>("profile_wheel_image", { profileId: selected.id })
+      .then((bytes) => {
+        if (!bytes || cancelled) return;
+        const data = new Uint8Array(bytes);
+        const type = data[0] === 0x89 ? "image/png" : data[0] === 0xff ? "image/jpeg" : "image/webp";
+        objectUrl = URL.createObjectURL(new Blob([data], { type }));
+        setWheelImageUrl(objectUrl);
+      })
+      .catch((error) => setNotice(String(error)));
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [selected?.id, selected?.hasWheelImage]);
 
   async function activate(profile: Profile) {
     setBusy(true);
@@ -113,6 +138,38 @@ export default function App() {
       });
       await refresh();
       setNotice(`${device.name} and ${removed} binding${removed === 1 ? "" : "s"} removed. Activate the profile again to apply it to LMU.`);
+    } catch (error) {
+      setNotice(String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveWheelImage(profile: Profile, file: File) {
+    if (file.size > 8 * 1024 * 1024) {
+      setNotice("Wheel images must be 8 MB or smaller.");
+      return;
+    }
+    setBusy(true);
+    setNotice(`Assigning a wheel image to ${profile.name}…`);
+    try {
+      const imageBytes = Array.from(new Uint8Array(await file.arrayBuffer()));
+      await invoke("save_profile_wheel_image", { profileId: profile.id, imageBytes });
+      await refresh();
+      setNotice(`Wheel image assigned to ${profile.name}.`);
+    } catch (error) {
+      setNotice(String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeWheelImage(profile: Profile) {
+    setBusy(true);
+    try {
+      await invoke("remove_profile_wheel_image", { profileId: profile.id });
+      await refresh();
+      setNotice(`Wheel image removed from ${profile.name}.`);
     } catch (error) {
       setNotice(String(error));
     } finally {
@@ -172,8 +229,8 @@ export default function App() {
         </header>
 
         <div className="content">
-          {page === "home" && <Overview active={active} selected={selected} profiles={snapshot.profiles} onOpenProfiles={() => setPage("profiles")} onActivate={activate} busy={busy} />}
-          {page === "profiles" && <Profiles profiles={filtered} selected={selected} activeId={snapshot.activeProfile} selectedId={selectedId} query={query} setQuery={setQuery} setSelectedId={setSelectedId} onActivate={activate} onRemoveDevice={removeDevice} busy={busy} />}
+          {page === "home" && <Overview active={active} selected={selected} wheelImageUrl={wheelImageUrl} profiles={snapshot.profiles} onOpenProfiles={() => setPage("profiles")} onActivate={activate} busy={busy} />}
+          {page === "profiles" && <Profiles profiles={filtered} selected={selected} wheelImageUrl={wheelImageUrl} activeId={snapshot.activeProfile} selectedId={selectedId} query={query} setQuery={setQuery} setSelectedId={setSelectedId} onActivate={activate} onRemoveDevice={removeDevice} onSaveWheelImage={saveWheelImage} onRemoveWheelImage={removeWheelImage} busy={busy} />}
           {page !== "home" && page !== "profiles" && <ComingSoon page={page} selected={selected} />}
         </div>
 
@@ -184,7 +241,7 @@ export default function App() {
   );
 }
 
-function Overview({ active, selected, profiles, onOpenProfiles, onActivate, busy }: { active?: Profile; selected?: Profile; profiles: Profile[]; onOpenProfiles: () => void; onActivate: (profile: Profile) => void; busy: boolean }) {
+function Overview({ active, selected, wheelImageUrl, profiles, onOpenProfiles, onActivate, busy }: { active?: Profile; selected?: Profile; wheelImageUrl: string | null; profiles: Profile[]; onOpenProfiles: () => void; onActivate: (profile: Profile) => void; busy: boolean }) {
   const hero = selected ?? active;
   return <div className="dashboard-grid">
     <section className="hero-card">
@@ -197,7 +254,7 @@ function Overview({ active, selected, profiles, onOpenProfiles, onActivate, busy
           <button className="secondary" onClick={onOpenProfiles}>View profiles <ChevronRight size={17} /></button>
         </div>
       </div>
-      <div className="wheel-stage"><div className="halo" /><img src="/wheel-hero.png" alt="A generic GT racing wheel and wheelbase" /></div>
+      <div className="wheel-stage"><div className="halo" /><img src={wheelImageUrl ?? "/wheel-hero.png"} alt={wheelImageUrl ? `Wheel assigned to ${hero?.name ?? "this profile"}` : "A generic GT racing wheel and wheelbase"} /></div>
     </section>
 
     <section className="metric-card"><div className="metric-icon teal"><Gamepad2 /></div><div><span>Saved profiles</span><strong>{profiles.length.toString().padStart(2, "0")}</strong><small>Ready for LMU</small></div></section>
@@ -218,9 +275,9 @@ function Overview({ active, selected, profiles, onOpenProfiles, onActivate, busy
   </div>;
 }
 
-function Profiles({ profiles, selected, activeId, selectedId, query, setQuery, setSelectedId, onActivate, onRemoveDevice, busy }: { profiles: Profile[]; selected?: Profile; activeId: string | null; selectedId: string | null; query: string; setQuery: (value: string) => void; setSelectedId: (value: string) => void; onActivate: (profile: Profile) => void; onRemoveDevice: (profile: Profile, device: Device) => void; busy: boolean }) {
+function Profiles({ profiles, selected, wheelImageUrl, activeId, selectedId, query, setQuery, setSelectedId, onActivate, onRemoveDevice, onSaveWheelImage, onRemoveWheelImage, busy }: { profiles: Profile[]; selected?: Profile; wheelImageUrl: string | null; activeId: string | null; selectedId: string | null; query: string; setQuery: (value: string) => void; setSelectedId: (value: string) => void; onActivate: (profile: Profile) => void; onRemoveDevice: (profile: Profile, device: Device) => void; onSaveWheelImage: (profile: Profile, file: File) => void; onRemoveWheelImage: (profile: Profile) => void; busy: boolean }) {
   const [confirmDevice, setConfirmDevice] = useState<string | null>(null);
-  return <section className="profiles-page panel"><div className="profiles-toolbar"><div className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your profiles" /></div><button className="primary"><Upload size={17} /> Import preset</button></div><div className="profile-table-head"><span>Profile</span><span>Devices</span><span>Bindings</span><span>Shortcut</span><span /></div>{profiles.map((profile) => <div className={selectedId === profile.id ? "profile-row selected" : "profile-row"} key={profile.id} onClick={() => { setSelectedId(profile.id); setConfirmDevice(null); }}><div className="profile-main"><span className="device-thumb"><Gamepad2 /></span><div><strong>{profile.name}</strong><small>{profile.id === activeId ? "Prepared for next launch" : "Saved profile"}</small></div></div><span>{profile.devices.slice(0, 2).map((device) => device.name).join(", ") || "Unknown device"}</span><span>{profile.bindingCount}</span><span>{profile.hotkeySlot ? <kbd>Ctrl Alt {profile.hotkeySlot}</kbd> : <small>Not set</small>}</span><button className={profile.id === activeId ? "prepared" : "secondary compact"} disabled={busy || profile.id === activeId} onClick={(event) => { event.stopPropagation(); void onActivate(profile); }}>{profile.id === activeId ? "Prepared" : "Use profile"}</button></div>)}{!profiles.length && <div className="empty large"><Gamepad2 /><strong>No profiles found</strong><span>Import a preset or capture your current LMU bindings.</span></div>}{selected && <div className="device-manager"><div className="device-manager-head"><div><span className="eyebrow">Profile devices</span><h3>{selected.name}</h3></div><small>Removing a device also removes all of its bindings.</small></div><div className="device-list">{selected.devices.map((device) => <div className="device-row" key={device.key}><span className="device-thumb"><Gamepad2 /></span><div><strong>{device.name}</strong><small>{device.bindingCount} binding{device.bindingCount === 1 ? "" : "s"} · {device.key}</small></div>{confirmDevice === device.key ? <div className="confirm-remove"><span>Remove?</span><button className="danger" disabled={busy} onClick={() => void onRemoveDevice(selected, device)}>Yes, remove</button><button className="secondary compact" onClick={() => setConfirmDevice(null)}>Cancel</button></div> : <button className="remove-device" aria-label={`Remove ${device.name}`} onClick={() => setConfirmDevice(device.key)}><Trash2 /> Remove</button>}</div>)}{!selected.devices.length && <div className="empty">This profile has no registered devices.</div>}</div></div>}</section>;
+  return <section className="profiles-page panel"><div className="profiles-toolbar"><div className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your profiles" /></div><button className="primary"><Upload size={17} /> Import preset</button></div><div className="profile-table-head"><span>Profile</span><span>Devices</span><span>Bindings</span><span>Shortcut</span><span /></div>{profiles.map((profile) => <div className={selectedId === profile.id ? "profile-row selected" : "profile-row"} key={profile.id} onClick={() => { setSelectedId(profile.id); setConfirmDevice(null); }}><div className="profile-main"><span className="device-thumb"><Gamepad2 /></span><div><strong>{profile.name}</strong><small>{profile.id === activeId ? "Prepared for next launch" : "Saved profile"}</small></div></div><span>{profile.devices.slice(0, 2).map((device) => device.name).join(", ") || "Unknown device"}</span><span>{profile.bindingCount}</span><span>{profile.hotkeySlot ? <kbd>Ctrl Alt {profile.hotkeySlot}</kbd> : <small>Not set</small>}</span><button className={profile.id === activeId ? "prepared" : "secondary compact"} disabled={busy || profile.id === activeId} onClick={(event) => { event.stopPropagation(); void onActivate(profile); }}>{profile.id === activeId ? "Prepared" : "Use profile"}</button></div>)}{!profiles.length && <div className="empty large"><Gamepad2 /><strong>No profiles found</strong><span>Import a preset or capture your current LMU bindings.</span></div>}{selected && <div className="device-manager"><div className="device-manager-head"><div><span className="eyebrow">Profile setup</span><h3>{selected.name}</h3></div><div className="profile-image-actions">{wheelImageUrl && <img src={wheelImageUrl} alt="Assigned wheel" />}<label className="secondary compact image-picker"><ImageIcon />{selected.hasWheelImage ? "Replace wheel image" : "Assign wheel image"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void onSaveWheelImage(selected, file); event.target.value = ""; }} /></label>{selected.hasWheelImage && <button className="remove-device" disabled={busy} onClick={() => void onRemoveWheelImage(selected)}><Trash2 /> Remove image</button>}</div></div><p className="device-note">Removing a device also removes all of its bindings.</p><div className="device-list">{selected.devices.map((device) => <div className="device-row" key={device.key}><span className="device-thumb"><Gamepad2 /></span><div><strong>{device.name}</strong><small>{device.bindingCount} binding{device.bindingCount === 1 ? "" : "s"} · {device.key}</small></div>{confirmDevice === device.key ? <div className="confirm-remove"><span>Remove?</span><button className="danger" disabled={busy} onClick={() => void onRemoveDevice(selected, device)}>Yes, remove</button><button className="secondary compact" onClick={() => setConfirmDevice(null)}>Cancel</button></div> : <button className="remove-device" aria-label={`Remove ${device.name}`} onClick={() => setConfirmDevice(device.key)}><Trash2 /> Remove</button>}</div>)}{!selected.devices.length && <div className="empty">This profile has no registered devices.</div>}</div></div>}</section>;
 }
 
 function ComingSoon({ page, selected }: { page: Page; selected?: Profile }) {

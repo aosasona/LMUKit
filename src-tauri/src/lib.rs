@@ -23,6 +23,7 @@ struct ProfileSummary {
     hotkey_slot: Option<u8>,
     binding_count: usize,
     devices: Vec<DeviceSummary>,
+    has_wheel_image: bool,
 }
 
 #[derive(Serialize)]
@@ -88,6 +89,49 @@ fn remove_profile_device(
     Ok(removed)
 }
 
+fn find_profile(store: &Store, profile_id: Uuid) -> Result<Profile, String> {
+    store
+        .profiles()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|profile| profile.id == profile_id)
+        .ok_or_else(|| "That profile no longer exists.".to_owned())
+}
+
+#[tauri::command]
+fn save_profile_wheel_image(
+    profile_id: Uuid,
+    image_bytes: Vec<u8>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let mut profile = find_profile(&store, profile_id)?;
+    store
+        .save_profile_wheel_image(&mut profile, &image_bytes)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn profile_wheel_image(
+    profile_id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<Option<Vec<u8>>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    store
+        .profile_wheel_image(&profile)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn remove_profile_wheel_image(profile_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let mut profile = find_profile(&store, profile_id)?;
+    store
+        .remove_profile_wheel_image(&mut profile)
+        .map_err(|error| error.to_string())
+}
+
 fn profile_summary(store: &Store, profile: &Profile) -> Result<ProfileSummary, String> {
     let document = store
         .load_profile_document(profile)
@@ -121,6 +165,7 @@ fn profile_summary(store: &Store, profile: &Profile) -> Result<ProfileSummary, S
         hotkey_slot: profile.hotkey_slot,
         binding_count: bindings.len(),
         devices,
+        has_wheel_image: profile.wheel_image.is_some(),
     })
 }
 
@@ -132,7 +177,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             snapshot,
             activate_profile,
-            remove_profile_device
+            remove_profile_device,
+            save_profile_wheel_image,
+            profile_wheel_image,
+            remove_profile_wheel_image
         ])
         .run(tauri::generate_context!())
         .expect("error while running LMUKit");

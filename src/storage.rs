@@ -19,6 +19,8 @@ pub struct Profile {
     pub assignments: Vec<String>,
     #[serde(default)]
     pub hotkey_slot: Option<u8>,
+    #[serde(default)]
+    pub wheel_image: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -226,6 +228,53 @@ impl Store {
             .context("could not save profile metadata")
     }
 
+    pub fn save_profile_wheel_image(&self, profile: &mut Profile, bytes: &[u8]) -> Result<()> {
+        const MAX_IMAGE_SIZE: usize = 8 * 1024 * 1024;
+        if bytes.is_empty() || bytes.len() > MAX_IMAGE_SIZE {
+            bail!("Wheel images must be between 1 byte and 8 MB.");
+        }
+        let extension =
+            image_extension(bytes).context("Wheel images must be PNG, JPEG, or WebP files.")?;
+        if let Some(existing) = &profile.wheel_image {
+            let existing = self.safe_profile_asset_path(profile.id, existing)?;
+            if existing.is_file() {
+                fs::remove_file(existing).context("could not replace the previous wheel image")?;
+            }
+        }
+        let filename = format!("wheel-image.{extension}");
+        fs::write(self.profile_dir(profile.id).join(&filename), bytes)
+            .context("could not save the wheel image")?;
+        profile.wheel_image = Some(filename);
+        self.save_profile_metadata(profile)
+    }
+
+    pub fn profile_wheel_image(&self, profile: &Profile) -> Result<Option<Vec<u8>>> {
+        let Some(filename) = &profile.wheel_image else {
+            return Ok(None);
+        };
+        let path = self.safe_profile_asset_path(profile.id, filename)?;
+        Ok(path.is_file().then(|| fs::read(path)).transpose()?)
+    }
+
+    pub fn remove_profile_wheel_image(&self, profile: &mut Profile) -> Result<()> {
+        if let Some(filename) = profile.wheel_image.take() {
+            let path = self.safe_profile_asset_path(profile.id, &filename)?;
+            if path.is_file() {
+                fs::remove_file(path).context("could not remove the wheel image")?;
+            }
+            self.save_profile_metadata(profile)?;
+        }
+        Ok(())
+    }
+
+    fn safe_profile_asset_path(&self, profile_id: Uuid, filename: &str) -> Result<PathBuf> {
+        let path = Path::new(filename);
+        if path.file_name().and_then(|name| name.to_str()) != Some(filename) {
+            bail!("the profile contains an invalid image filename");
+        }
+        Ok(self.profile_dir(profile_id).join(path))
+    }
+
     pub fn capture(&self, name: &str) -> Result<Profile> {
         let source = &self.settings.lmu_config_path;
         self.store_profile(source, name)
@@ -424,6 +473,7 @@ impl Store {
             created_at: unix_time()?,
             assignments: Vec::new(),
             hotkey_slot: None,
+            wheel_image: None,
         };
         let dir = self.profile_dir(profile.id);
         fs::create_dir_all(&dir)?;
@@ -645,6 +695,18 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     Ok(())
 }
 
+fn image_extension(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("png")
+    } else if bytes.starts_with(b"\xff\xd8\xff") {
+        Some("jpg")
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("webp")
+    } else {
+        None
+    }
+}
+
 fn unix_time() -> Result<u64> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
 }
@@ -856,6 +918,25 @@ mod tests {
         assert!(document["Alternative Input"].get("Pause").is_none());
         assert_eq!(document["Input"]["Brake"]["device"], "Pedals");
         assert_eq!(document["Future LMU Field"]["keep"], true);
+    }
+
+    #[test]
+    fn stores_replaces_and_removes_a_managed_profile_wheel_image() {
+        let temp = tempfile::tempdir().unwrap();
+        let preset = temp.path().join("GT3.json");
+        fs::write(&preset, br#"{"Devices":{},"Input":{}}"#).unwrap();
+        let store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let mut profile = store.import_profile(&preset).unwrap();
+        let png = b"\x89PNG\r\n\x1a\nsynthetic";
+
+        store.save_profile_wheel_image(&mut profile, png).unwrap();
+        assert_eq!(profile.wheel_image.as_deref(), Some("wheel-image.png"));
+        assert_eq!(store.profile_wheel_image(&profile).unwrap().unwrap(), png);
+
+        store.remove_profile_wheel_image(&mut profile).unwrap();
+        assert_eq!(profile.wheel_image, None);
+        assert_eq!(store.profile_wheel_image(&profile).unwrap(), None);
+        assert_eq!(store.profiles().unwrap()[0].wheel_image, None);
     }
 
     #[test]

@@ -22,6 +22,7 @@ The rewrite currently includes the responsive workspace, profile discovery, devi
 - Update an existing profile from LMU's live bindings while backing up its previous version.
 - Browse and edit LMU's `Settings.JSON` with inline descriptions from matching `Option#` fields.
 - Display the active preset separately from the currently selected row.
+- Assign a managed PNG, JPEG, or WebP wheel image to each profile.
 - Browse and search every action stored in a profile.
 - Press a wheel button, move a POV, or turn an axis to compare its mapping across profiles.
 - Open the managed profile directory for manual backup or copying.
