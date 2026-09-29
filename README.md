@@ -3,11 +3,13 @@
 
 # LMUKit
 
-LMUKit is a growing native Windows toolkit for Le Mans Ultimate. It brings useful LMU utilities together in one focused desktop app; profile management and companion-app launching are the first available tools.
+LMUKit is a modern Windows toolkit for Le Mans Ultimate. It brings profiles, control mappings, game settings, and companion tools into one focused race workspace.
 
 <img src="assets/icon/lmukit-256.png" alt="LMUKit icon" width="128">
 
-![LMUKit profile editor showing grouped force-feedback controls](assets/lmukit-editor.png)
+The interface is being rebuilt with Tauri and React. Existing LMUKit profiles, settings, and recovery backups remain compatible; the previous egui application is preserved on the `legacy/egui-v0.2` branch while features move into the new workspace.
+
+The rewrite currently includes the responsive workspace, profile discovery, device and binding summaries, search, and safe profile activation. Binding editing, game-settings editing, imports, hotkeys, and companion setup remain available in the legacy branch and are the next workflows to migrate before the Tauri version replaces the current release.
 
 ## Features
 
@@ -76,11 +78,12 @@ The launcher avoids opening duplicate LMUKit or companion-app processes.
 
 ## Development
 
-The repository uses [mise](https://mise.jdx.dev/) to pin Rust and provide consistent tasks. Development from WSL cross-compiles the Windows application and launches the resulting executable through WSL interoperability.
+The repository uses [mise](https://mise.jdx.dev/) to pin Rust, Node.js, pnpm, and developer commands. The desktop shell is Tauri 2, the interface is React and TypeScript, and compatibility-sensitive filesystem logic lives in the independent `lmukit-core` Rust crate.
 
 ```sh
 mise trust
 mise install
+pnpm install
 mise run dev
 ```
 
@@ -88,17 +91,18 @@ Useful tasks:
 
 | Command | Purpose |
 | --- | --- |
-| `mise run dev` | Build and launch a Windows debug executable from WSL |
-| `mise run build` | Build an optimized Windows executable |
-| `mise run test` | Run native unit tests |
-| `mise run check` | Type-check the native project |
+| `mise run dev` | Launch the Tauri development app |
+| `mise run build` | Build the frontend and Windows desktop bundle |
+| `mise run test` | Run Rust compatibility-layer tests |
+| `mise run check` | Check the Rust workspace |
 | `mise run fmt` | Check Rust formatting |
 | `mise run lint` | Run Clippy with warnings denied |
+| `pnpm build` | Type-check and build the React interface |
 
 Release output is written to:
 
 ```text
-target/x86_64-pc-windows-msvc/release/lmukit.exe
+target/release/lmukit.exe
 ```
 
 Pushing a version tag such as `v0.1.0` runs the Windows release workflow. It creates a GitHub Release containing a versioned x86-64 ZIP and its SHA-256 checksum.
@@ -111,10 +115,11 @@ git push origin v0.1.0
 Before committing a change, run:
 
 ```sh
-cargo fmt --check
-cargo test
-cargo clippy --all-targets --all-features -- -D warnings
-cargo check --target x86_64-pc-windows-msvc
+cargo fmt --all --check
+cargo test -p lmukit-core
+cargo clippy -p lmukit-core --all-targets --all-features -- -D warnings
+pnpm build
+cargo xwin check -p lmukit --target x86_64-pc-windows-msvc
 ```
 
 Set `LMUKIT_DATA_DIR` to an isolated directory when manually testing or capturing screenshots without using your normal profiles and settings.

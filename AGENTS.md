@@ -8,16 +8,16 @@ LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate util
 
 ## Architecture
 
-- `src/main.rs` configures the responsive editor-capable viewport and starts eframe.
-- `src/app.rs` owns egui state, the Profiles, Editor, Game settings, and Settings tabs, interaction flows, dialogs, and status messages.
-- `src/storage.rs` owns LMUKit settings, profile persistence, imports, activation, backups, LMU JSON parsing, `Settings.JSON` persistence, and companion-launcher generation.
-- `src/input.rs` reads Windows raw game-controller state and converts buttons, POVs, and axes to LMU input IDs. Its non-Windows implementation keeps native development and tests working.
-- `src/hotkeys.rs` registers Windows global shortcuts and maps them to compact-switcher and profile-activation actions. Its non-Windows implementation is inert so native checks remain portable.
+- `frontend/` is the React and TypeScript interface. Keep visual components and interaction state here; communicate with Rust through typed Tauri commands.
+- `src-tauri/` owns the Tauri desktop shell and narrow command adapters. It must not duplicate storage rules.
+- `crates/lmukit-core/` exposes compatibility-sensitive Rust behavior independently of the UI runtime.
+- `src/storage.rs` currently backs `lmukit-core` and owns LMUKit settings, profile persistence, imports, activation, backups, LMU JSON parsing, `Settings.JSON` persistence, and companion-launcher generation.
+- `src/input.rs` and `src/hotkeys.rs` contain the existing Windows integrations to migrate behind Tauri commands during the rewrite.
 - `mise.toml` pins tooling and defines the supported developer commands.
 - `.github/workflows/release.yml` builds and publishes the Windows x86-64 archive for `v*` tags.
 - `build.rs` embeds the executable icon and metadata during native Windows builds. It intentionally skips resource compilation for WSL cross-builds, where `rc.exe` is unavailable.
 
-Keep filesystem and parsing behavior in `storage.rs`; keep platform input details in `input.rs`; keep presentation state in `app.rs`.
+Keep filesystem and parsing behavior in `lmukit-core`; keep platform input details in Rust; keep presentation and transient interaction state in React. The previous egui UI is preserved on `legacy/egui-v0.2` and must not be copied into the new frontend component-for-component.
 
 ## Important invariants
 
@@ -68,13 +68,14 @@ Settings track the LMU path, active profile UUID, and companion applications. Ti
 Run all of these before handing off a code change:
 
 ```sh
-cargo fmt --check
-cargo test
-cargo clippy --all-targets --all-features -- -D warnings
-cargo check --target x86_64-pc-windows-msvc
+cargo fmt --all --check
+cargo test -p lmukit-core
+cargo clippy -p lmukit-core --all-targets --all-features -- -D warnings
+pnpm build
+cargo xwin check -p lmukit --target x86_64-pc-windows-msvc
 ```
 
-Use `mise run dev` to cross-compile and launch the Windows debug executable from WSL. Use `mise run build` for a release executable.
+Use `mise run dev` for Tauri development and `mise run build` for a release bundle. WSL cross-checks the Windows backend with `cargo xwin`; native Windows builds embed resources and produce the distributable.
 
 ## Change discipline
 
