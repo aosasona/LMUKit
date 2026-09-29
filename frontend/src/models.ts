@@ -17,6 +17,12 @@ export type Binding = {
   alternate: boolean;
 };
 
+export type BindingLookup = {
+  control: string;
+  inputId: number;
+  matches: { profileName: string; action: string; alternate: boolean }[];
+};
+
 export type Snapshot = {
   profiles: Profile[];
   activeProfile: string | null;

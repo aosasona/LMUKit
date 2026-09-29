@@ -9,7 +9,7 @@ LMUKit is a modern Windows toolkit for Le Mans Ultimate. It brings profiles, con
 
 The interface is being rebuilt with Tauri and React. Existing LMUKit profiles, settings, and recovery backups remain compatible; the previous egui application is preserved on the `legacy/egui-v0.2` branch while features move into the new workspace.
 
-The rewrite currently includes the responsive workspace, profile discovery, validated preset import and drag/drop, live-binding capture and update, profile deletion and folder reveal, device and binding summaries, search, and safe profile activation. Binding editing, game-settings editing, global hotkeys, and companion setup remain available in the legacy branch and are the next workflows to migrate before the Tauri version replaces the current release.
+The rewrite currently includes the responsive workspace, profile discovery, validated preset import and drag/drop, live-binding capture and update, profile deletion and folder reveal, device-grouped binding browsing, live wheel-control lookup across profiles, search, and safe profile activation. Binding remapping, game-settings editing, global hotkeys, and companion setup remain available in the legacy branch and are the next workflows to migrate before the Tauri version replaces the current release.
 
 ## Features
 

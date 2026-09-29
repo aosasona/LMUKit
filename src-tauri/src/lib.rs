@@ -4,6 +4,9 @@ use std::sync::Mutex;
 use tauri::State;
 use uuid::Uuid;
 
+#[path = "../../src/input.rs"]
+mod input;
+
 struct AppState(Mutex<Store>);
 
 #[derive(Serialize)]
@@ -42,6 +45,22 @@ struct BindingSummary {
     device_key: String,
     device_name: String,
     input_id: u64,
+    alternate: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BindingLookupResult {
+    control: String,
+    input_id: u64,
+    matches: Vec<BindingLookupMatch>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BindingLookupMatch {
+    profile_name: String,
+    action: String,
     alternate: bool,
 }
 
@@ -242,6 +261,52 @@ fn clear_profile_binding(
     Ok(())
 }
 
+#[tauri::command]
+async fn find_binding_matches(state: State<'_, AppState>) -> Result<BindingLookupResult, String> {
+    let pressed = tauri::async_runtime::spawn_blocking(|| {
+        std::thread::spawn(detect_controller_input)
+            .join()
+            .map_err(|_| "The controller input worker stopped unexpectedly.".to_owned())?
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profiles = store.profiles().map_err(|error| error.to_string())?;
+    let matches = store
+        .binding_matches(
+            &profiles,
+            pressed.vendor_id,
+            pressed.product_id,
+            pressed.input_id,
+        )
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|binding| BindingLookupMatch {
+            profile_name: binding.profile_name,
+            action: binding.action,
+            alternate: binding.alternate,
+        })
+        .collect();
+    Ok(BindingLookupResult {
+        control: pressed.control,
+        input_id: pressed.input_id,
+        matches,
+    })
+}
+
+fn detect_controller_input() -> Result<input::PressedInput, String> {
+    let mut listener = input::InputListener::new()?;
+    let started = std::time::Instant::now();
+    while started.elapsed() < std::time::Duration::from_secs(30) {
+        if let Some(pressed) = listener.poll()? {
+            return Ok(pressed);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(16));
+    }
+    Err("No controller input was detected within 30 seconds.".to_owned())
+}
+
 #[cfg(target_os = "windows")]
 fn reveal_directory(path: &std::path::Path) -> Result<(), String> {
     std::process::Command::new("explorer.exe")
@@ -315,7 +380,8 @@ pub fn run() {
             delete_profile,
             reveal_profiles,
             profile_bindings,
-            clear_profile_binding
+            clear_profile_binding,
+            find_binding_matches
         ])
         .run(tauri::generate_context!())
         .expect("error while running LMUKit");

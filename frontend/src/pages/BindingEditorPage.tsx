@@ -1,6 +1,13 @@
-import { Gamepad2, Search, SlidersHorizontal, Trash2 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import {
+  Crosshair,
+  Gamepad2,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 import { useState } from "react";
-import type { Binding, Profile } from "../models";
+import type { Binding, BindingLookup, Profile } from "../models";
 
 export function BindingEditorPage({
   profile,
@@ -14,6 +21,22 @@ export function BindingEditorPage({
   onClear: (profile: Profile, binding: Binding) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [lookup, setLookup] = useState<BindingLookup | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [listening, setListening] = useState(false);
+
+  async function findControl() {
+    setListening(true);
+    setLookup(null);
+    setLookupError(null);
+    try {
+      setLookup(await invoke<BindingLookup>("find_binding_matches"));
+    } catch (error) {
+      setLookupError(String(error));
+    } finally {
+      setListening(false);
+    }
+  }
   const filtered = bindings.filter((binding) =>
     `${binding.action} ${binding.deviceName} ${controlLabel(binding.inputId)}`
       .toLowerCase()
@@ -40,13 +63,23 @@ export function BindingEditorPage({
           <span className="eyebrow">Editing profile</span>
           <h2>{profile.name}</h2>
         </div>
-        <div className="search-box">
-          <Search />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search actions or devices"
-          />
+        <div className="binding-toolbar-actions">
+          <button
+            className={listening ? "primary listening" : "primary"}
+            disabled={listening}
+            onClick={() => void findControl()}
+          >
+            <Crosshair />
+            {listening ? "Press or turn a control…" : "Find a wheel control"}
+          </button>
+          <div className="search-box">
+            <Search />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search actions or devices"
+            />
+          </div>
         </div>
       </div>
       <div className="binding-summary">
@@ -100,6 +133,47 @@ export function BindingEditorPage({
           <strong>No matching bindings</strong>
           <span>Try another action or device name.</span>
         </div>
+      )}
+      {(listening || lookup || lookupError) && (
+        <aside className="lookup-dock">
+          <div className="lookup-control">
+            <Crosshair />
+            <div>
+              <span>
+                {listening
+                  ? "Listening for input"
+                  : lookupError
+                    ? "Input lookup failed"
+                    : "Detected control"}
+              </span>
+              <strong>
+                {listening
+                  ? "Press a button, move a POV, or turn an axis"
+                  : (lookupError ??
+                    `${lookup?.control} · ID ${lookup?.inputId}`)}
+              </strong>
+            </div>
+          </div>
+          {lookup && (
+            <div className="lookup-matches">
+              {lookup.matches.length ? (
+                lookup.matches.map((match, index) => (
+                  <div key={`${match.profileName}-${match.action}-${index}`}>
+                    <strong>{match.profileName}</strong>
+                    <span>
+                      {match.action}
+                      {match.alternate ? " · alternate" : ""}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <span className="no-match">
+                  This control is not bound in any saved profile.
+                </span>
+              )}
+            </div>
+          )}
+        </aside>
       )}
     </section>
   );

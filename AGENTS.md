@@ -14,7 +14,7 @@ LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate util
 - `src-tauri/` owns the Tauri desktop shell and narrow command adapters. It must not duplicate storage rules.
 - `crates/lmukit-core/` exposes compatibility-sensitive Rust behavior independently of the UI runtime.
 - `src/storage.rs` currently backs `lmukit-core` and owns LMUKit settings, profile persistence, imports, activation, backups, LMU JSON parsing, `Settings.JSON` persistence, and companion-launcher generation.
-- `src/input.rs` and `src/hotkeys.rs` contain the existing Windows integrations to migrate behind Tauri commands during the rewrite.
+- `src/input.rs` reads Windows raw controller state for Tauri's binding lookup. Initialize each listener on its own fresh OS thread so WinRT apartment mode cannot conflict with the webview thread. `src/hotkeys.rs` contains the remaining global-hotkey integration to migrate.
 - `mise.toml` pins tooling and defines the supported developer commands.
 - `.github/workflows/release.yml` builds and publishes the Windows x86-64 archive for `v*` tags.
 - `build.rs` embeds the executable icon and metadata during native Windows builds. It intentionally skips resource compilation for WSL cross-builds, where `rc.exe` is unavailable.
