@@ -2,11 +2,12 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   Crosshair,
   Gamepad2,
+  Plus,
   Search,
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   Binding,
   BindingAssignmentCandidate,
@@ -15,6 +16,7 @@ import type {
 } from "../models";
 import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
+import { AddBindingDialog } from "../components/AddBindingDialog";
 
 export function BindingEditorPage({
   profile,
@@ -43,7 +45,16 @@ export function BindingEditorPage({
     alternate: boolean;
   } | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  const [showAddBinding, setShowAddBinding] = useState(false);
+  const [actionCatalogue, setActionCatalogue] = useState<string[]>([]);
   const cancelRequested = useRef(false);
+
+  useEffect(() => {
+    if (!profile) return;
+    void invoke<string[]>("binding_action_catalogue")
+      .then(setActionCatalogue)
+      .catch((error) => setLookupError(String(error)));
+  }, [profile?.id]);
 
   async function findControl() {
     if (listening || busy) return;
@@ -131,6 +142,13 @@ export function BindingEditorPage({
           <h2>{profile.name}</h2>
         </div>
         <div className="binding-toolbar-actions">
+          <button
+            className="secondary"
+            disabled={busy || listening}
+            onClick={() => setShowAddBinding(true)}
+          >
+            <Plus /> Add binding
+          </button>
           {listening ? (
             <button
               className="secondary cancel-listening"
@@ -300,6 +318,16 @@ export function BindingEditorPage({
         busy={busy}
         onClose={() => setConfirmation(null)}
       />
+      {showAddBinding && (
+        <AddBindingDialog
+          actions={actionCatalogue}
+          onClose={() => setShowAddBinding(false)}
+          onChoose={(action, alternate) => {
+            setShowAddBinding(false);
+            void listenForAssignment(action, alternate);
+          }}
+        />
+      )}
     </section>
   );
 }

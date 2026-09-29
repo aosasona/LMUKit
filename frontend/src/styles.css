@@ -1929,6 +1929,90 @@ footer {
   background: #191918;
   box-shadow: 0 25px 70px rgba(0, 0, 0, 0.65);
 }
+.add-binding-dialog {
+  position: relative;
+  width: min(520px, 100%);
+  padding: 25px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #121211;
+  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.65);
+}
+.add-binding-dialog h2 {
+  margin: 7px 34px 8px 0;
+  font-size: 20px;
+}
+.add-binding-dialog > p {
+  margin: 0 0 17px;
+  color: #8b9690;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.binding-action-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  background: #0d0d0c;
+}
+.binding-action-search svg {
+  width: 16px;
+  color: #718078;
+}
+.binding-action-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+}
+.binding-action-results {
+  max-height: 210px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-top: 0;
+  background: #151514;
+}
+.binding-action-results button {
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: transparent;
+  color: #cbd4cf;
+  text-align: left;
+  cursor: pointer;
+}
+.binding-action-results button:hover {
+  background: #23251d;
+  color: var(--lime);
+}
+.binding-slot-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-top: 15px;
+}
+.binding-slot-choice button {
+  height: 38px;
+  border: 1px solid var(--line);
+  background: #171716;
+  color: #8b9690;
+  cursor: pointer;
+}
+.binding-slot-choice button.selected {
+  border-color: rgba(198, 243, 107, 0.35);
+  background: #22251c;
+  color: var(--lime);
+}
+.add-binding-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+  padding: 0;
+  border: 0;
+}
 .confirm-dialog h2 {
   margin: 7px 34px 8px 0;
   font-size: 20px;
