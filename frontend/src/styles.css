@@ -631,7 +631,7 @@ main {
   max-width: 1180px;
   margin: auto;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 .category-browser {
   padding: 13px 18px;
@@ -688,12 +688,18 @@ main {
   top: calc(100% + 5px);
   left: 0;
   min-width: 240px;
-  max-height: 260px;
+  max-height: min(260px, var(--dropdown-space, 260px));
   padding: 6px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   border: 1px solid rgba(255, 255, 255, 0.13);
   background: #181817;
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+}
+.search-select details.drop-up > div {
+  top: auto;
+  bottom: calc(100% + 5px);
 }
 .search-select-input {
   height: 35px;
@@ -1144,10 +1150,17 @@ img.profile-card-icon {
   left: 0;
   right: 0;
   min-width: 210px;
+  max-height: min(250px, var(--dropdown-space, 250px));
+  display: flex;
+  flex-direction: column;
   padding: 7px;
   border: 1px solid rgba(255, 255, 255, 0.13);
   background: #181817;
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+}
+.tag-picker details.drop-up .tag-picker-menu {
+  top: auto;
+  bottom: calc(100% + 5px);
 }
 .tag-picker-search {
   height: 36px;
@@ -1169,9 +1182,12 @@ img.profile-card-icon {
   font-size: 13px;
 }
 .tag-picker-options {
+  min-height: 0;
   max-height: 190px;
   margin-top: 6px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 .tag-picker-options button {
   width: 100%;

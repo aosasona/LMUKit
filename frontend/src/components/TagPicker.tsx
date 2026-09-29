@@ -1,5 +1,6 @@
 import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { positionDropdown } from "../lib/dropdown";
 
 export function TagPicker({
   label,
@@ -43,7 +44,7 @@ export function TagPicker({
   return (
     <label className="tag-picker">
       <span>{label}</span>
-      <details>
+      <details onToggle={(event) => positionDropdown(event.currentTarget, 250)}>
         <summary>
           <span
             className={

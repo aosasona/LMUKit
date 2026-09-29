@@ -1,5 +1,6 @@
 import { Check, ChevronDown, Search } from "lucide-react";
 import { useRef, useState } from "react";
+import { positionDropdown } from "../lib/dropdown";
 
 export function SearchSelect({
   label,
@@ -27,7 +28,10 @@ export function SearchSelect({
   return (
     <label className="search-select">
       <span>{label}</span>
-      <details ref={details}>
+      <details
+        ref={details}
+        onToggle={(event) => positionDropdown(event.currentTarget, 260)}
+      >
         <summary>
           <span>{value ?? allLabel}</span>
           <ChevronDown />
