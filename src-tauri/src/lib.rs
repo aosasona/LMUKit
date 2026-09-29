@@ -35,6 +35,16 @@ struct DeviceSummary {
     binding_count: usize,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BindingSummary {
+    action: String,
+    device_key: String,
+    device_name: String,
+    input_id: u64,
+    alternate: bool,
+}
+
 #[tauri::command]
 fn snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
@@ -182,6 +192,56 @@ fn reveal_profiles(state: State<'_, AppState>) -> Result<(), String> {
     reveal_directory(&store.profiles_dir())
 }
 
+#[tauri::command]
+fn profile_bindings(
+    profile_id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<Vec<BindingSummary>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    let document = store
+        .load_profile_document(&profile)
+        .map_err(|error| error.to_string())?;
+    Ok(Store::bindings_from_document(&document)
+        .into_iter()
+        .map(|binding| {
+            let device_name = document
+                .get("Devices")
+                .and_then(|devices| devices.get(&binding.device))
+                .and_then(|device| device.get("name"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(&binding.device)
+                .to_owned();
+            BindingSummary {
+                action: binding.action,
+                device_key: binding.device,
+                device_name,
+                input_id: binding.input_id,
+                alternate: binding.alternate,
+            }
+        })
+        .collect())
+}
+
+#[tauri::command]
+fn clear_profile_binding(
+    profile_id: Uuid,
+    action: String,
+    alternate: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    let mut document = store
+        .load_profile_document(&profile)
+        .map_err(|error| error.to_string())?;
+    Store::clear_binding(&mut document, &action, alternate).map_err(|error| error.to_string())?;
+    store
+        .save_profile_document(&profile, &document)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
 fn reveal_directory(path: &std::path::Path) -> Result<(), String> {
     std::process::Command::new("explorer.exe")
@@ -253,7 +313,9 @@ pub fn run() {
             import_profile,
             update_profile,
             delete_profile,
-            reveal_profiles
+            reveal_profiles,
+            profile_bindings,
+            clear_profile_binding
         ])
         .run(tauri::generate_context!())
         .expect("error while running LMUKit");

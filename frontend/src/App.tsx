@@ -39,6 +39,14 @@ type Device = {
   bindingCount: number;
 };
 
+type Binding = {
+  action: string;
+  deviceKey: string;
+  deviceName: string;
+  inputId: number;
+  alternate: boolean;
+};
+
 type Snapshot = {
   profiles: Profile[];
   activeProfile: string | null;
@@ -73,6 +81,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("Ready");
   const [wheelImageUrl, setWheelImageUrl] = useState<string | null>(null);
+  const [bindings, setBindings] = useState<Binding[]>([]);
 
   async function refresh() {
     try {
@@ -117,6 +126,22 @@ export default function App() {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [selected?.id, selected?.hasWheelImage]);
+
+  async function loadBindings(profile = selected) {
+    if (!profile) {
+      setBindings([]);
+      return;
+    }
+    try {
+      setBindings(await invoke<Binding[]>("profile_bindings", { profileId: profile.id }));
+    } catch (error) {
+      setNotice(String(error));
+    }
+  }
+
+  useEffect(() => {
+    if (page === "bindings") void loadBindings();
+  }, [page, selected?.id]);
 
   async function activate(profile: Profile) {
     setBusy(true);
@@ -244,6 +269,19 @@ export default function App() {
     }
   }
 
+  async function clearBinding(profile: Profile, binding: Binding) {
+    setBusy(true);
+    try {
+      await invoke("clear_profile_binding", { profileId: profile.id, action: binding.action, alternate: binding.alternate });
+      await Promise.all([refresh(), loadBindings(profile)]);
+      setNotice(`${binding.alternate ? "Alternate " : ""}${binding.action} binding cleared. A backup was created.`);
+    } catch (error) {
+      setNotice(String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function windowAction(action: () => Promise<void>) {
     void action().catch((error) => setNotice(`Window action failed: ${String(error)}`));
   }
@@ -302,7 +340,8 @@ export default function App() {
         <div className="content">
           {page === "home" && <Overview active={active} selected={selected} wheelImageUrl={wheelImageUrl} profiles={snapshot.profiles} onOpenProfiles={() => setPage("profiles")} onActivate={activate} busy={busy} />}
           {page === "profiles" && <Profiles profiles={filtered} selected={selected} wheelImageUrl={wheelImageUrl} activeId={snapshot.activeProfile} activeDirty={snapshot.activeProfileDirty} selectedId={selectedId} query={query} setQuery={setQuery} setSelectedId={setSelectedId} onActivate={activate} onImport={importPreset} onCapture={captureProfile} onUpdate={updateProfile} onDelete={deleteProfile} onReveal={revealProfiles} onRemoveDevice={removeDevice} onSaveWheelImage={saveWheelImage} onRemoveWheelImage={removeWheelImage} busy={busy} />}
-          {page !== "home" && page !== "profiles" && <ComingSoon page={page} selected={selected} />}
+          {page === "bindings" && <BindingEditor profile={selected} bindings={bindings} busy={busy} onClear={clearBinding} />}
+          {page !== "home" && page !== "profiles" && page !== "bindings" && <ComingSoon page={page} selected={selected} />}
         </div>
 
         <footer><span className="status-dot" />{notice}<span className="footer-rule" /><span>Changes are backed up automatically</span></footer>
@@ -376,6 +415,30 @@ function Profiles({ profiles, selected, wheelImageUrl, activeId, activeDirty, se
       <p className="device-note">Removing a device also removes all of its bindings.</p><div className="device-list">{selected.devices.map((device) => <div className="device-row" key={device.key}><span className="device-thumb"><Gamepad2 /></span><div><strong>{device.name}</strong><small>{device.bindingCount} binding{device.bindingCount === 1 ? "" : "s"} · {device.key}</small></div>{confirmDevice === device.key ? <div className="confirm-remove"><span>Remove?</span><button className="danger" disabled={busy} onClick={() => void onRemoveDevice(selected, device)}>Yes, remove</button><button className="secondary compact" onClick={() => setConfirmDevice(null)}>Cancel</button></div> : <button className="remove-device" aria-label={`Remove ${device.name}`} onClick={() => setConfirmDevice(device.key)}><Trash2 /> Remove</button>}</div>)}{!selected.devices.length && <div className="empty">This profile has no registered devices.</div>}</div>
     </div>}
   </section>;
+}
+
+function BindingEditor({ profile, bindings, busy, onClear }: { profile?: Profile; bindings: Binding[]; busy: boolean; onClear: (profile: Profile, binding: Binding) => void }) {
+  const [query, setQuery] = useState("");
+  const filtered = bindings.filter((binding) => `${binding.action} ${binding.deviceName} ${controlLabel(binding.inputId)}`.toLowerCase().includes(query.toLowerCase()));
+  const groups = filtered.reduce<Map<string, Binding[]>>((result, binding) => {
+    const entries = result.get(binding.deviceName) ?? [];
+    entries.push(binding);
+    result.set(binding.deviceName, entries);
+    return result;
+  }, new Map());
+  if (!profile) return <section className="empty large"><SlidersHorizontal /><strong>Select a profile first</strong><span>The binding editor works on your selected saved profile.</span></section>;
+  return <section className="binding-editor">
+    <div className="binding-toolbar"><div><span className="eyebrow">Editing profile</span><h2>{profile.name}</h2></div><div className="search-box"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search actions or devices" /></div></div>
+    <div className="binding-summary"><span>{bindings.length} mapped controls</span><span>{groups.size} devices shown</span><span>Every change creates a recovery backup</span></div>
+    <div className="binding-groups">{Array.from(groups.entries()).map(([device, entries]) => <section className="binding-device" key={device}><header><div className="device-thumb"><Gamepad2 /></div><div><span className="eyebrow">Input device</span><h3>{device}</h3></div><em>{entries.length} bindings</em></header><div className="binding-list">{entries.map((binding) => <div className="binding-row" key={`${binding.action}-${binding.alternate}`}><div><strong>{binding.action}</strong>{binding.alternate && <small>Alternate binding</small>}</div><span className="control-pill">{controlLabel(binding.inputId)}</span><code>ID {binding.inputId}</code><button disabled={busy} aria-label={`Clear ${binding.action}`} onClick={() => void onClear(profile, binding)}><Trash2 /> Clear</button></div>)}</div></section>)}</div>
+    {!filtered.length && <div className="empty large"><Search /><strong>No matching bindings</strong><span>Try another action or device name.</span></div>}
+  </section>;
+}
+
+function controlLabel(inputId: number) {
+  if (inputId >= 32) return `Button ${inputId - 31}`;
+  if (inputId >= 16) return `POV direction ${inputId - 15}`;
+  return `Axis ${Math.floor(inputId / 2) + 1} ${inputId % 2 === 0 ? "+" : "−"}`;
 }
 
 function ComingSoon({ page, selected }: { page: Page; selected?: Profile }) {
