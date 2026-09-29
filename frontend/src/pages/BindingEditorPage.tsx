@@ -5,8 +5,9 @@ import {
   Search,
   SlidersHorizontal,
   Trash2,
+  X,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Binding, BindingLookup, Profile } from "../models";
 
 export function BindingEditorPage({
@@ -24,18 +25,25 @@ export function BindingEditorPage({
   const [lookup, setLookup] = useState<BindingLookup | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
+  const cancelRequested = useRef(false);
 
   async function findControl() {
     setListening(true);
     setLookup(null);
     setLookupError(null);
+    cancelRequested.current = false;
     try {
       setLookup(await invoke<BindingLookup>("find_binding_matches"));
     } catch (error) {
-      setLookupError(String(error));
+      if (!cancelRequested.current) setLookupError(String(error));
     } finally {
       setListening(false);
     }
+  }
+
+  async function cancelLookup() {
+    cancelRequested.current = true;
+    await invoke("cancel_binding_lookup");
   }
   const filtered = bindings.filter((binding) =>
     `${binding.action} ${binding.deviceName} ${controlLabel(binding.inputId)}`
@@ -64,14 +72,18 @@ export function BindingEditorPage({
           <h2>{profile.name}</h2>
         </div>
         <div className="binding-toolbar-actions">
-          <button
-            className={listening ? "primary listening" : "primary"}
-            disabled={listening}
-            onClick={() => void findControl()}
-          >
-            <Crosshair />
-            {listening ? "Press or turn a control…" : "Find a wheel control"}
-          </button>
+          {listening ? (
+            <button
+              className="secondary cancel-listening"
+              onClick={() => void cancelLookup()}
+            >
+              <X /> Cancel lookup
+            </button>
+          ) : (
+            <button className="primary" onClick={() => void findControl()}>
+              <Crosshair /> Find a wheel control
+            </button>
+          )}
           <div className="search-box">
             <Search />
             <input

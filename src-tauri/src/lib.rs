@@ -1,6 +1,7 @@
 use lmukit_core::storage::{Profile, Store};
 use serde::Serialize;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::State;
 use uuid::Uuid;
 
@@ -8,6 +9,8 @@ use uuid::Uuid;
 mod input;
 
 struct AppState(Mutex<Store>);
+
+static LOOKUP_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -278,8 +281,9 @@ fn set_profile_categories(
 
 #[tauri::command]
 async fn find_binding_matches(state: State<'_, AppState>) -> Result<BindingLookupResult, String> {
-    let pressed = tauri::async_runtime::spawn_blocking(|| {
-        std::thread::spawn(detect_controller_input)
+    let generation = LOOKUP_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let pressed = tauri::async_runtime::spawn_blocking(move || {
+        std::thread::spawn(move || detect_controller_input(generation))
             .join()
             .map_err(|_| "The controller input worker stopped unexpectedly.".to_owned())?
     })
@@ -310,10 +314,18 @@ async fn find_binding_matches(state: State<'_, AppState>) -> Result<BindingLooku
     })
 }
 
-fn detect_controller_input() -> Result<input::PressedInput, String> {
+#[tauri::command]
+fn cancel_binding_lookup() {
+    LOOKUP_GENERATION.fetch_add(1, Ordering::SeqCst);
+}
+
+fn detect_controller_input(generation: u64) -> Result<input::PressedInput, String> {
     let mut listener = input::InputListener::new()?;
     let started = std::time::Instant::now();
     while started.elapsed() < std::time::Duration::from_secs(30) {
+        if LOOKUP_GENERATION.load(Ordering::SeqCst) != generation {
+            return Err("Binding lookup cancelled.".to_owned());
+        }
         if let Some(pressed) = listener.poll()? {
             return Ok(pressed);
         }
@@ -399,7 +411,8 @@ pub fn run() {
             profile_bindings,
             clear_profile_binding,
             set_profile_categories,
-            find_binding_matches
+            find_binding_matches,
+            cancel_binding_lookup
         ])
         .run(tauri::generate_context!())
         .expect("error while running LMUKit");

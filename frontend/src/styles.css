@@ -1343,6 +1343,94 @@ main {
     box-shadow: 0 0 22px rgba(198, 243, 107, 0.2);
   }
 }
+
+/* Readable desktop type scale. */
+.brand strong {
+  font-size: 19px;
+}
+.brand small,
+.game-state strong,
+.nav-item,
+.ghost,
+.primary,
+.secondary {
+  font-size: 12px;
+}
+.game-state small,
+.keyboard-hint,
+.eyebrow,
+.nav-label,
+.chip,
+.text-button,
+.profile-card header small,
+.profile-card-meta,
+.profile-tags span,
+.category-browser button,
+.category-browser span,
+.tag-field > span,
+.tag-list button,
+.tag-entry input,
+.tag-entry button,
+.device-note,
+.migration-note,
+.binding-summary span,
+.binding-device header em,
+.control-pill,
+.binding-row code,
+.binding-row button,
+.lookup-matches strong,
+.lookup-matches span,
+.lookup-matches .no-match {
+  font-size: 10px;
+}
+.topbar h1 {
+  font-size: 28px;
+}
+.hero-copy p,
+.focus-placeholder p {
+  font-size: 13px;
+}
+.section-head h3,
+.device-manager-head h3 {
+  font-size: 16px;
+}
+.profile-card header strong,
+.device-row strong,
+.profile-main strong,
+.mini-profile strong,
+.binding-device h3,
+.category-editor h4 {
+  font-size: 12px;
+}
+.profile-main small,
+.mini-profile small,
+.device-row small,
+.quick-actions strong,
+.quick-actions small,
+.search-box input,
+.capture-box input,
+.capture-box button {
+  font-size: 10px;
+}
+.binding-row strong {
+  font-size: 12px;
+}
+.binding-row small {
+  font-size: 9px;
+}
+.lookup-control span {
+  font-size: 9px;
+}
+.lookup-control strong {
+  font-size: 12px;
+}
+footer {
+  font-size: 11px;
+}
+.cancel-listening {
+  border-color: rgba(244, 211, 94, 0.3);
+  color: #ead479;
+}
 footer {
   border-top: 1px solid var(--line);
   padding: 9px 32px;
