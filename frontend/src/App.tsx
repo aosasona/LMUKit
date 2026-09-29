@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
 import type {
@@ -29,6 +29,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("Ready");
   const [wheelImageUrl, setWheelImageUrl] = useState<string | null>(null);
   const [wheelImageRevision, setWheelImageRevision] = useState(0);
@@ -58,21 +59,6 @@ export default function App() {
       return;
     setPage(next);
   };
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return snapshot.profiles.filter((profile) =>
-      [profile.name, ...profile.wheelTags, ...profile.classTags]
-        .concat(
-          profile.wheelBrand ?? "",
-          profile.wheelName ?? "",
-          ...profile.customTags,
-        )
-        .join(" ")
-        .toLowerCase()
-        .includes(needle),
-    );
-  }, [query, snapshot.profiles]);
-
   async function refresh() {
     try {
       const next = await invoke<Snapshot>("snapshot");
@@ -84,6 +70,8 @@ export default function App() {
       );
     } catch (error) {
       setNotice(String(error));
+    } finally {
+      setLoading(false);
     }
   }
   useEffect(() => {
@@ -229,17 +217,24 @@ export default function App() {
     });
   const saveCategories = (
     profile: Profile,
+    profileName: string,
     classTags: string[],
     customTags: string[],
   ) =>
     withBusy(async () => {
+      if (profileName.trim() !== profile.name) {
+        await invoke("rename_profile", {
+          profileId: profile.id,
+          name: profileName,
+        });
+      }
       await invoke("set_profile_categories", {
         profileId: profile.id,
         classTags,
         customTags,
       });
       await refresh();
-      setNotice(`Categories updated for ${profile.name}.`);
+      setNotice(`${profileName.trim()} details updated.`);
     });
   const createWheel = (profile: Profile, brand: string, name: string) =>
     withBusy(async () => {
@@ -466,6 +461,7 @@ export default function App() {
             {page === "home" && (
               <OverviewPage
                 active={active}
+                activeDirty={snapshot.activeProfileDirty}
                 selected={selected}
                 wheelImageUrl={wheelImageUrl}
                 wheelImageRevision={wheelImageRevision}
@@ -478,7 +474,7 @@ export default function App() {
             )}
             {page === "profiles" && (
               <ProfilesPage
-                profiles={filtered}
+                profiles={snapshot.profiles}
                 wheels={snapshot.wheels}
                 selected={selected}
                 wheelImageUrl={wheelImageUrl}
@@ -488,6 +484,7 @@ export default function App() {
                 selectedId={selectedId}
                 query={query}
                 busy={busy}
+                loading={loading}
                 setQuery={setQuery}
                 setSelectedId={setSelectedId}
                 onActivate={activate}

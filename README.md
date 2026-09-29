@@ -24,6 +24,7 @@ The rewrite currently includes the responsive workspace, reusable wheel library,
 - Display the active preset separately from the currently selected row.
 - Create and manage reusable wheels with a brand, model, and managed PNG, JPEG, or WebP image, then assign the same wheel to multiple profiles. Linked profiles display the shared wheel image throughout the workspace.
 - Select any combination of built-in WEC/ELMS classes and optional custom tags per profile before browsing them in a filterable card grid.
+- Rename profiles in place and narrow the garage with searchable wheel and class filters. Active profiles clearly indicate when LMU's live bindings have diverged.
 - Adjust the application-wide text scale from the Settings tab; the preference is saved between launches.
 - Browse and search every action stored in a profile.
 - Press a wheel button, move a POV, or turn an axis to compare its mapping across profiles.

@@ -10,6 +10,7 @@ import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
 import { TagPicker } from "../components/TagPicker";
 import { WheelImage } from "../components/WheelImage";
+import { SearchSelect } from "../components/SearchSelect";
 import type { Device, Profile, Wheel } from "../models";
 
 const DEFAULT_CLASSES = ["GT3", "GTE", "LMP3", "LMP2", "HY"] as const;
@@ -35,6 +36,7 @@ type Props = {
   selectedId: string | null;
   query: string;
   busy: boolean;
+  loading: boolean;
   setQuery: (value: string) => void;
   setSelectedId: (value: string) => void;
   onActivate: (profile: Profile) => void;
@@ -48,6 +50,7 @@ type Props = {
   onRemoveWheelImage: (profile: Profile) => void;
   onSaveCategories: (
     profile: Profile,
+    profileName: string,
     classTags: string[],
     customTags: string[],
   ) => void;
@@ -67,6 +70,7 @@ export function ProfilesPage(props: Props) {
     selectedId,
     query,
     busy,
+    loading,
     setQuery,
     setSelectedId,
     onActivate,
@@ -98,6 +102,17 @@ export function ProfilesPage(props: Props) {
   ).sort();
   const visibleProfiles = profiles.filter(
     (profile) =>
+      [
+        profile.name,
+        profile.wheelBrand,
+        profile.wheelName,
+        ...profile.classTags,
+        ...profile.customTags,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(query.trim().toLowerCase()) &&
       (!wheelFilter || wheelLabel(profile) === wheelFilter) &&
       (!classFilter || profile.classTags.includes(classFilter)),
   );
@@ -158,45 +173,25 @@ export function ProfilesPage(props: Props) {
       </div>
       {(wheelOptions.length > 0 || classTags.length > 0) && (
         <div className="category-browser">
-          <div>
-            <span>Wheel</span>
-            <button
-              className={!wheelFilter ? "active" : ""}
-              onClick={() => setWheelFilter(null)}
-            >
-              All
-            </button>
-            {wheelOptions.map((tag) => (
-              <button
-                className={wheelFilter === tag ? "active" : ""}
-                key={tag}
-                onClick={() => setWheelFilter(tag)}
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
-          <div>
-            <span>Class</span>
-            <button
-              className={!classFilter ? "active" : ""}
-              onClick={() => setClassFilter(null)}
-            >
-              All
-            </button>
-            {classTags.map((tag) => (
-              <button
-                className={classFilter === tag ? "active" : ""}
-                key={tag}
-                onClick={() => setClassFilter(tag)}
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
+          <SearchSelect
+            label="Wheel"
+            value={wheelFilter}
+            options={wheelOptions}
+            onChange={setWheelFilter}
+          />
+          <SearchSelect
+            label="Class"
+            value={classFilter}
+            options={classTags}
+            onChange={setClassFilter}
+          />
         </div>
       )}
       <div className="profile-grid">
+        {loading &&
+          Array.from({ length: 6 }, (_, index) => (
+            <div className="profile-card skeleton" key={index} />
+          ))}
         {visibleProfiles.map((profile) => (
           <article
             className={
@@ -228,7 +223,13 @@ export function ProfilesPage(props: Props) {
                 </small>
               </div>
               {profile.id === activeId && (
-                <span className="active-badge">Active</span>
+                <span
+                  className={
+                    activeDirty ? "active-badge dirty" : "active-badge"
+                  }
+                >
+                  {activeDirty ? "Changed" : "Active"}
+                </span>
               )}
             </header>
             <div className="profile-tags">
@@ -272,13 +273,16 @@ export function ProfilesPage(props: Props) {
           </article>
         ))}
       </div>
-      {!visibleProfiles.length && (
+      {!loading && !visibleProfiles.length && (
         <div className="empty large">
           <Gamepad2 />
-          <strong>No profiles found</strong>
+          <strong>
+            {profiles.length ? "No matching profiles" : "Your garage is empty"}
+          </strong>
           <span>
-            Drop a preset here, import one, or capture your current LMU
-            bindings. Adjust the category filters if profiles are hidden.
+            {profiles.length
+              ? "Clear the search or adjust the wheel and class filters."
+              : "Drop a preset here, import one, or capture your current LMU bindings."}
           </span>
         </div>
       )}
@@ -380,6 +384,13 @@ export function ProfilesPage(props: Props) {
               </span>
             )}
           </div>
+          {selected.id === activeId && activeDirty && (
+            <div className="profile-dirty-notice">
+              LMU's live bindings differ from this saved profile. Use the
+              actions menu to update the saved copy, or activate it again to
+              restore the saved bindings.
+            </div>
+          )}
           <CategoryEditor
             key={selected.id}
             profile={selected}
@@ -460,11 +471,13 @@ function CategoryEditor({
   onAssignWheel: Props["onAssignWheel"];
 }) {
   const [creatingWheel, setCreatingWheel] = useState(false);
+  const [profileName, setProfileName] = useState(profile.name);
   const [brand, setBrand] = useState("");
   const [wheelName, setWheelName] = useState("");
   const [classes, setClasses] = useState(profile.classTags);
   const [customTags, setCustomTags] = useState(profile.customTags);
   const changed =
+    profileName.trim() !== profile.name ||
     JSON.stringify(classes) !== JSON.stringify(profile.classTags) ||
     JSON.stringify(customTags) !== JSON.stringify(profile.customTags);
   return (
@@ -474,6 +487,14 @@ function CategoryEditor({
         <h4>Wheel and intended car classes</h4>
       </div>
       <div className="category-fields">
+        <label className="identity-field wheel-library-field">
+          <span>Profile name</span>
+          <input
+            value={profileName}
+            maxLength={100}
+            onChange={(event) => setProfileName(event.target.value)}
+          />
+        </label>
         <label className="identity-field wheel-library-field">
           <span>Wheel</span>
           <div>
@@ -553,9 +574,9 @@ function CategoryEditor({
       <button
         className="primary compact"
         disabled={busy || !changed}
-        onClick={() => onSave(profile, classes, customTags)}
+        onClick={() => onSave(profile, profileName, classes, customTags)}
       >
-        Save categories
+        Save profile details
       </button>
     </section>
   );

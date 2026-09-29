@@ -496,6 +496,29 @@ impl Store {
         Ok(())
     }
 
+    pub fn rename_profile(&self, profile_id: Uuid, name: String) -> Result<()> {
+        let name = name.trim();
+        if name.is_empty() {
+            bail!("Enter a profile name.");
+        }
+        if name.chars().count() > 100 {
+            bail!("Profile names must be 100 characters or shorter.");
+        }
+        let profiles = self.profiles()?;
+        if profiles
+            .iter()
+            .any(|profile| profile.id != profile_id && profile.name.eq_ignore_ascii_case(name))
+        {
+            bail!("A profile with that name already exists.");
+        }
+        let mut profile = profiles
+            .into_iter()
+            .find(|profile| profile.id == profile_id)
+            .context("That profile no longer exists.")?;
+        profile.name = name.to_owned();
+        self.save_profile_metadata(&profile)
+    }
+
     pub fn set_profile_categories(
         &self,
         profile_id: Uuid,
@@ -1580,6 +1603,22 @@ mod tests {
             Some(2)
         );
         assert!(store.set_profile_hotkey(second.id, Some(10)).is_err());
+    }
+
+    #[test]
+    fn renames_profiles_without_allowing_duplicates() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open_at(temp.path().join("data")).unwrap();
+        let first = store
+            .import_profile_bytes("Old name", br#"{"Input":{}}"#)
+            .unwrap();
+        store
+            .import_profile_bytes("Existing", br#"{"Input":{}}"#)
+            .unwrap();
+
+        store.rename_profile(first.id, " New name ".into()).unwrap();
+        assert_eq!(store.profiles().unwrap()[1].name, "New name");
+        assert!(store.rename_profile(first.id, "existing".into()).is_err());
     }
 
     #[test]

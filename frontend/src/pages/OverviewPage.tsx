@@ -16,6 +16,7 @@ import type { Profile } from "../models";
 
 type Props = {
   active?: Profile;
+  activeDirty: boolean | null;
   selected?: Profile;
   wheelImageUrl: string | null;
   wheelImageRevision: number;
@@ -28,6 +29,7 @@ type Props = {
 
 export function OverviewPage({
   active,
+  activeDirty,
   selected,
   wheelImageUrl,
   wheelImageRevision,
@@ -129,8 +131,14 @@ export function OverviewPage({
           </div>
           <div>
             <span>Profile health</span>
-            <strong className="word">Synced</strong>
-            <small>No pending changes</small>
+            <strong className={activeDirty ? "word warning" : "word"}>
+              {activeDirty ? "Changed" : "Synced"}
+            </strong>
+            <small>
+              {activeDirty
+                ? "LMU differs from the saved profile"
+                : "No pending changes"}
+            </small>
           </div>
         </section>
         <section className="panel recent">

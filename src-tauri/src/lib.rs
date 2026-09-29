@@ -513,6 +513,18 @@ fn set_profile_categories(
 }
 
 #[tauri::command]
+fn rename_profile(
+    profile_id: Uuid,
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .rename_profile(profile_id, name)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn find_binding_matches(state: State<'_, AppState>) -> Result<BindingLookupResult, String> {
     let generation = LOOKUP_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     let pressed = tauri::async_runtime::spawn_blocking(move || {
@@ -694,6 +706,7 @@ pub fn run() {
             profile_bindings,
             clear_profile_binding,
             set_profile_categories,
+            rename_profile,
             find_binding_matches,
             cancel_binding_lookup,
             set_ui_font_scale,
