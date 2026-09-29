@@ -17,13 +17,13 @@ _The screenshot uses isolated synthetic profile data; no personal LMU files are 
 - Import validated preset JSON files by file picker or drag and drop.
 - Activate a saved profile for LMU's next launch, always backing up the live file first.
 - Detect when LMU's live bindings differ from the active saved profile and safely update either side.
-- Organise profiles in a searchable card grid using reusable wheels, built-in WEC/ELMS class tags, and custom tags.
+- Organise profiles in a searchable two-pane workspace using reusable wheels, built-in WEC/ELMS class tags, and custom tags.
 - Create a shared wheel library with brand, model, and managed PNG, JPEG, or WebP images. One wheel can be reused by several profiles.
 - Browse bindings by device, add new LMU actions, replace primary/alternate mappings, clear unwanted mappings, and press or move a physical control to compare its mapping across every profile.
 - Tune recognised force-feedback fields by device—including a friendly `0..100%` FFB gain control—and inspect the complete preserved profile JSON.
 - Remove obsolete devices and all of their bindings from a saved profile after confirmation.
 - Browse and edit LMU's `Settings.JSON`, including descriptions from matching `Option#` fields, while preserving unsupported JSON values.
-- Assign `Ctrl+Alt+1` through `Ctrl+Alt+9` to profiles and open the compact switcher with `Ctrl+Alt+Space`.
+- Assign `Ctrl+Alt+1` through `Ctrl+Alt+9` to profiles, open the compact switcher with `Ctrl+Alt+Space`, or search profiles with `Ctrl+K`.
 - Configure Desktop or native OpenXR (`+XR`) launching and start LMUKit, LMUFFB, Crew Chief, RaceLab, or custom companion applications through one explicit Steam launch option.
 - Autosave LMU paths, launch mode, and companion-app setup.
 - Scale the entire interface from Settings.
@@ -126,8 +126,8 @@ Pushing a tag matching `v*` runs the Windows release workflow. The tag version m
 - SHA-256 checksum files for both packages.
 
 ```sh
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.3.1
+git push origin v0.3.1
 ```
 
 ## AI-assisted development
