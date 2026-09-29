@@ -196,25 +196,6 @@ export default function App() {
         `${device.name} and ${removed} binding${removed === 1 ? "" : "s"} removed. Activate the profile again to apply it to LMU.`,
       );
     });
-  const saveWheelImage = (profile: Profile, file: File) =>
-    withBusy(async () => {
-      if (file.size > 8 * 1024 * 1024)
-        throw new Error("Wheel images must be 8 MB or smaller.");
-      await invoke("save_profile_wheel_image", {
-        profileId: profile.id,
-        imageBytes: Array.from(new Uint8Array(await file.arrayBuffer())),
-      });
-      setWheelImageRevision((revision) => revision + 1);
-      await refresh();
-      setNotice(`Wheel image assigned to ${profile.name}.`);
-    });
-  const removeWheelImage = (profile: Profile) =>
-    withBusy(async () => {
-      await invoke("remove_profile_wheel_image", { profileId: profile.id });
-      setWheelImageRevision((revision) => revision + 1);
-      await refresh();
-      setNotice(`Wheel image removed from ${profile.name}.`);
-    });
   const saveCategories = (
     profile: Profile,
     profileName: string,
@@ -477,7 +458,6 @@ export default function App() {
                 profiles={snapshot.profiles}
                 wheels={snapshot.wheels}
                 selected={selected}
-                wheelImageUrl={wheelImageUrl}
                 wheelImageRevision={wheelImageRevision}
                 activeId={snapshot.activeProfile}
                 activeDirty={snapshot.activeProfileDirty}
@@ -494,8 +474,6 @@ export default function App() {
                 onDelete={deleteProfile}
                 onReveal={revealProfiles}
                 onRemoveDevice={removeDevice}
-                onSaveWheelImage={saveWheelImage}
-                onRemoveWheelImage={removeWheelImage}
                 onSaveCategories={saveCategories}
                 onCreateWheel={createWheel}
                 onAssignWheel={assignWheel}

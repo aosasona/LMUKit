@@ -954,6 +954,13 @@ img.profile-card-icon {
   grid-template-columns: 1fr 1fr;
   gap: 9px;
 }
+.profile-tag-picker {
+  grid-column: 1 / -1;
+}
+.profile-tag-picker > small {
+  color: #65716b;
+  font-size: calc(11px * var(--font-scale));
+}
 .identity-field {
   display: grid;
   gap: 5px;
@@ -1209,10 +1216,27 @@ img.profile-card-icon {
   color: #e4f6c1;
 }
 .tag-picker-options button.selected[class*="class-"],
-.tag-picker-chips button[class*="class-"] {
+.tag-picker-options button[class*="class-"]:hover {
   border-color: color-mix(in srgb, var(--class-color) 55%, transparent);
   background: color-mix(in srgb, var(--class-color) 15%, #171717);
   color: color-mix(in srgb, var(--class-color) 55%, white);
+}
+.tag-picker-options section + section,
+.tag-picker-options section + .tag-picker-create {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+.tag-picker-section-label {
+  display: block;
+  padding: 4px 9px 5px;
+  color: #6f7b75;
+  font-size: calc(10px * var(--font-scale));
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+.tag-picker-options .tag-picker-create {
+  color: #c9e98e;
 }
 .tag-picker-options button span {
   flex: 1;
@@ -1222,23 +1246,6 @@ img.profile-card-icon {
   padding: 10px 9px;
   color: #69746f;
   font-size: 12px;
-}
-.tag-picker-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-.tag-picker-chips button {
-  min-height: 26px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 7px;
-  border: 1px solid rgba(198, 243, 107, 0.18);
-  background: #202219;
-  color: #bcd67f;
-  cursor: pointer;
-  font-size: 11px;
 }
 .profiles-toolbar {
   display: flex;
@@ -1481,18 +1488,6 @@ img.profile-card-icon {
 .danger:hover {
   background: #c42b1c;
   color: #fff;
-}
-.profile-image-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.profile-image-actions > img {
-  width: 54px;
-  height: 36px;
-  object-fit: contain;
-  background: #101010;
-  border: 1px solid var(--line);
 }
 .image-picker {
   cursor: pointer;
@@ -2040,7 +2035,6 @@ footer {
 kbd,
 .tag-picker-options button,
 .tag-picker-no-results,
-.tag-picker-chips button,
 .action-menu > div button {
   font-size: calc(12px * var(--font-scale));
 }

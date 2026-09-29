@@ -1,14 +1,13 @@
 import {
   FolderOpen,
   Gamepad2,
-  Image as ImageIcon,
   Search,
   Upload,
 } from "lucide-react";
 import { useState } from "react";
 import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
-import { TagPicker } from "../components/TagPicker";
+import { ProfileTagPicker } from "../components/ProfileTagPicker";
 import { WheelImage } from "../components/WheelImage";
 import { SearchSelect } from "../components/SearchSelect";
 import type { Device, Profile, Wheel } from "../models";
@@ -29,7 +28,6 @@ type Props = {
   profiles: Profile[];
   wheels: Wheel[];
   selected?: Profile;
-  wheelImageUrl: string | null;
   wheelImageRevision: number;
   activeId: string | null;
   activeDirty: boolean | null;
@@ -46,8 +44,6 @@ type Props = {
   onDelete: (profile: Profile) => void;
   onReveal: () => void;
   onRemoveDevice: (profile: Profile, device: Device) => void;
-  onSaveWheelImage: (profile: Profile, file: File) => void;
-  onRemoveWheelImage: (profile: Profile) => void;
   onSaveCategories: (
     profile: Profile,
     profileName: string,
@@ -63,7 +59,6 @@ export function ProfilesPage(props: Props) {
     profiles,
     wheels,
     selected,
-    wheelImageUrl,
     wheelImageRevision,
     activeId,
     activeDirty,
@@ -80,8 +75,6 @@ export function ProfilesPage(props: Props) {
     onDelete,
     onReveal,
     onRemoveDevice,
-    onSaveWheelImage,
-    onRemoveWheelImage,
     onSaveCategories,
     onCreateWheel,
     onAssignWheel,
@@ -293,88 +286,41 @@ export function ProfilesPage(props: Props) {
               <span className="eyebrow">Profile setup</span>
               <h3>{selected.name}</h3>
             </div>
-            <div className="profile-image-actions">
-              {wheelImageUrl && (
-                <img src={wheelImageUrl} alt="Assigned wheel" />
-              )}
-              <label
-                className={`secondary compact image-picker ${!selected.wheelId ? "disabled" : ""}`}
-                title={
-                  selected.wheelId
-                    ? "This image is shared by every profile using this wheel"
-                    : "Assign or create a wheel first"
-                }
-              >
-                <ImageIcon />
-                {selected.hasWheelImage
-                  ? "Replace wheel image"
-                  : "Add wheel image"}
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  disabled={busy || !selected.wheelId}
-                  onClick={(event) => {
-                    event.currentTarget.value = "";
-                  }}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) onSaveWheelImage(selected, file);
-                  }}
-                />
-              </label>
-              <ActionMenu
-                items={[
-                  {
-                    label: "Update from LMU",
-                    hidden: !selected.differsFromLive,
-                    onSelect: () =>
-                      setConfirmation({
-                        title: `Update ${selected.name} from LMU?`,
-                        description:
-                          "This replaces the saved profile with LMU's current bindings. A recovery backup will be created first.",
-                        confirmLabel: "Update from LMU",
-                        onConfirm: () => {
-                          onUpdate(selected);
-                          setConfirmation(null);
-                        },
-                      }),
-                  },
-                  {
-                    label: "Remove wheel image",
-                    hidden: !selected.hasWheelImage,
-                    danger: true,
-                    onSelect: () =>
-                      setConfirmation({
-                        title: "Remove wheel image?",
-                        description:
-                          "This removes the image from the wheel library and every profile using this wheel.",
-                        confirmLabel: "Remove image",
-                        danger: true,
-                        onConfirm: () => {
-                          onRemoveWheelImage(selected);
-                          setConfirmation(null);
-                        },
-                      }),
-                  },
-                  {
-                    label: "Delete profile",
-                    danger: true,
-                    onSelect: () =>
-                      setConfirmation({
-                        title: `Delete ${selected.name}?`,
-                        description:
-                          "This permanently removes the saved profile and its managed image. LMU's live configuration is not changed.",
-                        confirmLabel: "Delete profile",
-                        danger: true,
-                        onConfirm: () => {
-                          onDelete(selected);
-                          setConfirmation(null);
-                        },
-                      }),
-                  },
-                ]}
-              />
-            </div>
+            <ActionMenu
+              items={[
+                {
+                  label: "Update from LMU",
+                  hidden: !selected.differsFromLive,
+                  onSelect: () =>
+                    setConfirmation({
+                      title: `Update ${selected.name} from LMU?`,
+                      description:
+                        "This replaces the saved profile with LMU's current bindings. A recovery backup will be created first.",
+                      confirmLabel: "Update from LMU",
+                      onConfirm: () => {
+                        onUpdate(selected);
+                        setConfirmation(null);
+                      },
+                    }),
+                },
+                {
+                  label: "Delete profile",
+                  danger: true,
+                  onSelect: () =>
+                    setConfirmation({
+                      title: `Delete ${selected.name}?`,
+                      description:
+                        "This permanently removes the saved profile. LMU's live configuration and the shared wheel library are not changed.",
+                      confirmLabel: "Delete profile",
+                      danger: true,
+                      onConfirm: () => {
+                        onDelete(selected);
+                        setConfirmation(null);
+                      },
+                    }),
+                },
+              ]}
+            />
           </div>
           <div className="profile-management">
             {selected.hotkeySlot && (
@@ -554,21 +500,15 @@ function CategoryEditor({
             </button>
           </div>
         )}
-        <TagPicker
-          label="Car classes"
-          options={DEFAULT_CLASSES}
-          selected={classes}
-          onChange={setClasses}
-          emptyLabel="Generic (no class)"
-          tagClassName={(tag) => `class-${classSlug(tag)}`}
-        />
-        <TagPicker
-          label="Additional tags"
-          options={customTags}
-          selected={customTags}
-          onChange={setCustomTags}
-          allowCreate
-          emptyLabel="Add a tag"
+        <ProfileTagPicker
+          classOptions={DEFAULT_CLASSES}
+          classTags={classes}
+          customTags={customTags}
+          onChange={(tags) => {
+            setClasses(tags.classTags);
+            setCustomTags(tags.customTags);
+          }}
+          classNameFor={(tag) => `class-${classSlug(tag)}`}
         />
       </div>
       <button
