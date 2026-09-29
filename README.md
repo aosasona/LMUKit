@@ -134,6 +134,8 @@ Repository-specific guidance for future human and LLM contributors is in [AGENTS
 
 LMU exposes player vehicle and class information through its built-in Windows shared-memory interface. Because LMU does not hot-reload `direct input.json`, future detection should recommend or prepare a profile for the next launch rather than swapping controls during a running session.
 
+The Settings migration will also replace the current companion-launcher form with a clearer launch setup. It should let the user choose an LMU launch mode, including the normal desktop mode and VR, then independently enable companion applications such as RaceLab, Crew Chief, LMUFFB, and custom executables. LMUKit must continue to generate an explicit Steam launch option for the user to review and copy rather than modifying Steam configuration itself.
+
 ## License
 
 MIT

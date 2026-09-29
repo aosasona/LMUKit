@@ -88,3 +88,5 @@ Use `mise run dev` for Tauri development and `mise run build` for a release bund
 ## Future work
 
 The likely route for car/class detection is LMU's built-in `Local\\LMUSharedMem` mapping. Player scoring exposes vehicle name, class, and vehicle filename. LMU does not reload `direct input.json` during a running session, so detection should recommend a mapped profile or prepare it before the next launch rather than promising live automatic switching.
+
+After the Settings UI is migrated, refine the existing generated launcher into a launch-mode and companion-app workflow. Users should be able to select normal or VR LMU startup and independently enable RaceLab, Crew Chief, LMUFFB, or arbitrary executables. Keep paths and enablement backward-compatible with existing `companion_apps` settings, quote executable paths safely, avoid duplicate processes, and test generated scripts with spaces and shell metacharacters. Continue to generate a reviewable Steam launch option; never edit Steam configuration silently.
