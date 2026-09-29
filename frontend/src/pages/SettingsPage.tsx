@@ -10,7 +10,13 @@ import {
   Trash2,
   Type,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import type { CompanionApp, Profile } from "../models";
 
 const MIN_SCALE = 0.85;
@@ -172,6 +178,11 @@ export function SettingsPage(props: Props) {
             max={MAX_SCALE}
             step={STEP}
             value={draftScale}
+            style={
+              {
+                "--range-progress": `${((draftScale - MIN_SCALE) / (MAX_SCALE - MIN_SCALE)) * 100}%`,
+              } as CSSProperties
+            }
             aria-label="Text size"
             onChange={(event) => previewScale(Number(event.target.value))}
             onPointerUp={() => onSaveFontScale(draftScale)}

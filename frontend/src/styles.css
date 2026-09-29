@@ -65,6 +65,87 @@ select,
 textarea {
   font-size: 13px;
 }
+input[type="checkbox"] {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  flex: 0 0 38px;
+  appearance: none;
+  border: 1px solid #3a4039;
+  outline: 0;
+  background: #151715;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  background: #737e78;
+  transition:
+    transform 120ms ease,
+    background 120ms ease;
+}
+input[type="checkbox"]:checked {
+  border-color: #9fc34f;
+  background: #252b1c;
+}
+input[type="checkbox"]:checked::before {
+  transform: translateX(16px);
+  background: var(--teal);
+}
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid rgba(198, 243, 107, 0.34);
+  outline-offset: 2px;
+}
+input[type="range"] {
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 5px;
+  border: 1px solid #3a4035;
+  background: linear-gradient(
+    to right,
+    var(--teal) 0 var(--range-progress, 50%),
+    #292d28 var(--range-progress, 50%) 100%
+  );
+}
+input[type="range"]::-webkit-slider-thumb {
+  width: 14px;
+  height: 19px;
+  margin-top: -8px;
+  appearance: none;
+  border: 2px solid #10110f;
+  background: var(--amber);
+  box-shadow: 0 0 0 1px #947e36;
+}
+input[type="range"]::-moz-range-track {
+  height: 3px;
+  border: 1px solid #3a4035;
+  background: #292d28;
+}
+input[type="range"]::-moz-range-progress {
+  height: 3px;
+  background: var(--teal);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 17px;
+  border: 2px solid #10110f;
+  background: var(--amber);
+  box-shadow: 0 0 0 1px #947e36;
+}
+input[type="range"]:focus-visible {
+  outline: 2px solid rgba(198, 243, 107, 0.28);
+  outline-offset: 4px;
+}
 button {
   color: inherit;
 }
@@ -1653,16 +1734,26 @@ img.profile-card-icon {
   min-height: 58px;
 }
 .ffb-gain-control {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 285px;
 }
 .ffb-gain-control input[type="range"] {
-  flex: 1;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  height: auto;
+  flex: 1 1 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   accent-color: var(--lime);
 }
 .ffb-gain-control > strong {
+  flex: 0 0 46px;
   width: 46px;
   color: var(--lime);
   text-align: right;
@@ -2639,7 +2730,7 @@ textarea,
   font-size: calc(11px * var(--font-scale));
   line-height: 1.35;
 }
-.game-setting-row input:not([type="checkbox"]) {
+.game-setting-row input:not([type="checkbox"]):not([type="range"]) {
   min-width: 0;
   width: 100%;
   height: 36px;
@@ -2650,10 +2741,7 @@ textarea,
   color: #e0e7e3;
 }
 .game-setting-row input[type="checkbox"] {
-  width: 19px;
-  height: 19px;
   justify-self: end;
-  accent-color: var(--teal);
 }
 .spin {
   animation: spin 0.9s linear infinite;
@@ -2804,7 +2892,7 @@ textarea,
 .companion-row {
   display: grid;
   grid-template-columns:
-    24px minmax(105px, 0.5fr) minmax(180px, 1.5fr)
+    48px minmax(105px, 0.5fr) minmax(180px, 1.5fr)
     auto 38px;
   align-items: center;
   border: 1px solid var(--line);
@@ -2812,7 +2900,6 @@ textarea,
 }
 .companion-row > input[type="checkbox"] {
   margin: auto;
-  accent-color: var(--teal);
 }
 .companion-row > input:not([type="checkbox"]) {
   min-width: 0;
@@ -2881,6 +2968,9 @@ textarea,
   width: 16px;
 }
 .font-scale-control input {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
   width: 100%;
   accent-color: var(--teal);
   cursor: pointer;

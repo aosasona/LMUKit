@@ -1,5 +1,5 @@
 import { Gauge, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import type { JsonObject, JsonPrimitive, JsonValue } from "../models";
 
 type FfbSetting = {
@@ -123,6 +123,7 @@ function FfbControl({
             max="100"
             step="1"
             value={value}
+            style={{ "--range-progress": `${value}%` } as CSSProperties}
             onChange={(event) => onChange(Number(event.target.value) * 100)}
           />
           <strong>{Math.round(value)}%</strong>
