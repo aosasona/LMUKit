@@ -54,8 +54,15 @@ body {
   user-select: none;
 }
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
+}
+input,
+select,
+textarea {
+  font-size: 13px;
 }
 button {
   color: inherit;
@@ -263,7 +270,9 @@ nav {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px;
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 12px;
   cursor: pointer;
   font-size: 10px;
 }
@@ -410,7 +419,8 @@ main {
 .primary,
 .secondary {
   border-radius: 9px;
-  padding: 9px 13px;
+  min-height: 38px;
+  padding: 0 13px;
   border: 1px solid transparent;
   display: inline-flex;
   align-items: center;
@@ -780,11 +790,14 @@ main {
 .category-editor {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr) auto;
-  align-items: end;
+  align-items: start;
   gap: 14px;
   padding: 2px 0 14px;
   margin-bottom: 12px;
   border-bottom: 1px solid var(--line);
+}
+.category-editor > .primary {
+  margin-top: 21px;
 }
 .category-editor h4 {
   margin: 4px 0 0;
@@ -808,13 +821,14 @@ main {
   letter-spacing: 0.8px;
 }
 .identity-field input {
+  height: 38px;
   min-width: 0;
   border: 1px solid var(--line);
   outline: 0;
-  padding: 8px 9px;
+  padding: 0 11px;
   background: #141414;
   color: #dce4e0;
-  font-size: 11px;
+  font-size: 13px;
 }
 .class-selector,
 .tag-field {
@@ -903,6 +917,146 @@ main {
   font-size: 8px;
   cursor: pointer;
 }
+.tag-picker {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.tag-picker > span {
+  color: #69746e;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+.tag-picker details {
+  position: relative;
+}
+.tag-picker summary {
+  height: 38px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  background: #141414;
+  color: #dce4e0;
+  cursor: pointer;
+  list-style: none;
+  font-size: 13px;
+}
+.tag-picker summary::-webkit-details-marker {
+  display: none;
+}
+.tag-picker summary > span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tag-picker summary svg {
+  flex: none;
+  color: #748079;
+  transition: transform 0.15s ease;
+}
+.tag-picker details[open] summary {
+  border-color: rgba(198, 243, 107, 0.38);
+}
+.tag-picker details[open] summary svg {
+  transform: rotate(180deg);
+}
+.tag-picker-empty {
+  color: #66716c;
+}
+.tag-picker-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  min-width: 210px;
+  padding: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: #181817;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+}
+.tag-picker-search {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  background: #111;
+  color: #6f7b75;
+}
+.tag-picker-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #e3ebe7;
+  font-size: 13px;
+}
+.tag-picker-options {
+  max-height: 190px;
+  margin-top: 6px;
+  overflow-y: auto;
+}
+.tag-picker-options button {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  border: 0;
+  background: transparent;
+  color: #aab5af;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+}
+.tag-picker-options button:hover,
+.tag-picker-options button.selected {
+  background: rgba(198, 243, 107, 0.08);
+  color: #e4f6c1;
+}
+.tag-picker-options button.selected[class*="class-"],
+.tag-picker-chips button[class*="class-"] {
+  border-color: color-mix(in srgb, var(--class-color) 55%, transparent);
+  background: color-mix(in srgb, var(--class-color) 15%, #171717);
+  color: color-mix(in srgb, var(--class-color) 55%, white);
+}
+.tag-picker-options button span {
+  flex: 1;
+}
+.tag-picker-no-results {
+  display: block;
+  padding: 10px 9px;
+  color: #69746f;
+  font-size: 12px;
+}
+.tag-picker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.tag-picker-chips button {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border: 1px solid rgba(198, 243, 107, 0.18);
+  background: #202219;
+  color: #bcd67f;
+  cursor: pointer;
+  font-size: 11px;
+}
 .profiles-toolbar {
   display: flex;
   justify-content: space-between;
@@ -911,6 +1065,7 @@ main {
 }
 .search-box {
   width: 320px;
+  min-height: 38px;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -926,7 +1081,7 @@ main {
   background: transparent;
   color: #dce5e0;
   width: 100%;
-  font-size: 11px;
+  font-size: 13px;
 }
 .profile-table-head,
 .profile-row {
@@ -987,7 +1142,8 @@ main {
   margin-top: 3px;
 }
 .compact {
-  padding: 7px 9px;
+  min-height: 38px;
+  padding: 0 11px;
 }
 .prepared {
   border: 0;
@@ -1186,21 +1342,23 @@ main {
 }
 .capture-box input {
   width: 140px;
-  padding: 7px 9px;
+  height: 38px;
+  padding: 0 11px;
   border: 0;
   outline: 0;
   background: transparent;
   color: #dce5e0;
-  font-size: 10px;
+  font-size: 13px;
 }
 .capture-box button {
+  min-height: 38px;
   border: 0;
   border-left: 1px solid var(--line);
   background: #22241c;
   color: #bcd976;
-  padding: 7px 10px;
+  padding: 0 11px;
   cursor: pointer;
-  font-size: 9px;
+  font-size: 12px;
 }
 .capture-box button:disabled {
   opacity: 0.45;
@@ -1479,11 +1637,15 @@ main {
 .mini-profile small,
 .device-row small,
 .quick-actions strong,
-.quick-actions small,
-.search-box input,
-.capture-box input,
-.capture-box button {
+.quick-actions small {
   font-size: 10px;
+}
+.search-box input,
+.capture-box input {
+  font-size: 13px;
+}
+.capture-box button {
+  font-size: 12px;
 }
 .binding-row strong {
   font-size: 12px;

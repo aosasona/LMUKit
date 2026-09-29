@@ -3,12 +3,12 @@ import {
   Gamepad2,
   Image as ImageIcon,
   Search,
-  Tags,
   Upload,
 } from "lucide-react";
 import { useState } from "react";
 import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
+import { TagPicker } from "../components/TagPicker";
 import type { Device, Profile } from "../models";
 
 const DEFAULT_CLASSES = ["GT3", "GTE", "LMP3", "LMP2", "HY"] as const;
@@ -431,21 +431,6 @@ function CategoryEditor({
   const [wheelName, setWheelName] = useState(profile.wheelName ?? "");
   const [classes, setClasses] = useState(profile.classTags);
   const [customTags, setCustomTags] = useState(profile.customTags);
-  const [customInput, setCustomInput] = useState("");
-  const addTag = (
-    value: string,
-    tags: string[],
-    setTags: (tags: string[]) => void,
-    clear: () => void,
-  ) => {
-    const tag = value.trim();
-    if (
-      tag &&
-      !tags.some((existing) => existing.toLowerCase() === tag.toLowerCase())
-    )
-      setTags([...tags, tag]);
-    clear();
-  };
   const changed =
     brand.trim() !== (profile.wheelBrand ?? "") ||
     wheelName.trim() !== (profile.wheelName ?? "") ||
@@ -476,75 +461,22 @@ function CategoryEditor({
             onChange={(event) => setWheelName(event.target.value)}
           />
         </label>
-        <div className="class-selector">
-          <span>
-            Car classes <em>None means Generic</em>
-          </span>
-          <div>
-            {DEFAULT_CLASSES.map((tag) => (
-              <button
-                className={
-                  classes.includes(tag)
-                    ? `selected class-${classSlug(tag)}`
-                    : ""
-                }
-                key={tag}
-                onClick={() =>
-                  setClasses(
-                    classes.includes(tag)
-                      ? classes.filter((entry) => entry !== tag)
-                      : [...classes, tag],
-                  )
-                }
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="tag-field">
-          <span>Additional tags</span>
-          <div className="tag-list">
-            {customTags.map((tag) => (
-              <button
-                key={tag}
-                title={`Remove ${tag}`}
-                onClick={() =>
-                  setCustomTags(customTags.filter((entry) => entry !== tag))
-                }
-              >
-                {tag} ×
-              </button>
-            ))}
-          </div>
-          <div className="tag-entry">
-            <Tags />
-            <input
-              value={customInput}
-              maxLength={40}
-              placeholder="Formula, Rally…"
-              onChange={(event) => setCustomInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === ",") {
-                  event.preventDefault();
-                  addTag(customInput, customTags, setCustomTags, () =>
-                    setCustomInput(""),
-                  );
-                }
-              }}
-            />
-            <button
-              disabled={!customInput.trim()}
-              onClick={() =>
-                addTag(customInput, customTags, setCustomTags, () =>
-                  setCustomInput(""),
-                )
-              }
-            >
-              Add
-            </button>
-          </div>
-        </div>
+        <TagPicker
+          label="Car classes"
+          options={DEFAULT_CLASSES}
+          selected={classes}
+          onChange={setClasses}
+          emptyLabel="Generic (no class)"
+          tagClassName={(tag) => `class-${classSlug(tag)}`}
+        />
+        <TagPicker
+          label="Additional tags"
+          options={customTags}
+          selected={customTags}
+          onChange={setCustomTags}
+          allowCreate
+          emptyLabel="Add a tag"
+        />
       </div>
       <button
         className="primary compact"
