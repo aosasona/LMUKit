@@ -120,6 +120,16 @@ export default function App() {
     };
   }, []);
   useEffect(() => {
+    const openSearch = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSwitcherOpen(true);
+      }
+    };
+    window.addEventListener("keydown", openSearch);
+    return () => window.removeEventListener("keydown", openSearch);
+  }, []);
+  useEffect(() => {
     document.documentElement.style.setProperty(
       "--font-scale",
       snapshot.uiFontScale.toString(),
@@ -532,8 +542,12 @@ export default function App() {
               <h1>{pageTitle(page)}</h1>
             </div>
             <div className="top-actions">
-              <button className="ghost">
-                <Search size={17} /> Search <kbd>⌘ K</kbd>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setSwitcherOpen(true)}
+              >
+                <Search size={17} /> Search <kbd>Ctrl K</kbd>
               </button>
               <button className="avatar">A</button>
             </div>
