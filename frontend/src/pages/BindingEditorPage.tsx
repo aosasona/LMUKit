@@ -7,7 +7,12 @@ import {
   X,
 } from "lucide-react";
 import { useRef, useState } from "react";
-import type { Binding, BindingLookup, Profile } from "../models";
+import type {
+  Binding,
+  BindingAssignmentCandidate,
+  BindingLookup,
+  Profile,
+} from "../models";
 import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
 
@@ -16,20 +21,32 @@ export function BindingEditorPage({
   bindings,
   busy,
   onClear,
+  onAssign,
 }: {
   profile?: Profile;
   bindings: Binding[];
   busy: boolean;
   onClear: (profile: Profile, binding: Binding) => void;
+  onAssign: (
+    profile: Profile,
+    action: string,
+    alternate: boolean,
+    candidate: BindingAssignmentCandidate,
+  ) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
   const [lookup, setLookup] = useState<BindingLookup | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
+  const [assignmentTarget, setAssignmentTarget] = useState<{
+    action: string;
+    alternate: boolean;
+  } | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const cancelRequested = useRef(false);
 
   async function findControl() {
+    if (listening || busy) return;
     setListening(true);
     setLookup(null);
     setLookupError(null);
@@ -40,6 +57,46 @@ export function BindingEditorPage({
       if (!cancelRequested.current) setLookupError(String(error));
     } finally {
       setListening(false);
+    }
+  }
+
+  async function listenForAssignment(action: string, alternate: boolean) {
+    if (!profile || listening || busy) return;
+    const target = { action, alternate };
+    setListening(true);
+    setAssignmentTarget(target);
+    setLookup(null);
+    setLookupError(null);
+    cancelRequested.current = false;
+    try {
+      const candidate = await invoke<BindingAssignmentCandidate>(
+        "listen_for_profile_binding",
+        { profileId: profile.id, action, alternate },
+      );
+      if (candidate.conflicts.length) {
+        const conflicts = candidate.conflicts
+          .map(
+            (conflict) =>
+              `${conflict.action}${conflict.alternate ? " (alternate)" : ""}`,
+          )
+          .join(", ");
+        setConfirmation({
+          title: `Reuse ${candidate.control}?`,
+          description: `${candidate.control} on ${candidate.deviceName} is already assigned to ${conflicts}. Assigning it to ${action} will keep those existing mappings.`,
+          confirmLabel: "Assign anyway",
+          onConfirm: () => {
+            setConfirmation(null);
+            void onAssign(profile, action, alternate, candidate);
+          },
+        });
+      } else {
+        await onAssign(profile, action, alternate, candidate);
+      }
+    } catch (error) {
+      if (!cancelRequested.current) setLookupError(String(error));
+    } finally {
+      setListening(false);
+      setAssignmentTarget(null);
     }
   }
 
@@ -82,7 +139,11 @@ export function BindingEditorPage({
               <X /> Cancel lookup
             </button>
           ) : (
-            <button className="primary" onClick={() => void findControl()}>
+            <button
+              className="primary"
+              disabled={busy}
+              onClick={() => void findControl()}
+            >
               <Crosshair /> Find a wheel control
             </button>
           )}
@@ -115,41 +176,69 @@ export function BindingEditorPage({
               <em>{entries.length} bindings</em>
             </header>
             <div className="binding-list">
-              {entries.map((binding) => (
-                <div
-                  className="binding-row"
-                  key={`${binding.action}-${binding.alternate}`}
-                >
-                  <div>
-                    <strong>{binding.action}</strong>
-                    {binding.alternate && <small>Alternate binding</small>}
+              {entries.map((binding) => {
+                const hasCounterpart = bindings.some(
+                  (entry) =>
+                    entry.action === binding.action &&
+                    entry.alternate !== binding.alternate,
+                );
+                return (
+                  <div
+                    className="binding-row"
+                    key={`${binding.action}-${binding.alternate}`}
+                  >
+                    <div>
+                      <strong>{binding.action}</strong>
+                      <small>
+                        {binding.alternate ? "Alternate" : "Primary"} binding
+                      </small>
+                    </div>
+                    <span className="control-pill">
+                      {controlLabel(binding.inputId)}
+                    </span>
+                    <code>ID {binding.inputId}</code>
+                    <ActionMenu
+                      label={`Actions for ${binding.action}`}
+                      items={[
+                        {
+                          label: `Replace ${binding.alternate ? "alternate" : "primary"}`,
+                          onSelect: () =>
+                            void listenForAssignment(
+                              binding.action,
+                              binding.alternate,
+                            ),
+                        },
+                        {
+                          label: binding.alternate
+                            ? "Add primary binding"
+                            : "Add alternate binding",
+                          hidden: hasCounterpart,
+                          onSelect: () =>
+                            void listenForAssignment(
+                              binding.action,
+                              !binding.alternate,
+                            ),
+                        },
+                        {
+                          label: "Clear binding",
+                          danger: true,
+                          onSelect: () =>
+                            setConfirmation({
+                              title: `Clear ${binding.action}?`,
+                              description: `This removes the ${binding.alternate ? "alternate" : "primary"} binding from ${profile.name}. A recovery backup will be created.`,
+                              confirmLabel: "Clear binding",
+                              danger: true,
+                              onConfirm: () => {
+                                onClear(profile, binding);
+                                setConfirmation(null);
+                              },
+                            }),
+                        },
+                      ]}
+                    />
                   </div>
-                  <span className="control-pill">
-                    {controlLabel(binding.inputId)}
-                  </span>
-                  <code>ID {binding.inputId}</code>
-                  <ActionMenu
-                    label={`Actions for ${binding.action}`}
-                    items={[
-                      {
-                        label: "Clear binding",
-                        danger: true,
-                        onSelect: () =>
-                          setConfirmation({
-                            title: `Clear ${binding.action}?`,
-                            description: `This removes the ${binding.alternate ? "alternate" : "primary"} binding from ${profile.name}. A recovery backup will be created.`,
-                            confirmLabel: "Clear binding",
-                            danger: true,
-                            onConfirm: () => {
-                              onClear(profile, binding);
-                              setConfirmation(null);
-                            },
-                          }),
-                      },
-                    ]}
-                  />
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         ))}
@@ -168,14 +257,18 @@ export function BindingEditorPage({
             <div>
               <span>
                 {listening
-                  ? "Listening for input"
+                  ? assignmentTarget
+                    ? "Choose a new binding"
+                    : "Listening for input"
                   : lookupError
-                    ? "Input lookup failed"
+                    ? "Input operation failed"
                     : "Detected control"}
               </span>
               <strong>
                 {listening
-                  ? "Press a button, move a POV, or turn an axis"
+                  ? assignmentTarget
+                    ? `${assignmentTarget.alternate ? "Alternate" : "Primary"} ${assignmentTarget.action} · press, turn, or move a control`
+                    : "Press a button, move a POV, or turn an axis"
                   : (lookupError ??
                     `${lookup?.control} · ID ${lookup?.inputId}`)}
               </strong>

@@ -38,6 +38,14 @@ export type BindingLookup = {
   matches: { profileName: string; action: string; alternate: boolean }[];
 };
 
+export type BindingAssignmentCandidate = {
+  control: string;
+  inputId: number;
+  deviceKey: string;
+  deviceName: string;
+  conflicts: { action: string; alternate: boolean }[];
+};
+
 export type Snapshot = {
   profiles: Profile[];
   wheels: Wheel[];

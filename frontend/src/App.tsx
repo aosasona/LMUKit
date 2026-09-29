@@ -6,6 +6,7 @@ import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
 import type {
   Binding,
+  BindingAssignmentCandidate,
   CompanionApp,
   Device,
   JsonObject,
@@ -338,6 +339,25 @@ export default function App() {
         `${binding.alternate ? "Alternate " : ""}${binding.action} binding cleared. A backup was created.`,
       );
     });
+  const assignBinding = (
+    profile: Profile,
+    action: string,
+    alternate: boolean,
+    candidate: BindingAssignmentCandidate,
+  ) =>
+    withBusy(async () => {
+      await invoke("assign_profile_binding", {
+        profileId: profile.id,
+        action,
+        alternate,
+        deviceKey: candidate.deviceKey,
+        inputId: candidate.inputId,
+      });
+      await Promise.all([refresh(), loadBindings(profile)]);
+      setNotice(
+        `${alternate ? "Alternate " : ""}${action} assigned to ${candidate.control}. A backup was created.`,
+      );
+    });
   const saveFontScale = (scale: number) =>
     withBusy(async () => {
       await invoke("set_ui_font_scale", { scale });
@@ -496,6 +516,7 @@ export default function App() {
                 bindings={bindings}
                 busy={busy}
                 onClear={clearBinding}
+                onAssign={assignBinding}
               />
             )}
             {page === "wheels" && (

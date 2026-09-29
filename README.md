@@ -19,7 +19,7 @@ _The screenshot uses isolated synthetic profile data; no personal LMU files are 
 - Detect when LMU's live bindings differ from the active saved profile and safely update either side.
 - Organise profiles in a searchable card grid using reusable wheels, built-in WEC/ELMS class tags, and custom tags.
 - Create a shared wheel library with brand, model, and managed PNG, JPEG, or WebP images. One wheel can be reused by several profiles.
-- Browse bindings by device, clear unwanted mappings with a recovery backup, and press or move a physical control to compare its mapping across every profile.
+- Browse bindings by device, replace mappings or add a missing primary/alternate binding, clear unwanted mappings, and press or move a physical control to compare its mapping across every profile.
 - Remove obsolete devices and all of their bindings from a saved profile after confirmation.
 - Browse and edit LMU's `Settings.JSON`, including descriptions from matching `Option#` fields, while preserving unsupported JSON values.
 - Assign `Ctrl+Alt+1` through `Ctrl+Alt+9` to profiles and open the compact switcher with `Ctrl+Alt+Space`.
@@ -51,9 +51,9 @@ Each profile has one searchable tag picker. Select any combination of `GT3`, `GT
 
 ### Bindings
 
-The **Binding editor** currently provides device-grouped browsing, search, safe binding removal, and live control lookup. **Find a wheel control** waits for a button, POV, or axis movement and then shows the matching action for each saved profile; the operation can be cancelled at any time.
+The **Binding editor** provides device-grouped browsing, search, safe binding changes, and live control lookup. Open a binding's action menu to replace it or add its missing primary or alternate mapping, then press or move the desired control. LMUKit names any conflicts before applying the change and creates a recovery backup when saving.
 
-Adding or replacing a mapping outside LMU is the main remaining binding-editor workflow planned for the Tauri interface. Until that lands, create new mappings in LMU and capture or update the profile from its live configuration.
+**Find a wheel control** waits for a button, POV, or axis movement and then shows the matching action for each saved profile; the operation can be cancelled at any time. For safety, assignment only accepts devices already represented in that profile. Entirely new LMU actions that do not appear in either binding section must still be created in LMU before capture.
 
 ### Faster profile access
 
@@ -135,7 +135,7 @@ The human maintainer directs the product, reviews changes, runs the required che
 
 ## Planned work
 
-- Add and replace bindings from the Tauri binding editor, not only inspect and clear them.
+- Add an LMU action catalogue so entirely unmapped actions can be introduced without first creating them in LMU.
 - Read LMU's `Local\\LMUSharedMem` data to identify the active vehicle and class, while respecting that LMU does not hot-reload binding profiles.
 
 ## License
