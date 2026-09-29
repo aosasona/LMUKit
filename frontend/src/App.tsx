@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   Activity,
   ChevronRight,
@@ -6,12 +7,15 @@ import {
   Gamepad2,
   Keyboard,
   LayoutDashboard,
+  Minus,
   Search,
   Settings,
   SlidersHorizontal,
   Sparkles,
+  Square,
   Upload,
   Wrench,
+  X,
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -93,7 +97,19 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="window-shell">
+      <div className="titlebar" data-tauri-drag-region>
+        <div className="titlebar-brand" data-tauri-drag-region>
+          <img src="/app-icon.png" alt="" />
+          <span data-tauri-drag-region>LMUKit</span>
+        </div>
+        <div className="window-controls">
+          <button aria-label="Minimize" onClick={() => void getCurrentWindow().minimize()}><Minus /></button>
+          <button aria-label="Maximize or restore" onClick={() => void getCurrentWindow().toggleMaximize()}><Square /></button>
+          <button className="close" aria-label="Close" onClick={() => void getCurrentWindow().close()}><X /></button>
+        </div>
+      </div>
+      <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark"><span>LMU</span></div>
@@ -131,6 +147,7 @@ export default function App() {
 
         <footer><span className="status-dot" />{notice}<span className="footer-rule" /><span>Changes are backed up automatically</span></footer>
       </main>
+      </div>
     </div>
   );
 }
