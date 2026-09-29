@@ -91,6 +91,23 @@ struct BindingLookupMatch {
     alternate: bool,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BindingAssignmentCandidate {
+    control: String,
+    input_id: u64,
+    device_key: String,
+    device_name: String,
+    conflicts: Vec<BindingConflict>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BindingConflict {
+    action: String,
+    alternate: bool,
+}
+
 #[tauri::command]
 fn snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
@@ -500,6 +517,23 @@ fn clear_profile_binding(
 }
 
 #[tauri::command]
+fn assign_profile_binding(
+    profile_id: Uuid,
+    action: String,
+    alternate: bool,
+    device_key: String,
+    input_id: u64,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    store
+        .assign_profile_binding(&profile, &action, alternate, &device_key, input_id)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 fn set_profile_categories(
     profile_id: Uuid,
     class_tags: Vec<String>,
@@ -526,14 +560,7 @@ fn rename_profile(
 
 #[tauri::command]
 async fn find_binding_matches(state: State<'_, AppState>) -> Result<BindingLookupResult, String> {
-    let generation = LOOKUP_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
-    let pressed = tauri::async_runtime::spawn_blocking(move || {
-        std::thread::spawn(move || detect_controller_input(generation))
-            .join()
-            .map_err(|_| "The controller input worker stopped unexpectedly.".to_owned())?
-    })
-    .await
-    .map_err(|error| error.to_string())??;
+    let pressed = wait_for_controller_input().await?;
 
     let store = state.0.lock().map_err(|error| error.to_string())?;
     let profiles = store.profiles().map_err(|error| error.to_string())?;
@@ -557,6 +584,62 @@ async fn find_binding_matches(state: State<'_, AppState>) -> Result<BindingLooku
         input_id: pressed.input_id,
         matches,
     })
+}
+
+#[tauri::command]
+async fn listen_for_profile_binding(
+    profile_id: Uuid,
+    action: String,
+    alternate: bool,
+    state: State<'_, AppState>,
+) -> Result<BindingAssignmentCandidate, String> {
+    let pressed = wait_for_controller_input().await?;
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    let document = store
+        .load_profile_document(&profile)
+        .map_err(|error| error.to_string())?;
+    let device_key = Store::matching_device(&document, pressed.vendor_id, pressed.product_id)
+        .ok_or_else(|| {
+            "That controller is not registered in this profile. Capture it in LMU first.".to_owned()
+        })?;
+    let device_name = document
+        .get("Devices")
+        .and_then(|devices| devices.get(&device_key))
+        .and_then(|device| device.get("name"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(&device_key)
+        .to_owned();
+    let conflicts = Store::bindings_from_document(&document)
+        .into_iter()
+        .filter(|binding| {
+            binding.device == device_key
+                && binding.input_id == pressed.input_id
+                && !(binding.action == action && binding.alternate == alternate)
+        })
+        .map(|binding| BindingConflict {
+            action: binding.action,
+            alternate: binding.alternate,
+        })
+        .collect();
+    Ok(BindingAssignmentCandidate {
+        control: pressed.control,
+        input_id: pressed.input_id,
+        device_key,
+        device_name,
+        conflicts,
+    })
+}
+
+async fn wait_for_controller_input() -> Result<input::PressedInput, String> {
+    let generation = LOOKUP_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    tauri::async_runtime::spawn_blocking(move || {
+        std::thread::spawn(move || detect_controller_input(generation))
+            .join()
+            .map_err(|_| "The controller input worker stopped unexpectedly.".to_owned())?
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -705,9 +788,11 @@ pub fn run() {
             reveal_profiles,
             profile_bindings,
             clear_profile_binding,
+            assign_profile_binding,
             set_profile_categories,
             rename_profile,
             find_binding_matches,
+            listen_for_profile_binding,
             cancel_binding_lookup,
             set_ui_font_scale,
             save_app_settings,

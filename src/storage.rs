@@ -701,6 +701,35 @@ impl Store {
         Ok(())
     }
 
+    pub fn assign_profile_binding(
+        &self,
+        profile: &Profile,
+        action: &str,
+        alternate: bool,
+        device: &str,
+        input_id: u64,
+    ) -> Result<PathBuf> {
+        let mut document = self.load_profile_document(profile)?;
+        let action_exists = ["Input", "Alternative Input"].iter().any(|section| {
+            document
+                .get(section)
+                .and_then(serde_json::Value::as_object)
+                .is_some_and(|bindings| bindings.contains_key(action))
+        });
+        if !action_exists {
+            bail!("the selected action no longer exists in this profile");
+        }
+        let device_exists = document
+            .get("Devices")
+            .and_then(serde_json::Value::as_object)
+            .is_some_and(|devices| devices.contains_key(device));
+        if !device_exists {
+            bail!("the detected device is not registered in this profile");
+        }
+        Self::set_binding(&mut document, action, alternate, device, input_id)?;
+        self.save_profile_document(profile, &document)
+    }
+
     pub fn clear_binding(
         document: &mut serde_json::Value,
         action: &str,
@@ -1350,6 +1379,37 @@ mod tests {
             Some("Wheel-123")
         );
         assert_eq!(store.profiles().unwrap()[0].assignments, ["Shift Up"]);
+    }
+
+    #[test]
+    fn assigns_an_alternate_binding_with_a_backup() {
+        let temp = tempfile::tempdir().unwrap();
+        let preset = temp.path().join("GT3.json");
+        fs::write(
+            &preset,
+            br#"{
+                "Devices":{"Wheel-123":{"name":"GT Wheel"}},
+                "Input":{"Shift Up":{"device":"Wheel-123","id":44}},
+                "Alternative Input":{},
+                "Unknown":{"preserved":true}
+            }"#,
+        )
+        .unwrap();
+        let store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let profile = store.import_profile(&preset).unwrap();
+
+        let backup = store
+            .assign_profile_binding(&profile, "Shift Up", true, "Wheel-123", 52)
+            .unwrap();
+        let document = store.load_profile_document(&profile).unwrap();
+
+        assert_eq!(document["Alternative Input"]["Shift Up"]["id"], 52);
+        assert_eq!(
+            document["Alternative Input"]["Shift Up"]["device"],
+            "Wheel-123"
+        );
+        assert_eq!(document["Unknown"]["preserved"], true);
+        assert!(fs::read_to_string(backup).unwrap().contains(r#""id":44"#));
     }
 
     #[test]
