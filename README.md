@@ -22,8 +22,8 @@ The rewrite currently includes the responsive workspace, profile discovery, vali
 - Update an existing profile from LMU's live bindings while backing up its previous version.
 - Browse and edit LMU's `Settings.JSON` with inline descriptions from matching `Option#` fields.
 - Display the active preset separately from the currently selected row.
-- Assign a managed PNG, JPEG, or WebP wheel image to each profile.
-- Give profiles a wheel brand and model, select any combination of built-in WEC/ELMS classes, and add optional custom tags before browsing them in a filterable card grid.
+- Create reusable wheels with a brand, model, and managed PNG, JPEG, or WebP image, then assign the same wheel to multiple profiles.
+- Select any combination of built-in WEC/ELMS classes and optional custom tags per profile before browsing them in a filterable card grid.
 - Browse and search every action stored in a profile.
 - Press a wheel button, move a POV, or turn an axis to compare its mapping across profiles.
 - Open the managed profile directory for manual backup or copying.
@@ -91,15 +91,15 @@ mise run dev
 
 Useful tasks:
 
-| Command | Purpose |
-| --- | --- |
-| `mise run dev` | Launch the Tauri development app |
+| Command          | Purpose                                       |
+| ---------------- | --------------------------------------------- |
+| `mise run dev`   | Launch the Tauri development app              |
 | `mise run build` | Build the frontend and Windows desktop bundle |
-| `mise run test` | Run Rust compatibility-layer tests |
-| `mise run check` | Check the Rust workspace |
-| `mise run fmt` | Check Rust formatting |
-| `mise run lint` | Run Clippy with warnings denied |
-| `pnpm build` | Type-check and build the React interface |
+| `mise run test`  | Run Rust compatibility-layer tests            |
+| `mise run check` | Check the Rust workspace                      |
+| `mise run fmt`   | Check Rust formatting                         |
+| `mise run lint`  | Run Clippy with warnings denied               |
+| `pnpm build`     | Type-check and build the React interface      |
 
 Release output is written to:
 

@@ -1,4 +1,4 @@
-use lmukit_core::storage::{Profile, Store};
+use lmukit_core::storage::{Profile, Store, Wheel};
 use serde::Serialize;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -16,6 +16,7 @@ static LOOKUP_GENERATION: AtomicU64 = AtomicU64::new(0);
 #[serde(rename_all = "camelCase")]
 struct AppSnapshot {
     profiles: Vec<ProfileSummary>,
+    wheels: Vec<WheelSummary>,
     active_profile: Option<Uuid>,
     lmu_config_path: String,
     lmu_settings_path: String,
@@ -37,6 +38,16 @@ struct ProfileSummary {
     class_tags: Vec<String>,
     custom_tags: Vec<String>,
     differs_from_live: Option<bool>,
+    wheel_id: Option<Uuid>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WheelSummary {
+    id: Uuid,
+    brand: Option<String>,
+    name: String,
+    has_image: bool,
 }
 
 #[derive(Serialize)]
@@ -83,6 +94,12 @@ fn snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, String> {
         .collect::<Result<Vec<_>, _>>()?;
     Ok(AppSnapshot {
         profiles: summaries,
+        wheels: store
+            .wheels()
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .map(wheel_summary)
+            .collect(),
         active_profile: store.settings.active_profile,
         lmu_config_path: store.settings.lmu_config_path.display().to_string(),
         lmu_settings_path: store.settings.lmu_settings_path.display().to_string(),
@@ -147,10 +164,18 @@ fn save_profile_wheel_image(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
-    let mut profile = find_profile(&store, profile_id)?;
-    store
-        .save_profile_wheel_image(&mut profile, &image_bytes)
-        .map_err(|error| error.to_string())
+    let profile = find_profile(&store, profile_id)?;
+    if let Some(wheel_id) = profile.wheel_id {
+        let mut wheel = store.wheel(wheel_id).map_err(|error| error.to_string())?;
+        store
+            .save_wheel_image(&mut wheel, &image_bytes)
+            .map_err(|error| error.to_string())
+    } else {
+        let mut profile = profile;
+        store
+            .save_profile_wheel_image(&mut profile, &image_bytes)
+            .map_err(|error| error.to_string())
+    }
 }
 
 #[tauri::command]
@@ -160,17 +185,55 @@ fn profile_wheel_image(
 ) -> Result<Option<Vec<u8>>, String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
     let profile = find_profile(&store, profile_id)?;
-    store
-        .profile_wheel_image(&profile)
-        .map_err(|error| error.to_string())
+    if let Some(wheel_id) = profile.wheel_id {
+        let wheel = store.wheel(wheel_id).map_err(|error| error.to_string())?;
+        store.wheel_image(&wheel).map_err(|error| error.to_string())
+    } else {
+        store
+            .profile_wheel_image(&profile)
+            .map_err(|error| error.to_string())
+    }
 }
 
 #[tauri::command]
 fn remove_profile_wheel_image(profile_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
-    let mut profile = find_profile(&store, profile_id)?;
+    let profile = find_profile(&store, profile_id)?;
+    if let Some(wheel_id) = profile.wheel_id {
+        let mut wheel = store.wheel(wheel_id).map_err(|error| error.to_string())?;
+        store
+            .remove_wheel_image(&mut wheel)
+            .map_err(|error| error.to_string())
+    } else {
+        let mut profile = profile;
+        store
+            .remove_profile_wheel_image(&mut profile)
+            .map_err(|error| error.to_string())
+    }
+}
+
+#[tauri::command]
+fn create_wheel(
+    brand: Option<String>,
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<Uuid, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
     store
-        .remove_profile_wheel_image(&mut profile)
+        .create_wheel(brand, name)
+        .map(|wheel| wheel.id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn assign_profile_wheel(
+    profile_id: Uuid,
+    wheel_id: Option<Uuid>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .assign_profile_wheel(profile_id, wheel_id)
         .map_err(|error| error.to_string())
 }
 
@@ -273,15 +336,13 @@ fn clear_profile_binding(
 #[tauri::command]
 fn set_profile_categories(
     profile_id: Uuid,
-    wheel_brand: Option<String>,
-    wheel_name: Option<String>,
     class_tags: Vec<String>,
     custom_tags: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
     store
-        .set_profile_categories(profile_id, wheel_brand, wheel_name, class_tags, custom_tags)
+        .set_profile_categories(profile_id, class_tags, custom_tags)
         .map_err(|error| error.to_string())
 }
 
@@ -385,25 +446,43 @@ fn profile_summary(store: &Store, profile: &Profile) -> Result<ProfileSummary, S
         })
         .unwrap_or_default();
     devices.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    let wheel = profile.wheel_id.and_then(|id| store.wheel(id).ok());
     Ok(ProfileSummary {
         id: profile.id,
         name: profile.name.clone(),
         hotkey_slot: profile.hotkey_slot,
         binding_count: bindings.len(),
         devices,
-        has_wheel_image: profile.wheel_image.is_some(),
+        has_wheel_image: wheel.as_ref().map_or_else(
+            || profile.wheel_image.is_some(),
+            |wheel| wheel.image.is_some(),
+        ),
         wheel_tags: profile.wheel_tags.clone(),
-        wheel_brand: profile.wheel_brand.clone(),
-        wheel_name: profile
-            .wheel_name
-            .clone()
+        wheel_brand: wheel
+            .as_ref()
+            .and_then(|wheel| wheel.brand.clone())
+            .or_else(|| profile.wheel_brand.clone()),
+        wheel_name: wheel
+            .as_ref()
+            .map(|wheel| wheel.name.clone())
+            .or_else(|| profile.wheel_name.clone())
             .or_else(|| profile.wheel_tags.first().cloned()),
         class_tags: profile.class_tags.clone(),
         custom_tags: profile.custom_tags.clone(),
         differs_from_live: store
             .profile_has_live_changes(profile)
             .map_err(|error| error.to_string())?,
+        wheel_id: profile.wheel_id,
     })
+}
+
+fn wheel_summary(wheel: Wheel) -> WheelSummary {
+    WheelSummary {
+        id: wheel.id,
+        brand: wheel.brand,
+        name: wheel.name,
+        has_image: wheel.image.is_some(),
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -418,6 +497,8 @@ pub fn run() {
             save_profile_wheel_image,
             profile_wheel_image,
             remove_profile_wheel_image,
+            create_wheel,
+            assign_profile_wheel,
             capture_profile,
             import_profile,
             update_profile,

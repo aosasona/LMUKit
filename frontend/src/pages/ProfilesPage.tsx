@@ -9,7 +9,7 @@ import { useState } from "react";
 import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
 import { TagPicker } from "../components/TagPicker";
-import type { Device, Profile } from "../models";
+import type { Device, Profile, Wheel } from "../models";
 
 const DEFAULT_CLASSES = ["GT3", "GTE", "LMP3", "LMP2", "HY"] as const;
 
@@ -25,6 +25,7 @@ function classSlug(tag: string) {
 
 type Props = {
   profiles: Profile[];
+  wheels: Wheel[];
   selected?: Profile;
   wheelImageUrl: string | null;
   activeId: string | null;
@@ -45,16 +46,17 @@ type Props = {
   onRemoveWheelImage: (profile: Profile) => void;
   onSaveCategories: (
     profile: Profile,
-    wheelBrand: string,
-    wheelName: string,
     classTags: string[],
     customTags: string[],
   ) => void;
+  onCreateWheel: (profile: Profile, brand: string, name: string) => void;
+  onAssignWheel: (profile: Profile, wheel: Wheel | null) => void;
 };
 
 export function ProfilesPage(props: Props) {
   const {
     profiles,
+    wheels,
     selected,
     wheelImageUrl,
     activeId,
@@ -74,6 +76,8 @@ export function ProfilesPage(props: Props) {
     onSaveWheelImage,
     onRemoveWheelImage,
     onSaveCategories,
+    onCreateWheel,
+    onAssignWheel,
   } = props;
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [captureName, setCaptureName] = useState("");
@@ -282,13 +286,22 @@ export function ProfilesPage(props: Props) {
               {wheelImageUrl && (
                 <img src={wheelImageUrl} alt="Assigned wheel" />
               )}
-              <label className="secondary compact image-picker">
+              <label
+                className={`secondary compact image-picker ${!selected.wheelId ? "disabled" : ""}`}
+                title={
+                  selected.wheelId
+                    ? "This image is shared by every profile using this wheel"
+                    : "Assign or create a wheel first"
+                }
+              >
                 <ImageIcon />
-                {selected.hasWheelImage ? "Replace image" : "Assign image"}
+                {selected.hasWheelImage
+                  ? "Replace wheel image"
+                  : "Add wheel image"}
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
-                  disabled={busy}
+                  disabled={busy || !selected.wheelId}
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (file) onSaveWheelImage(selected, file);
@@ -320,7 +333,8 @@ export function ProfilesPage(props: Props) {
                     onSelect: () =>
                       setConfirmation({
                         title: "Remove wheel image?",
-                        description: `The managed wheel image will be removed from ${selected.name}.`,
+                        description:
+                          "This removes the image from the wheel library and every profile using this wheel.",
                         confirmLabel: "Remove image",
                         danger: true,
                         onConfirm: () => {
@@ -360,8 +374,11 @@ export function ProfilesPage(props: Props) {
           <CategoryEditor
             key={selected.id}
             profile={selected}
+            wheels={wheels}
             busy={busy}
             onSave={onSaveCategories}
+            onCreateWheel={onCreateWheel}
+            onAssignWheel={onAssignWheel}
           />
           <p className="device-note">
             Removing a device also removes all of its bindings.
@@ -420,20 +437,25 @@ export function ProfilesPage(props: Props) {
 
 function CategoryEditor({
   profile,
+  wheels,
   busy,
   onSave,
+  onCreateWheel,
+  onAssignWheel,
 }: {
   profile: Profile;
+  wheels: Wheel[];
   busy: boolean;
   onSave: Props["onSaveCategories"];
+  onCreateWheel: Props["onCreateWheel"];
+  onAssignWheel: Props["onAssignWheel"];
 }) {
-  const [brand, setBrand] = useState(profile.wheelBrand ?? "");
-  const [wheelName, setWheelName] = useState(profile.wheelName ?? "");
+  const [creatingWheel, setCreatingWheel] = useState(false);
+  const [brand, setBrand] = useState("");
+  const [wheelName, setWheelName] = useState("");
   const [classes, setClasses] = useState(profile.classTags);
   const [customTags, setCustomTags] = useState(profile.customTags);
   const changed =
-    brand.trim() !== (profile.wheelBrand ?? "") ||
-    wheelName.trim() !== (profile.wheelName ?? "") ||
     JSON.stringify(classes) !== JSON.stringify(profile.classTags) ||
     JSON.stringify(customTags) !== JSON.stringify(profile.customTags);
   return (
@@ -443,24 +465,65 @@ function CategoryEditor({
         <h4>Wheel and intended car classes</h4>
       </div>
       <div className="category-fields">
-        <label className="identity-field">
-          <span>Brand</span>
-          <input
-            value={brand}
-            maxLength={60}
-            placeholder="Simagic"
-            onChange={(event) => setBrand(event.target.value)}
-          />
+        <label className="identity-field wheel-library-field">
+          <span>Wheel</span>
+          <div>
+            <select
+              value={profile.wheelId ?? ""}
+              disabled={busy}
+              onChange={(event) => {
+                const wheel =
+                  wheels.find((entry) => entry.id === event.target.value) ??
+                  null;
+                onAssignWheel(profile, wheel);
+              }}
+            >
+              <option value="">No wheel assigned</option>
+              {wheels.map((wheel) => (
+                <option value={wheel.id} key={wheel.id}>
+                  {[wheel.brand, wheel.name].filter(Boolean).join(" ")}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="secondary compact"
+              onClick={() => setCreatingWheel((current) => !current)}
+            >
+              {creatingWheel ? "Cancel" : "New wheel"}
+            </button>
+          </div>
         </label>
-        <label className="identity-field">
-          <span>Wheel name</span>
-          <input
-            value={wheelName}
-            maxLength={60}
-            placeholder="GT Neo"
-            onChange={(event) => setWheelName(event.target.value)}
-          />
-        </label>
+        {creatingWheel && (
+          <div className="new-wheel-fields">
+            <label className="identity-field">
+              <span>Brand</span>
+              <input
+                value={brand}
+                maxLength={60}
+                placeholder="Simagic"
+                onChange={(event) => setBrand(event.target.value)}
+              />
+            </label>
+            <label className="identity-field">
+              <span>Wheel name</span>
+              <input
+                value={wheelName}
+                maxLength={60}
+                placeholder="GT Neo"
+                onChange={(event) => setWheelName(event.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="primary compact"
+              disabled={busy || !wheelName.trim()}
+              onClick={() => onCreateWheel(profile, brand, wheelName)}
+            >
+              Create and assign
+            </button>
+          </div>
+        )}
         <TagPicker
           label="Car classes"
           options={DEFAULT_CLASSES}
@@ -481,7 +544,7 @@ function CategoryEditor({
       <button
         className="primary compact"
         disabled={busy || !changed}
-        onClick={() => onSave(profile, brand, wheelName, classes, customTags)}
+        onClick={() => onSave(profile, classes, customTags)}
       >
         Save categories
       </button>

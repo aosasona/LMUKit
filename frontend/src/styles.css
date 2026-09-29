@@ -830,6 +830,34 @@ main {
   color: #dce4e0;
   font-size: 13px;
 }
+.wheel-library-field {
+  grid-column: 1 / -1;
+}
+.wheel-library-field > div {
+  display: flex;
+  gap: 8px;
+}
+.wheel-library-field select {
+  min-width: 0;
+  height: 38px;
+  flex: 1;
+  padding: 0 34px 0 11px;
+  border: 1px solid var(--line);
+  outline: 0;
+  background: #141414;
+  color: #dce4e0;
+  cursor: pointer;
+}
+.new-wheel-fields {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(198, 243, 107, 0.16);
+  background: rgba(198, 243, 107, 0.025);
+}
 .class-selector,
 .tag-field {
   min-width: 0;
@@ -1313,6 +1341,10 @@ main {
 }
 .image-picker {
   cursor: pointer;
+}
+.image-picker.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .image-picker svg {
   width: 14px;

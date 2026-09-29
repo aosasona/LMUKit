@@ -3,7 +3,7 @@ import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
-import type { Binding, Device, Page, Profile, Snapshot } from "./models";
+import type { Binding, Device, Page, Profile, Snapshot, Wheel } from "./models";
 import { emptySnapshot } from "./models";
 import { BindingEditorPage } from "./pages/BindingEditorPage";
 import { ComingSoonPage, pageTitle } from "./pages/ComingSoonPage";
@@ -18,6 +18,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("Ready");
   const [wheelImageUrl, setWheelImageUrl] = useState<string | null>(null);
+  const [wheelImageRevision, setWheelImageRevision] = useState(0);
   const [bindings, setBindings] = useState<Binding[]>([]);
   const selected =
     snapshot.profiles.find((profile) => profile.id === selectedId) ??
@@ -83,7 +84,7 @@ export default function App() {
       cancelled = true;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [selected?.id, selected?.hasWheelImage]);
+  }, [selected?.id, selected?.hasWheelImage, wheelImageRevision]);
 
   async function loadBindings(profile = selected) {
     if (!profile) {
@@ -138,32 +139,58 @@ export default function App() {
         profileId: profile.id,
         imageBytes: Array.from(new Uint8Array(await file.arrayBuffer())),
       });
+      setWheelImageRevision((revision) => revision + 1);
       await refresh();
       setNotice(`Wheel image assigned to ${profile.name}.`);
     });
   const removeWheelImage = (profile: Profile) =>
     withBusy(async () => {
       await invoke("remove_profile_wheel_image", { profileId: profile.id });
+      setWheelImageRevision((revision) => revision + 1);
       await refresh();
       setNotice(`Wheel image removed from ${profile.name}.`);
     });
   const saveCategories = (
     profile: Profile,
-    wheelBrand: string,
-    wheelName: string,
     classTags: string[],
     customTags: string[],
   ) =>
     withBusy(async () => {
       await invoke("set_profile_categories", {
         profileId: profile.id,
-        wheelBrand: wheelBrand || null,
-        wheelName: wheelName || null,
         classTags,
         customTags,
       });
       await refresh();
       setNotice(`Categories updated for ${profile.name}.`);
+    });
+  const createWheel = (profile: Profile, brand: string, name: string) =>
+    withBusy(async () => {
+      const wheelId = await invoke<string>("create_wheel", {
+        brand: brand || null,
+        name,
+      });
+      await invoke("assign_profile_wheel", {
+        profileId: profile.id,
+        wheelId,
+      });
+      await refresh();
+      setNotice(
+        `${[brand, name].filter(Boolean).join(" ")} added to your wheel library.`,
+      );
+    });
+  const assignWheel = (profile: Profile, wheel: Wheel | null) =>
+    withBusy(async () => {
+      await invoke("assign_profile_wheel", {
+        profileId: profile.id,
+        wheelId: wheel?.id ?? null,
+      });
+      await refresh();
+      setNotice(
+        wheel
+          ? `${wheel.name} assigned to ${profile.name}.`
+          : `Wheel removed from ${profile.name}.`,
+      );
     });
   const importPreset = (file: File) =>
     withBusy(async () => {
@@ -256,6 +283,7 @@ export default function App() {
             {page === "profiles" && (
               <ProfilesPage
                 profiles={filtered}
+                wheels={snapshot.wheels}
                 selected={selected}
                 wheelImageUrl={wheelImageUrl}
                 activeId={snapshot.activeProfile}
@@ -275,6 +303,8 @@ export default function App() {
                 onSaveWheelImage={saveWheelImage}
                 onRemoveWheelImage={removeWheelImage}
                 onSaveCategories={saveCategories}
+                onCreateWheel={createWheel}
+                onAssignWheel={assignWheel}
               />
             )}
             {page === "bindings" && (

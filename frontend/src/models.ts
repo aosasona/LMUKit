@@ -13,6 +13,14 @@ export type Profile = {
   classTags: string[];
   customTags: string[];
   differsFromLive: boolean | null;
+  wheelId: string | null;
+};
+
+export type Wheel = {
+  id: string;
+  brand: string | null;
+  name: string;
+  hasImage: boolean;
 };
 
 export type Binding = {
@@ -31,6 +39,7 @@ export type BindingLookup = {
 
 export type Snapshot = {
   profiles: Profile[];
+  wheels: Wheel[];
   activeProfile: string | null;
   lmuConfigPath: string;
   lmuSettingsPath: string;
@@ -41,6 +50,7 @@ export type Page = "home" | "profiles" | "bindings" | "game" | "settings";
 
 export const emptySnapshot: Snapshot = {
   profiles: [],
+  wheels: [],
   activeProfile: null,
   lmuConfigPath: "",
   lmuSettingsPath: "",

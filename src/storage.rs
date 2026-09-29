@@ -31,6 +31,17 @@ pub struct Profile {
     pub class_tags: Vec<String>,
     #[serde(default)]
     pub custom_tags: Vec<String>,
+    #[serde(default)]
+    pub wheel_id: Option<Uuid>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Wheel {
+    pub id: Uuid,
+    pub brand: Option<String>,
+    pub name: String,
+    #[serde(default)]
+    pub image: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -113,6 +124,7 @@ impl Store {
     pub fn open_at(root: PathBuf) -> Result<Self> {
         fs::create_dir_all(root.join("profiles"))?;
         fs::create_dir_all(root.join("backups"))?;
+        fs::create_dir_all(root.join("wheels"))?;
         let settings_path = root.join("settings.json");
         let mut settings = if settings_path.exists() {
             serde_json::from_slice(&fs::read(&settings_path)?)
@@ -132,7 +144,9 @@ impl Store {
             lmuffb.path = std::mem::take(&mut settings.lmuffb_path);
             lmuffb.enabled = true;
         }
-        Ok(Self { root, settings })
+        let store = Self { root, settings };
+        store.migrate_profile_wheels()?;
+        Ok(store)
     }
 
     pub fn save_settings(&self) -> Result<()> {
@@ -221,6 +235,155 @@ impl Store {
         self.root.join("profiles")
     }
 
+    pub fn wheels(&self) -> Result<Vec<Wheel>> {
+        let mut wheels: Vec<Wheel> = Vec::new();
+        for entry in fs::read_dir(self.root.join("wheels"))? {
+            let path = entry?.path().join("wheel.json");
+            if path.is_file() {
+                wheels.push(serde_json::from_slice(&fs::read(path)?)?);
+            }
+        }
+        wheels.sort_by_key(|wheel| {
+            format!("{} {}", wheel.brand.as_deref().unwrap_or(""), wheel.name).to_lowercase()
+        });
+        Ok(wheels)
+    }
+
+    pub fn create_wheel(&self, brand: Option<String>, name: String) -> Result<Wheel> {
+        let name = normalize_optional_label(Some(name))?.context("Enter a wheel name.")?;
+        let brand = normalize_optional_label(brand)?;
+        if self.wheels()?.iter().any(|wheel| {
+            wheel.name.eq_ignore_ascii_case(&name)
+                && wheel
+                    .brand
+                    .as_deref()
+                    .unwrap_or("")
+                    .eq_ignore_ascii_case(brand.as_deref().unwrap_or(""))
+        }) {
+            bail!("That wheel already exists in the library.");
+        }
+        let wheel = Wheel {
+            id: Uuid::new_v4(),
+            brand,
+            name,
+            image: None,
+        };
+        self.save_wheel(&wheel)?;
+        Ok(wheel)
+    }
+
+    pub fn assign_profile_wheel(&self, profile_id: Uuid, wheel_id: Option<Uuid>) -> Result<()> {
+        if let Some(id) = wheel_id
+            && !self.wheels()?.iter().any(|wheel| wheel.id == id)
+        {
+            bail!("That wheel no longer exists.");
+        }
+        let mut profile = self
+            .profiles()?
+            .into_iter()
+            .find(|profile| profile.id == profile_id)
+            .context("That profile no longer exists.")?;
+        profile.wheel_id = wheel_id;
+        self.save_profile_metadata(&profile)
+    }
+
+    pub fn wheel(&self, id: Uuid) -> Result<Wheel> {
+        self.wheels()?
+            .into_iter()
+            .find(|wheel| wheel.id == id)
+            .context("That wheel no longer exists.")
+    }
+
+    pub fn save_wheel_image(&self, wheel: &mut Wheel, bytes: &[u8]) -> Result<()> {
+        validate_image_bytes(bytes)?;
+        let extension = image_extension(bytes).expect("validated wheel image");
+        if let Some(existing) = &wheel.image {
+            let path = self.safe_wheel_asset_path(wheel.id, existing)?;
+            if path.is_file() {
+                fs::remove_file(path).context("could not replace the previous wheel image")?;
+            }
+        }
+        let filename = format!("wheel-image.{extension}");
+        fs::write(self.wheel_dir(wheel.id).join(&filename), bytes)
+            .context("could not save the wheel image")?;
+        wheel.image = Some(filename);
+        self.save_wheel(wheel)
+    }
+
+    pub fn wheel_image(&self, wheel: &Wheel) -> Result<Option<Vec<u8>>> {
+        let Some(filename) = &wheel.image else {
+            return Ok(None);
+        };
+        let path = self.safe_wheel_asset_path(wheel.id, filename)?;
+        Ok(path.is_file().then(|| fs::read(path)).transpose()?)
+    }
+
+    pub fn remove_wheel_image(&self, wheel: &mut Wheel) -> Result<()> {
+        if let Some(filename) = wheel.image.take() {
+            let path = self.safe_wheel_asset_path(wheel.id, &filename)?;
+            if path.is_file() {
+                fs::remove_file(path).context("could not remove the wheel image")?;
+            }
+            self.save_wheel(wheel)?;
+        }
+        Ok(())
+    }
+
+    fn save_wheel(&self, wheel: &Wheel) -> Result<()> {
+        fs::create_dir_all(self.wheel_dir(wheel.id))?;
+        write_json(&self.wheel_dir(wheel.id).join("wheel.json"), wheel)
+            .context("could not save wheel metadata")
+    }
+
+    fn wheel_dir(&self, id: Uuid) -> PathBuf {
+        self.root.join("wheels").join(id.to_string())
+    }
+
+    fn safe_wheel_asset_path(&self, id: Uuid, filename: &str) -> Result<PathBuf> {
+        let path = Path::new(filename);
+        if path.file_name().and_then(|name| name.to_str()) != Some(filename) {
+            bail!("the wheel contains an invalid image filename");
+        }
+        Ok(self.wheel_dir(id).join(path))
+    }
+
+    fn migrate_profile_wheels(&self) -> Result<()> {
+        let mut wheels = self.wheels()?;
+        for mut profile in self.profiles()? {
+            if profile.wheel_id.is_some() {
+                continue;
+            }
+            let Some(name) = profile
+                .wheel_name
+                .clone()
+                .or_else(|| profile.wheel_tags.first().cloned())
+            else {
+                continue;
+            };
+            let brand = profile.wheel_brand.clone();
+            let wheel = if let Some(existing) = wheels.iter().find(|wheel| {
+                wheel.name.eq_ignore_ascii_case(&name)
+                    && wheel
+                        .brand
+                        .as_deref()
+                        .unwrap_or("")
+                        .eq_ignore_ascii_case(brand.as_deref().unwrap_or(""))
+            }) {
+                existing.clone()
+            } else {
+                let mut wheel = self.create_wheel(brand, name)?;
+                if let Ok(Some(bytes)) = self.profile_wheel_image(&profile) {
+                    self.save_wheel_image(&mut wheel, &bytes)?;
+                }
+                wheels.push(wheel.clone());
+                wheel
+            };
+            profile.wheel_id = Some(wheel.id);
+            self.save_profile_metadata(&profile)?;
+        }
+        Ok(())
+    }
+
     pub fn profiles(&self) -> Result<Vec<Profile>> {
         let mut profiles: Vec<Profile> = Vec::new();
         for entry in fs::read_dir(self.profiles_dir())? {
@@ -241,8 +404,6 @@ impl Store {
     pub fn set_profile_categories(
         &self,
         profile_id: Uuid,
-        wheel_brand: Option<String>,
-        wheel_name: Option<String>,
         class_tags: Vec<String>,
         custom_tags: Vec<String>,
     ) -> Result<()> {
@@ -251,8 +412,6 @@ impl Store {
             .into_iter()
             .find(|profile| profile.id == profile_id)
             .context("That profile no longer exists.")?;
-        profile.wheel_brand = normalize_optional_label(wheel_brand)?;
-        profile.wheel_name = normalize_optional_label(wheel_name)?;
         profile.class_tags = normalize_tags(class_tags)?;
         profile.custom_tags = normalize_tags(custom_tags)?;
         profile.wheel_tags.clear();
@@ -260,12 +419,8 @@ impl Store {
     }
 
     pub fn save_profile_wheel_image(&self, profile: &mut Profile, bytes: &[u8]) -> Result<()> {
-        const MAX_IMAGE_SIZE: usize = 8 * 1024 * 1024;
-        if bytes.is_empty() || bytes.len() > MAX_IMAGE_SIZE {
-            bail!("Wheel images must be between 1 byte and 8 MB.");
-        }
-        let extension =
-            image_extension(bytes).context("Wheel images must be PNG, JPEG, or WebP files.")?;
+        validate_image_bytes(bytes)?;
+        let extension = image_extension(bytes).expect("validated wheel image");
         if let Some(existing) = &profile.wheel_image {
             let existing = self.safe_profile_asset_path(profile.id, existing)?;
             if existing.is_file() {
@@ -341,6 +496,7 @@ impl Store {
             wheel_name: None,
             class_tags: Vec::new(),
             custom_tags: Vec::new(),
+            wheel_id: None,
         };
         let dir = self.profile_dir(profile.id);
         fs::create_dir_all(&dir)?;
@@ -550,6 +706,7 @@ impl Store {
             wheel_name: None,
             class_tags: Vec::new(),
             custom_tags: Vec::new(),
+            wheel_id: None,
         };
         let dir = self.profile_dir(profile.id);
         fs::create_dir_all(&dir)?;
@@ -790,6 +947,17 @@ fn image_extension(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
+fn validate_image_bytes(bytes: &[u8]) -> Result<()> {
+    const MAX_IMAGE_SIZE: usize = 8 * 1024 * 1024;
+    if bytes.is_empty() || bytes.len() > MAX_IMAGE_SIZE {
+        bail!("Wheel images must be between 1 byte and 8 MB.");
+    }
+    if image_extension(bytes).is_none() {
+        bail!("Wheel images must be PNG, JPEG, or WebP files.");
+    }
+    Ok(())
+}
+
 fn normalize_tags(tags: Vec<String>) -> Result<Vec<String>> {
     let mut normalized = Vec::new();
     for tag in tags {
@@ -906,19 +1074,27 @@ mod tests {
             .import_profile_bytes("GT3", br#"{"Input":{}}"#)
             .unwrap();
 
+        let wheel = store
+            .create_wheel(Some(" Simagic ".into()), " GT Neo ".into())
+            .unwrap();
+        store
+            .assign_profile_wheel(profile.id, Some(wheel.id))
+            .unwrap();
         store
             .set_profile_categories(
                 profile.id,
-                Some(" Simagic ".into()),
-                Some(" GT Neo ".into()),
                 vec!["GT3".into(), "Hypercar".into()],
                 vec!["Formula".into(), "formula".into()],
             )
             .unwrap();
 
         let saved = store.profiles().unwrap().remove(0);
-        assert_eq!(saved.wheel_brand.as_deref(), Some("Simagic"));
-        assert_eq!(saved.wheel_name.as_deref(), Some("GT Neo"));
+        assert_eq!(saved.wheel_id, Some(wheel.id));
+        assert_eq!(
+            store.wheel(wheel.id).unwrap().brand.as_deref(),
+            Some("Simagic")
+        );
+        assert_eq!(store.wheel(wheel.id).unwrap().name, "GT Neo");
         assert_eq!(saved.class_tags, ["GT3", "Hypercar"]);
         assert_eq!(saved.custom_tags, ["Formula"]);
     }
@@ -1098,6 +1274,69 @@ mod tests {
         assert_eq!(profile.wheel_image, None);
         assert_eq!(store.profile_wheel_image(&profile).unwrap(), None);
         assert_eq!(store.profiles().unwrap()[0].wheel_image, None);
+    }
+
+    #[test]
+    fn shares_a_wheel_and_its_image_between_profiles() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("lmukit");
+        let store = Store::open_at(root.clone()).unwrap();
+        let first = store
+            .import_profile_bytes("GT3", br#"{"Input":{}}"#)
+            .unwrap();
+        let second = store
+            .import_profile_bytes("GTE", br#"{"Input":{}}"#)
+            .unwrap();
+        let mut wheel = store
+            .create_wheel(Some("Simagic".into()), "GT Neo".into())
+            .unwrap();
+        let png = b"\x89PNG\r\n\x1a\nsynthetic";
+        store.save_wheel_image(&mut wheel, png).unwrap();
+        store
+            .assign_profile_wheel(first.id, Some(wheel.id))
+            .unwrap();
+        store
+            .assign_profile_wheel(second.id, Some(wheel.id))
+            .unwrap();
+
+        let profiles = store.profiles().unwrap();
+        assert!(
+            profiles
+                .iter()
+                .all(|profile| profile.wheel_id == Some(wheel.id))
+        );
+        assert_eq!(store.wheel_image(&wheel).unwrap().unwrap(), png);
+
+        drop(store);
+        let reopened = Store::open_at(root).unwrap();
+        assert_eq!(reopened.wheels().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn migrates_matching_legacy_profile_wheels_to_one_library_entry() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("lmukit");
+        let store = Store::open_at(root.clone()).unwrap();
+        for name in ["GT3", "GTE"] {
+            let mut profile = store
+                .import_profile_bytes(name, br#"{"Input":{}}"#)
+                .unwrap();
+            profile.wheel_brand = Some("Simagic".into());
+            profile.wheel_name = Some("GT Neo".into());
+            store.save_profile_metadata(&profile).unwrap();
+        }
+        drop(store);
+
+        let migrated = Store::open_at(root).unwrap();
+        let wheels = migrated.wheels().unwrap();
+        assert_eq!(wheels.len(), 1);
+        assert!(
+            migrated
+                .profiles()
+                .unwrap()
+                .iter()
+                .all(|profile| profile.wheel_id == Some(wheels[0].id))
+        );
     }
 
     #[test]

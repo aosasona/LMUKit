@@ -61,10 +61,11 @@ Each profile has a UUID directory containing:
 ```text
 profiles/<uuid>/profile.json
 profiles/<uuid>/direct input.json
-profiles/<uuid>/wheel-image.<png|jpg|webp>  # optional
+wheels/<uuid>/wheel.json
+wheels/<uuid>/wheel-image.<png|jpg|webp>  # optional
 ```
 
-Profile metadata may reference an optional managed wheel image and contains `wheel_brand`, `wheel_name`, `class_tags`, and `custom_tags` used by the profile browser. Empty `class_tags` means a generic profile. The legacy `wheel_tags` field remains readable for migration but new writes use the structured wheel fields. Never retain an external image source path. Settings track the LMU path, active profile UUID, and companion applications. Timestamped backups under `backups/` preserve both replaced live configurations and saved profiles updated from LMU.
+Profiles reference an optional reusable wheel through `wheel_id`; wheel brand, name, and managed image belong to that wheel and are shared by every referencing profile. Existing profile-owned wheel metadata is migrated by matching brand and name, with matching profiles converging on one library entry. Profiles retain `class_tags` and `custom_tags`; empty `class_tags` means a generic profile. The legacy `wheel_tags`, `wheel_brand`, `wheel_name`, and `wheel_image` fields remain readable for migration. Never retain an external image source path. Settings track the LMU path, active profile UUID, and companion applications. Timestamped backups under `backups/` preserve both replaced live configurations and saved profiles updated from LMU.
 
 ## Required checks
 
