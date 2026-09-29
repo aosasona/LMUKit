@@ -1,5 +1,6 @@
 :root { font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; color: #edf3ef; background: #090d0c; font-synthesis: none; --panel: #111715; --line: rgba(218,239,228,.09); --muted: #87948e; --teal: #43d6a2; --amber: #f3b768; }
 * { box-sizing: border-box; }
+*:not(.pulse):not(.halo) { border-radius: 0 !important; }
 body { margin: 0; min-width: 900px; min-height: 100vh; overflow: hidden; background: radial-gradient(circle at 68% -20%, rgba(37,114,89,.14), transparent 34%), #090d0c; }
 button, input { font: inherit; }
 button { color: inherit; }
