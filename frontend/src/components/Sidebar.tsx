@@ -22,10 +22,12 @@ export function Sidebar({
   page,
   profileCount,
   onNavigate,
+  onOpenSwitcher,
 }: {
   page: Page;
   profileCount: number;
   onNavigate: (page: Page) => void;
+  onOpenSwitcher: () => void;
 }) {
   return (
     <aside className="sidebar">
@@ -60,7 +62,7 @@ export function Sidebar({
             <small>Close LMU before changes</small>
           </div>
         </div>
-        <button className="keyboard-hint">
+        <button className="keyboard-hint" onClick={onOpenSwitcher}>
           <Keyboard size={16} />
           <span>Quick switcher</span>
           <kbd>Ctrl Alt Space</kbd>

@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
+import { QuickProfileSwitcher } from "./components/QuickProfileSwitcher";
 import type {
   Binding,
   BindingAssignmentCandidate,
@@ -41,6 +42,7 @@ export default function App() {
   const [profileDocumentBaseline, setProfileDocumentBaseline] =
     useState<JsonObject | null>(null);
   const [profileDocumentLoading, setProfileDocumentLoading] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   const [gameSettings, setGameSettings] = useState<JsonObject | null>(null);
   const [gameSettingsBaseline, setGameSettingsBaseline] =
     useState<JsonObject | null>(null);
@@ -99,8 +101,7 @@ export default function App() {
   }, []);
   useEffect(() => {
     const switcher = listen("open-profile-switcher", () => {
-      setPage("profiles");
-      setQuery("");
+      setSwitcherOpen(true);
     });
     const activation = listen<{ Ok?: string; Err?: string }>(
       "profile-shortcut-result",
@@ -520,6 +521,7 @@ export default function App() {
           page={page}
           profileCount={snapshot.profiles.length}
           onNavigate={navigate}
+          onOpenSwitcher={() => setSwitcherOpen(true)}
         />
         <main>
           <header className="topbar">
@@ -640,6 +642,16 @@ export default function App() {
           </footer>
         </main>
       </div>
+      {switcherOpen && (
+        <QuickProfileSwitcher
+          profiles={snapshot.profiles}
+          activeId={snapshot.activeProfile}
+          busy={busy}
+          imageRevision={wheelImageRevision}
+          onClose={() => setSwitcherOpen(false)}
+          onActivate={activate}
+        />
+      )}
     </div>
   );
 }
