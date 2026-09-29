@@ -138,8 +138,8 @@ export default function App() {
   useEffect(() => {
     let url: string | null = null;
     let cancelled = false;
+    setWheelImageUrl(null);
     if (!selected?.hasWheelImage) {
-      setWheelImageUrl(null);
       return;
     }
     void invoke<number[] | null>("profile_wheel_image", {
@@ -235,6 +235,7 @@ export default function App() {
 
   const activate = (profile: Profile) =>
     withBusy(async () => {
+      setSelectedId(profile.id);
       setNotice(`Preparing ${profile.name}…`);
       await invoke("activate_profile", { profileId: profile.id });
       await refresh();
