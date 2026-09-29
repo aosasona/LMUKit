@@ -291,7 +291,7 @@ export function SettingsPage(props: Props) {
         </div>
         <div className="companion-list">
           {apps.map((app, index) => (
-            <div className="companion-row" key={`${app.name}-${index}`}>
+            <div className="companion-row" key={index}>
               <input
                 type="checkbox"
                 checked={app.enabled}
