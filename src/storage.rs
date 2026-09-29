@@ -72,6 +72,16 @@ pub struct Settings {
     pub companion_apps: Vec<CompanionApp>,
     #[serde(default = "default_ui_font_scale")]
     pub ui_font_scale: f32,
+    #[serde(default)]
+    pub lmu_launch_mode: LaunchMode,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LaunchMode {
+    #[default]
+    Desktop,
+    Vr,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -90,6 +100,7 @@ impl Default for Settings {
             lmuffb_path: PathBuf::new(),
             companion_apps: default_companion_apps(),
             ui_font_scale: default_ui_font_scale(),
+            lmu_launch_mode: LaunchMode::Desktop,
         }
     }
 }
@@ -107,6 +118,11 @@ fn default_companion_apps() -> Vec<CompanionApp> {
         },
         CompanionApp {
             name: "Crew Chief".into(),
+            path: PathBuf::new(),
+            enabled: false,
+        },
+        CompanionApp {
+            name: "RaceLab".into(),
             path: PathBuf::new(),
             enabled: false,
         },
@@ -236,7 +252,10 @@ impl Store {
                  if errorlevel 1 start \"\" \"{path}\"\r\n"
             ));
         }
-        script.push_str("%*\r\n");
+        script.push_str(match self.settings.lmu_launch_mode {
+            LaunchMode::Desktop => "%*\r\n",
+            LaunchMode::Vr => "%* -vr\r\n",
+        });
         fs::write(&launcher, script).context("could not create the companion launcher")?;
         Ok(format!("cmd /c \"\"{}\" %command%\"", launcher.display()))
     }
@@ -451,6 +470,30 @@ impl Store {
     pub fn save_profile_metadata(&self, profile: &Profile) -> Result<()> {
         write_json(&self.profile_dir(profile.id).join("profile.json"), profile)
             .context("could not save profile metadata")
+    }
+
+    pub fn set_profile_hotkey(&self, profile_id: Uuid, slot: Option<u8>) -> Result<()> {
+        if slot.is_some_and(|slot| !(1..=9).contains(&slot)) {
+            bail!("Profile shortcuts must use a number from 1 to 9.");
+        }
+        let mut profiles = self.profiles()?;
+        if !profiles.iter().any(|profile| profile.id == profile_id) {
+            bail!("That profile no longer exists.");
+        }
+        for profile in &mut profiles {
+            let next = if profile.id == profile_id {
+                slot
+            } else if profile.hotkey_slot == slot {
+                None
+            } else {
+                profile.hotkey_slot
+            };
+            if next != profile.hotkey_slot {
+                profile.hotkey_slot = next;
+                self.save_profile_metadata(profile)?;
+            }
+        }
+        Ok(())
     }
 
     pub fn set_profile_categories(
@@ -1491,6 +1534,52 @@ mod tests {
         assert!(script.contains("LMUFFB.exe"));
         assert!(script.contains("lmukit.exe"));
         assert!(script.contains("%*"));
+    }
+
+    #[test]
+    fn adds_vr_to_the_generated_lmu_launch_command() {
+        let temp = tempfile::tempdir().unwrap();
+        let lmukit = temp.path().join("lmukit.exe");
+        fs::write(&lmukit, []).unwrap();
+        let mut store = Store::open_at(temp.path().join("data")).unwrap();
+        store.settings.lmu_launch_mode = LaunchMode::Vr;
+
+        store.companion_launch_option(&lmukit).unwrap();
+        let script = fs::read_to_string(store.root.join("launch-lmu-with-companions.cmd")).unwrap();
+        assert!(script.ends_with("%* -vr\r\n"));
+    }
+
+    #[test]
+    fn assigns_unique_profile_hotkeys() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open_at(temp.path().join("data")).unwrap();
+        let first = store
+            .import_profile_bytes("GT3", br#"{"Input":{}}"#)
+            .unwrap();
+        let second = store
+            .import_profile_bytes("GTE", br#"{"Input":{}}"#)
+            .unwrap();
+        store.set_profile_hotkey(first.id, Some(2)).unwrap();
+        store.set_profile_hotkey(second.id, Some(2)).unwrap();
+
+        let profiles = store.profiles().unwrap();
+        assert_eq!(
+            profiles
+                .iter()
+                .find(|profile| profile.id == first.id)
+                .unwrap()
+                .hotkey_slot,
+            None
+        );
+        assert_eq!(
+            profiles
+                .iter()
+                .find(|profile| profile.id == second.id)
+                .unwrap()
+                .hotkey_slot,
+            Some(2)
+        );
+        assert!(store.set_profile_hotkey(second.id, Some(10)).is_err());
     }
 
     #[test]

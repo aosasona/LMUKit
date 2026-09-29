@@ -1,56 +1,101 @@
-import { Minus, Plus, Type } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  Copy,
+  FileJson,
+  Minus,
+  Plus,
+  PlusCircle,
+  Trash2,
+  Type,
+} from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import type { CompanionApp, Profile } from "../models";
 
 const MIN_SCALE = 0.85;
 const MAX_SCALE = 1.4;
 const STEP = 0.05;
 
-export function SettingsPage({
-  fontScale,
-  busy,
-  onSaveFontScale,
-}: {
+type Props = {
   fontScale: number;
   busy: boolean;
+  profiles: Profile[];
+  configPath: string;
+  settingsPath: string;
+  companionApps: CompanionApp[];
+  launchMode: "desktop" | "vr";
   onSaveFontScale: (scale: number) => void;
-}) {
-  const [draft, setDraft] = useState(fontScale);
+  onSaveSettings: (
+    configPath: string,
+    settingsPath: string,
+    apps: CompanionApp[],
+    launchMode: "desktop" | "vr",
+  ) => void;
+  onSetHotkey: (profile: Profile, slot: number | null) => void;
+  onCreateLaunchOption: (
+    configPath: string,
+    settingsPath: string,
+    apps: CompanionApp[],
+    launchMode: "desktop" | "vr",
+  ) => Promise<string | null>;
+  onBrowse: (
+    kind: "bindings" | "settings" | "executable",
+  ) => Promise<string | null>;
+};
 
-  useEffect(() => setDraft(fontScale), [fontScale]);
+export function SettingsPage(props: Props) {
+  const {
+    fontScale,
+    busy,
+    profiles,
+    configPath,
+    settingsPath,
+    companionApps,
+    launchMode,
+    onSaveFontScale,
+    onSaveSettings,
+    onSetHotkey,
+    onCreateLaunchOption,
+    onBrowse,
+  } = props;
+  const [draftScale, setDraftScale] = useState(fontScale);
+  const [bindings, setBindings] = useState(configPath);
+  const [gameSettings, setGameSettings] = useState(settingsPath);
+  const [apps, setApps] = useState(companionApps);
+  const [mode, setMode] = useState(launchMode);
 
-  const preview = (scale: number) => {
+  useEffect(() => setDraftScale(fontScale), [fontScale]);
+  useEffect(() => setBindings(configPath), [configPath]);
+  useEffect(() => setGameSettings(settingsPath), [settingsPath]);
+  useEffect(() => setApps(companionApps), [companionApps]);
+  useEffect(() => setMode(launchMode), [launchMode]);
+
+  const previewScale = (scale: number) => {
     const normalized = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
-    setDraft(normalized);
+    setDraftScale(normalized);
     document.documentElement.style.setProperty(
       "--font-scale",
       normalized.toString(),
     );
   };
+  const save = () => onSaveSettings(bindings, gameSettings, apps, mode);
+  const updateApp = (index: number, update: Partial<CompanionApp>) =>
+    setApps((current) =>
+      current.map((app, i) => (i === index ? { ...app, ...update } : app)),
+    );
 
   return (
-    <section className="settings-page">
-      <div className="settings-card">
-        <header>
-          <span className="settings-icon">
-            <Type />
-          </span>
-          <div>
-            <span className="eyebrow">Appearance</span>
-            <h2>Text size</h2>
-            <p>
-              Scale every font in LMUKit without changing your Windows settings.
-            </p>
-          </div>
-          <strong>{Math.round(draft * 100)}%</strong>
-        </header>
+    <section className="settings-page settings-stack">
+      <section className="settings-card">
+        <SettingsHeading icon={<Type />} eyebrow="Appearance" title="Text size">
+          Scale every font in LMUKit without changing your Windows settings.
+        </SettingsHeading>
         <div className="font-scale-control">
           <button
             type="button"
             aria-label="Decrease text size"
-            disabled={busy || draft <= MIN_SCALE}
+            disabled={busy || draftScale <= MIN_SCALE}
             onClick={() => {
-              const next = Math.max(MIN_SCALE, draft - STEP);
-              preview(next);
+              const next = Math.max(MIN_SCALE, draftScale - STEP);
+              previewScale(next);
               onSaveFontScale(next);
             }}
           >
@@ -61,51 +106,252 @@ export function SettingsPage({
             min={MIN_SCALE}
             max={MAX_SCALE}
             step={STEP}
-            value={draft}
+            value={draftScale}
             aria-label="Text size"
-            onChange={(event) => preview(Number(event.target.value))}
-            onPointerUp={() => onSaveFontScale(draft)}
-            onKeyUp={() => onSaveFontScale(draft)}
-            onBlur={() => onSaveFontScale(draft)}
+            onChange={(event) => previewScale(Number(event.target.value))}
+            onPointerUp={() => onSaveFontScale(draftScale)}
+            onKeyUp={() => onSaveFontScale(draftScale)}
+            onBlur={() => onSaveFontScale(draftScale)}
           />
           <button
             type="button"
             aria-label="Increase text size"
-            disabled={busy || draft >= MAX_SCALE}
+            disabled={busy || draftScale >= MAX_SCALE}
             onClick={() => {
-              const next = Math.min(MAX_SCALE, draft + STEP);
-              preview(next);
+              const next = Math.min(MAX_SCALE, draftScale + STEP);
+              previewScale(next);
               onSaveFontScale(next);
             }}
           >
             <Plus />
           </button>
+          <strong>{Math.round(draftScale * 100)}%</strong>
         </div>
-        <div className="font-scale-presets">
-          {[0.9, 1, 1.1, 1.2, 1.3].map((scale) => (
-            <button
-              type="button"
-              className={Math.abs(draft - scale) < 0.001 ? "active" : ""}
-              disabled={busy}
-              key={scale}
-              onClick={() => {
-                preview(scale);
-                onSaveFontScale(scale);
-              }}
-            >
-              {Math.round(scale * 100)}%
-            </button>
+      </section>
+
+      <section className="settings-card">
+        <SettingsHeading icon={<FileJson />} eyebrow="Files" title="LMU paths">
+          Choose the live binding and game-settings files LMUKit should manage.
+        </SettingsHeading>
+        <div className="path-fields">
+          <PathField
+            label="direct input.json"
+            value={bindings}
+            onChange={setBindings}
+            onBrowse={() =>
+              void onBrowse("bindings").then(
+                (path) => path && setBindings(path),
+              )
+            }
+          />
+          <PathField
+            label="Settings.JSON"
+            value={gameSettings}
+            onChange={setGameSettings}
+            onBrowse={() =>
+              void onBrowse("settings").then(
+                (path) => path && setGameSettings(path),
+              )
+            }
+          />
+        </div>
+      </section>
+
+      <section className="settings-card">
+        <SettingsHeading eyebrow="Shortcuts" title="Profile keyboard shortcuts">
+          Ctrl+Alt+Space opens LMUKit. Assign Ctrl+Alt+1–9 for direct profile
+          access.
+        </SettingsHeading>
+        <div className="shortcut-list">
+          {profiles.map((profile) => (
+            <label key={profile.id}>
+              <span>{profile.name}</span>
+              <select
+                value={profile.hotkeySlot ?? ""}
+                onChange={(event) =>
+                  onSetHotkey(
+                    profile,
+                    event.target.value ? Number(event.target.value) : null,
+                  )
+                }
+              >
+                <option value="">No shortcut</option>
+                {Array.from({ length: 9 }, (_, index) => index + 1).map(
+                  (slot) => (
+                    <option value={slot} key={slot}>
+                      Ctrl Alt {slot}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+          ))}
+          {!profiles.length && (
+            <span className="settings-empty">
+              Create a profile before assigning shortcuts.
+            </span>
+          )}
+        </div>
+      </section>
+
+      <section className="settings-card">
+        <SettingsHeading eyebrow="Launch setup" title="LMU and companion apps">
+          Generate one Steam launch option for LMUKit, your launch mode, and
+          selected helpers.
+        </SettingsHeading>
+        <div className="launch-mode">
+          <button
+            className={mode === "desktop" ? "active" : ""}
+            onClick={() => setMode("desktop")}
+          >
+            Desktop
+          </button>
+          <button
+            className={mode === "vr" ? "active" : ""}
+            onClick={() => setMode("vr")}
+          >
+            VR
+          </button>
+        </div>
+        <div className="companion-list">
+          {apps.map((app, index) => (
+            <div className="companion-row" key={`${app.name}-${index}`}>
+              <input
+                type="checkbox"
+                checked={app.enabled}
+                onChange={(event) =>
+                  updateApp(index, { enabled: event.target.checked })
+                }
+                aria-label={`Enable ${app.name}`}
+              />
+              <input
+                value={app.name}
+                onChange={(event) =>
+                  updateApp(index, { name: event.target.value })
+                }
+              />
+              <input
+                value={app.path}
+                placeholder="Executable path"
+                onChange={(event) =>
+                  updateApp(index, { path: event.target.value })
+                }
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  void onBrowse("executable").then(
+                    (path) => path && updateApp(index, { path, enabled: true }),
+                  )
+                }
+              >
+                Browse
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`Remove ${app.name}`}
+                onClick={() =>
+                  setApps((current) => current.filter((_, i) => i !== index))
+                }
+              >
+                <Trash2 />
+              </button>
+            </div>
           ))}
         </div>
-        <div className="font-scale-preview">
-          <span>Preview</span>
-          <strong>Readable at racing distance</strong>
-          <p>
-            Profile details, controls, menus, and status messages all follow
-            this setting.
-          </p>
+        <div className="settings-actions split-actions">
+          <button
+            type="button"
+            className="secondary"
+            onClick={() =>
+              setApps((current) => [
+                ...current,
+                { name: "Companion app", path: "", enabled: true },
+              ])
+            }
+          >
+            <PlusCircle /> Add app
+          </button>
+          <div>
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={save}
+            >
+              Save settings
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={busy}
+              onClick={() =>
+                void onCreateLaunchOption(
+                  bindings,
+                  gameSettings,
+                  apps,
+                  mode,
+                ).then(async (option) => {
+                  if (option) await navigator.clipboard.writeText(option);
+                })
+              }
+            >
+              <Copy /> Copy Steam launch option
+            </button>
+          </div>
         </div>
-      </div>
+      </section>
     </section>
+  );
+}
+
+function PathField({
+  label,
+  value,
+  onChange,
+  onBrowse,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onBrowse: () => void;
+}) {
+  return (
+    <label className="identity-field">
+      <span>{label}</span>
+      <div className="path-input">
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <button type="button" onClick={onBrowse}>
+          Browse
+        </button>
+      </div>
+    </label>
+  );
+}
+
+function SettingsHeading({
+  icon,
+  eyebrow,
+  title,
+  children,
+}: {
+  icon?: ReactNode;
+  eyebrow: string;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <header className={icon ? "" : "no-icon"}>
+      {icon && <span className="settings-icon">{icon}</span>}
+      <div>
+        <span className="eyebrow">{eyebrow}</span>
+        <h2>{title}</h2>
+        <p>{children}</p>
+      </div>
+    </header>
   );
 }

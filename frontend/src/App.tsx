@@ -1,9 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
-import type { Binding, Device, Page, Profile, Snapshot, Wheel } from "./models";
+import type {
+  Binding,
+  CompanionApp,
+  Device,
+  Page,
+  Profile,
+  Snapshot,
+  Wheel,
+} from "./models";
 import { emptySnapshot } from "./models";
 import { BindingEditorPage } from "./pages/BindingEditorPage";
 import { ComingSoonPage, pageTitle } from "./pages/ComingSoonPage";
@@ -58,6 +67,27 @@ export default function App() {
   }
   useEffect(() => {
     void refresh();
+  }, []);
+  useEffect(() => {
+    const switcher = listen("open-profile-switcher", () => {
+      setPage("profiles");
+      setQuery("");
+    });
+    const activation = listen<{ Ok?: string; Err?: string }>(
+      "profile-shortcut-result",
+      (event) => {
+        if (event.payload.Ok) {
+          setNotice(`${event.payload.Ok} is ready for the next LMU launch.`);
+          void refresh();
+        } else if (event.payload.Err) {
+          setNotice(event.payload.Err);
+        }
+      },
+    );
+    return () => {
+      void switcher.then((unlisten) => unlisten());
+      void activation.then((unlisten) => unlisten());
+    };
   }, []);
   useEffect(() => {
     document.documentElement.style.setProperty(
@@ -299,6 +329,66 @@ export default function App() {
       setSnapshot((current) => ({ ...current, uiFontScale: scale }));
       setNotice(`Text size set to ${Math.round(scale * 100)}%.`);
     });
+  const saveAppSettings = (
+    configPath: string,
+    settingsPath: string,
+    companionApps: CompanionApp[],
+    launchMode: "desktop" | "vr",
+  ) =>
+    withBusy(async () => {
+      await invoke("save_app_settings", {
+        lmuConfigPath: configPath,
+        lmuSettingsPath: settingsPath,
+        companionApps,
+        launchMode,
+      });
+      await refresh();
+      setNotice("Settings saved.");
+    });
+  const setProfileHotkey = (profile: Profile, slot: number | null) =>
+    withBusy(async () => {
+      await invoke("set_profile_hotkey", { profileId: profile.id, slot });
+      await refresh();
+      setNotice(
+        slot
+          ? `${profile.name} assigned to Ctrl Alt ${slot}.`
+          : `${profile.name} shortcut removed.`,
+      );
+    });
+  const createLaunchOption = async (
+    configPath: string,
+    settingsPath: string,
+    companionApps: CompanionApp[],
+    launchMode: "desktop" | "vr",
+  ) => {
+    try {
+      await invoke("save_app_settings", {
+        lmuConfigPath: configPath,
+        lmuSettingsPath: settingsPath,
+        companionApps,
+        launchMode,
+      });
+      const option = await invoke<string>("companion_launch_option");
+      await refresh();
+      setNotice(
+        "Steam launch option copied. Paste it into LMU's Launch Options.",
+      );
+      return option;
+    } catch (error) {
+      setNotice(String(error));
+      return null;
+    }
+  };
+  const browseForPath = async (
+    kind: "bindings" | "settings" | "executable",
+  ) => {
+    try {
+      return await invoke<string | null>("pick_file", { kind });
+    } catch (error) {
+      setNotice(String(error));
+      return null;
+    }
+  };
 
   return (
     <div className="window-shell">
@@ -394,7 +484,16 @@ export default function App() {
               <SettingsPage
                 fontScale={snapshot.uiFontScale}
                 busy={busy}
+                profiles={snapshot.profiles}
+                configPath={snapshot.lmuConfigPath}
+                settingsPath={snapshot.lmuSettingsPath}
+                companionApps={snapshot.companionApps}
+                launchMode={snapshot.lmuLaunchMode}
                 onSaveFontScale={saveFontScale}
+                onSaveSettings={saveAppSettings}
+                onSetHotkey={setProfileHotkey}
+                onCreateLaunchOption={createLaunchOption}
+                onBrowse={browseForPath}
               />
             )}
           </div>

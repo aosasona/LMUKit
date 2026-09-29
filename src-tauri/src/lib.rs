@@ -1,14 +1,17 @@
-use lmukit_core::storage::{Profile, Store, Wheel};
+use lmukit_core::storage::{CompanionApp, LaunchMode, Profile, Store, Wheel};
 use serde::Serialize;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tauri::State;
+use tauri::{Emitter, Manager, State};
 use uuid::Uuid;
 
+#[path = "../../src/hotkeys.rs"]
+mod hotkeys;
 #[path = "../../src/input.rs"]
 mod input;
 
 struct AppState(Mutex<Store>);
+struct HotkeyState(std::sync::mpsc::Sender<Vec<(Uuid, u8)>>);
 
 static LOOKUP_GENERATION: AtomicU64 = AtomicU64::new(0);
 
@@ -22,6 +25,8 @@ struct AppSnapshot {
     lmu_settings_path: String,
     active_profile_dirty: Option<bool>,
     ui_font_scale: f32,
+    companion_apps: Vec<CompanionApp>,
+    lmu_launch_mode: LaunchMode,
 }
 
 #[derive(Serialize)]
@@ -109,6 +114,8 @@ fn snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, String> {
             .active_profile_has_unsaved_changes()
             .map_err(|error| error.to_string())?,
         ui_font_scale: store.settings.ui_font_scale,
+        companion_apps: store.settings.companion_apps.clone(),
+        lmu_launch_mode: store.settings.lmu_launch_mode,
     })
 }
 
@@ -120,6 +127,82 @@ fn set_ui_font_scale(scale: f32, state: State<'_, AppState>) -> Result<(), Strin
     let mut store = state.0.lock().map_err(|error| error.to_string())?;
     store.settings.ui_font_scale = scale;
     store.save_settings().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_app_settings(
+    lmu_config_path: String,
+    lmu_settings_path: String,
+    companion_apps: Vec<CompanionApp>,
+    launch_mode: LaunchMode,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    store.settings.lmu_config_path = lmu_config_path.trim().into();
+    store.settings.lmu_settings_path = lmu_settings_path.trim().into();
+    store.settings.companion_apps = companion_apps;
+    store.settings.lmu_launch_mode = launch_mode;
+    store.save_settings().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_profile_hotkey(
+    profile_id: Uuid,
+    slot: Option<u8>,
+    state: State<'_, AppState>,
+    hotkey_state: State<'_, HotkeyState>,
+) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .set_profile_hotkey(profile_id, slot)
+        .map_err(|error| error.to_string())?;
+    let profiles = store.profiles().map_err(|error| error.to_string())?;
+    hotkey_state
+        .0
+        .send(profile_shortcuts(&profiles))
+        .map_err(|_| "The shortcut worker is not running.".to_owned())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn companion_launch_option(state: State<'_, AppState>) -> Result<String, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+    store
+        .companion_launch_option(&executable)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn pick_file(kind: String) -> Result<Option<String>, String> {
+    pick_file_dialog(&kind)
+}
+
+#[cfg(target_os = "windows")]
+fn pick_file_dialog(kind: &str) -> Result<Option<String>, String> {
+    let (filter, filename) = match kind {
+        "bindings" => ("JSON files (*.json)|*.json", "direct input.json"),
+        "settings" => ("JSON files (*.json)|*.json", "Settings.JSON"),
+        "executable" => ("Windows applications (*.exe)|*.exe", ""),
+        _ => return Err("Unknown file picker type.".to_owned()),
+    };
+    let script = format!(
+        "Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.OpenFileDialog; $d.Filter='{filter}'; $d.FileName='{filename}'; if($d.ShowDialog() -eq 'OK'){{[Console]::Write($d.FileName)}}"
+    );
+    let output = std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-Command", &script])
+        .output()
+        .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_owned());
+    }
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    Ok((!path.is_empty()).then_some(path))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn pick_file_dialog(_kind: &str) -> Result<Option<String>, String> {
+    Err("File browsing is available in the Windows build.".to_owned())
 }
 
 #[tauri::command]
@@ -556,8 +639,19 @@ fn wheel_summary(wheel: Wheel, profiles: &[Profile]) -> WheelSummary {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let store = Store::open().expect("LMUKit data store should open");
+    let shortcuts = store
+        .profiles()
+        .map(|profiles| profile_shortcuts(&profiles))
+        .unwrap_or_default();
+    let (hotkey_tx, hotkey_rx) = std::sync::mpsc::channel();
     tauri::Builder::default()
         .manage(AppState(Mutex::new(store)))
+        .manage(HotkeyState(hotkey_tx))
+        .setup(move |app| {
+            let handle = app.handle().clone();
+            std::thread::spawn(move || poll_hotkeys(handle, hotkey_rx, shortcuts));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             snapshot,
             activate_profile,
@@ -582,8 +676,66 @@ pub fn run() {
             set_profile_categories,
             find_binding_matches,
             cancel_binding_lookup,
-            set_ui_font_scale
+            set_ui_font_scale,
+            save_app_settings,
+            set_profile_hotkey,
+            companion_launch_option,
+            pick_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running LMUKit");
+}
+
+fn profile_shortcuts(profiles: &[Profile]) -> Vec<(Uuid, u8)> {
+    profiles
+        .iter()
+        .filter_map(|profile| profile.hotkey_slot.map(|slot| (profile.id, slot)))
+        .collect()
+}
+
+fn poll_hotkeys(
+    app: tauri::AppHandle,
+    updates: std::sync::mpsc::Receiver<Vec<(Uuid, u8)>>,
+    shortcuts: Vec<(Uuid, u8)>,
+) {
+    let mut manager = hotkeys::HotkeyManager::new(&shortcuts).ok();
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        while let Ok(shortcuts) = updates.try_recv() {
+            manager = hotkeys::HotkeyManager::new(&shortcuts).ok();
+        }
+        let action = manager.as_ref().and_then(hotkeys::HotkeyManager::poll);
+        match action {
+            Some(hotkeys::HotkeyAction::OpenSwitcher) => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+                let _ = app.emit("open-profile-switcher", ());
+            }
+            Some(hotkeys::HotkeyAction::ActivateProfile(profile_id)) => {
+                let result = app
+                    .state::<AppState>()
+                    .0
+                    .lock()
+                    .map_err(|error| error.to_string())
+                    .and_then(|mut store| {
+                        let profile = store
+                            .profiles()
+                            .map_err(|error| error.to_string())?
+                            .into_iter()
+                            .find(|profile| profile.id == profile_id)
+                            .ok_or_else(|| {
+                                "That shortcut's profile no longer exists.".to_owned()
+                            })?;
+                        store
+                            .activate(&profile)
+                            .map_err(|error| error.to_string())?;
+                        Ok(profile.name)
+                    });
+                let _ = app.emit("profile-shortcut-result", result);
+            }
+            None => {}
+        }
+    }
 }

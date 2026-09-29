@@ -14,7 +14,7 @@ LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate util
 - `src-tauri/` owns the Tauri desktop shell and narrow command adapters. It must not duplicate storage rules.
 - `crates/lmukit-core/` exposes compatibility-sensitive Rust behavior independently of the UI runtime.
 - `src/storage.rs` currently backs `lmukit-core` and owns LMUKit settings, profile persistence, imports, activation, backups, LMU JSON parsing, `Settings.JSON` persistence, and companion-launcher generation.
-- `src/input.rs` reads Windows raw controller state for Tauri's binding lookup. Initialize each listener on its own fresh OS thread so WinRT apartment mode cannot conflict with the webview thread. `src/hotkeys.rs` contains the remaining global-hotkey integration to migrate.
+- `src/input.rs` reads Windows raw controller state for Tauri's binding lookup. Initialize each listener on its own fresh OS thread so WinRT apartment mode cannot conflict with the webview thread. `src/hotkeys.rs` owns global shortcuts; its native manager stays on a dedicated thread that pumps Windows messages and accepts live shortcut updates over a channel.
 - `mise.toml` pins tooling and defines the supported developer commands.
 - `.github/workflows/release.yml` builds and publishes the Windows x86-64 archive for `v*` tags.
 - `build.rs` embeds the executable icon and metadata during native Windows builds. It intentionally skips resource compilation for WSL cross-builds, where `rc.exe` is unavailable.
@@ -92,5 +92,3 @@ Use `mise run dev` for Tauri development and `mise run build` for a release bund
 ## Future work
 
 The likely route for car/class detection is LMU's built-in `Local\\LMUSharedMem` mapping. Player scoring exposes vehicle name, class, and vehicle filename. LMU does not reload `direct input.json` during a running session, so detection should recommend a mapped profile or prepare it before the next launch rather than promising live automatic switching.
-
-After the Settings UI is migrated, refine the existing generated launcher into a launch-mode and companion-app workflow. Users should be able to select normal or VR LMU startup and independently enable RaceLab, Crew Chief, LMUFFB, or arbitrary executables. Keep paths and enablement backward-compatible with existing `companion_apps` settings, quote executable paths safely, avoid duplicate processes, and test generated scripts with spaces and shell metacharacters. Continue to generate a reviewable Steam launch option; never edit Steam configuration silently.

@@ -1974,6 +1974,10 @@ textarea,
   max-width: 920px;
   margin: 0 auto;
 }
+.settings-stack {
+  display: grid;
+  gap: 14px;
+}
 .wheels-page {
   max-width: 1180px;
   margin: 0 auto;
@@ -2131,6 +2135,9 @@ textarea,
   padding-bottom: 20px;
   border-bottom: 1px solid var(--line);
 }
+.settings-card > header.no-icon {
+  grid-template-columns: minmax(0, 1fr);
+}
 .settings-card h2 {
   margin: 4px 0 3px;
   font-size: calc(20px * var(--font-scale));
@@ -2159,10 +2166,142 @@ textarea,
 }
 .font-scale-control {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) 38px;
+  grid-template-columns: 38px minmax(0, 1fr) 38px auto;
   align-items: center;
   gap: 12px;
   margin-top: 24px;
+}
+.font-scale-control > strong {
+  min-width: 54px;
+  color: var(--teal);
+  text-align: right;
+  font-size: calc(16px * var(--font-scale));
+}
+.path-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+.path-input {
+  display: flex;
+  border: 1px solid var(--line);
+  background: #141414;
+}
+.path-input input {
+  min-width: 0;
+  height: 38px;
+  flex: 1;
+  padding: 0 11px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #dce4e0;
+}
+.path-input button,
+.companion-row > button {
+  min-height: 38px;
+  padding: 0 11px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: #22241c;
+  color: #bfd87e;
+  cursor: pointer;
+  font-size: calc(12px * var(--font-scale));
+}
+.shortcut-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 19px;
+}
+.shortcut-list label {
+  min-height: 45px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  background: #171716;
+}
+.shortcut-list select {
+  height: 34px;
+  min-width: 150px;
+  border: 1px solid var(--line);
+  background: #111;
+  color: #dce4e0;
+}
+.settings-empty {
+  padding: 15px;
+  color: #758079;
+}
+.launch-mode {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 20px;
+  border: 1px solid var(--line);
+}
+.launch-mode button {
+  min-width: 110px;
+  height: 38px;
+  border: 0;
+  background: #161615;
+  color: #7d8983;
+  cursor: pointer;
+}
+.launch-mode button + button {
+  border-left: 1px solid var(--line);
+}
+.launch-mode button.active {
+  background: #292d1e;
+  color: #d8f2a5;
+}
+.companion-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 13px;
+}
+.companion-row {
+  display: grid;
+  grid-template-columns:
+    24px minmax(105px, 0.5fr) minmax(180px, 1.5fr)
+    auto 38px;
+  align-items: center;
+  border: 1px solid var(--line);
+  background: #141414;
+}
+.companion-row > input[type="checkbox"] {
+  margin: auto;
+  accent-color: var(--teal);
+}
+.companion-row > input:not([type="checkbox"]) {
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  outline: 0;
+  background: transparent;
+  color: #dce4e0;
+}
+.companion-row > .icon-button {
+  width: 38px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: #a67c76;
+}
+.companion-row > .icon-button svg {
+  width: 15px;
+}
+.settings-actions,
+.settings-actions > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.split-actions {
+  justify-content: space-between;
+  margin-top: 16px;
 }
 .font-scale-control button {
   width: 38px;

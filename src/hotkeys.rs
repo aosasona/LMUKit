@@ -15,6 +15,9 @@ mod platform {
         hotkey::{Code, HotKey, Modifiers},
     };
     use uuid::Uuid;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage,
+    };
 
     pub struct HotkeyManager {
         _manager: GlobalHotKeyManager,
@@ -48,6 +51,13 @@ mod platform {
         }
 
         pub fn poll(&self) -> Option<HotkeyAction> {
+            let mut message = MSG::default();
+            while unsafe { PeekMessageW(&mut message, None, 0, 0, PM_REMOVE) }.as_bool() {
+                unsafe {
+                    let _ = TranslateMessage(&message);
+                    DispatchMessageW(&message);
+                }
+            }
             while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
                 if event.state == HotKeyState::Pressed
                     && let Some((_, action)) =
