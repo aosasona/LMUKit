@@ -282,6 +282,41 @@ impl Store {
         Ok(wheel)
     }
 
+    pub fn update_wheel(&self, id: Uuid, brand: Option<String>, name: String) -> Result<()> {
+        let name = normalize_optional_label(Some(name))?.context("Enter a wheel name.")?;
+        let brand = normalize_optional_label(brand)?;
+        if self.wheels()?.iter().any(|wheel| {
+            wheel.id != id
+                && wheel.name.eq_ignore_ascii_case(&name)
+                && wheel
+                    .brand
+                    .as_deref()
+                    .unwrap_or("")
+                    .eq_ignore_ascii_case(brand.as_deref().unwrap_or(""))
+        }) {
+            bail!("That wheel already exists in the library.");
+        }
+        let mut wheel = self.wheel(id)?;
+        wheel.brand = brand;
+        wheel.name = name;
+        self.save_wheel(&wheel)
+    }
+
+    pub fn delete_wheel(&self, id: Uuid) -> Result<()> {
+        if self
+            .profiles()?
+            .iter()
+            .any(|profile| profile.wheel_id == Some(id))
+        {
+            bail!("This wheel is still assigned to one or more profiles.");
+        }
+        let directory = self.wheel_dir(id);
+        if !directory.is_dir() {
+            bail!("That wheel no longer exists.");
+        }
+        fs::remove_dir_all(directory).context("could not delete the wheel")
+    }
+
     pub fn assign_profile_wheel(&self, profile_id: Uuid, wheel_id: Option<Uuid>) -> Result<()> {
         if let Some(id) = wheel_id
             && !self.wheels()?.iter().any(|wheel| wheel.id == id)
@@ -1331,6 +1366,30 @@ mod tests {
         drop(store);
         let reopened = Store::open_at(root).unwrap();
         assert_eq!(reopened.wheels().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn updates_and_only_deletes_unused_wheels() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let profile = store
+            .import_profile_bytes("GT3", br#"{"Input":{}}"#)
+            .unwrap();
+        let wheel = store
+            .create_wheel(Some("Simagic".into()), "GT Neo".into())
+            .unwrap();
+
+        store
+            .update_wheel(wheel.id, Some("SIMAGIC".into()), "Neo X".into())
+            .unwrap();
+        assert_eq!(store.wheel(wheel.id).unwrap().name, "Neo X");
+        store
+            .assign_profile_wheel(profile.id, Some(wheel.id))
+            .unwrap();
+        assert!(store.delete_wheel(wheel.id).is_err());
+        store.assign_profile_wheel(profile.id, None).unwrap();
+        store.delete_wheel(wheel.id).unwrap();
+        assert!(store.wheels().unwrap().is_empty());
     }
 
     #[test]

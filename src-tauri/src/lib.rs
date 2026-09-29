@@ -49,6 +49,7 @@ struct WheelSummary {
     brand: Option<String>,
     name: String,
     has_image: bool,
+    profile_count: usize,
 }
 
 #[derive(Serialize)]
@@ -99,7 +100,7 @@ fn snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, String> {
             .wheels()
             .map_err(|error| error.to_string())?
             .into_iter()
-            .map(wheel_summary)
+            .map(|wheel| wheel_summary(wheel, &profiles))
             .collect(),
         active_profile: store.settings.active_profile,
         lmu_config_path: store.settings.lmu_config_path.display().to_string(),
@@ -234,6 +235,56 @@ fn create_wheel(
     store
         .create_wheel(brand, name)
         .map(|wheel| wheel.id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn update_wheel(
+    wheel_id: Uuid,
+    brand: Option<String>,
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .update_wheel(wheel_id, brand, name)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn delete_wheel(wheel_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .delete_wheel(wheel_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn wheel_image(wheel_id: Uuid, state: State<'_, AppState>) -> Result<Option<Vec<u8>>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let wheel = store.wheel(wheel_id).map_err(|error| error.to_string())?;
+    store.wheel_image(&wheel).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_wheel_library_image(
+    wheel_id: Uuid,
+    image_bytes: Vec<u8>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let mut wheel = store.wheel(wheel_id).map_err(|error| error.to_string())?;
+    store
+        .save_wheel_image(&mut wheel, &image_bytes)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn remove_wheel_library_image(wheel_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let mut wheel = store.wheel(wheel_id).map_err(|error| error.to_string())?;
+    store
+        .remove_wheel_image(&mut wheel)
         .map_err(|error| error.to_string())
 }
 
@@ -488,12 +539,17 @@ fn profile_summary(store: &Store, profile: &Profile) -> Result<ProfileSummary, S
     })
 }
 
-fn wheel_summary(wheel: Wheel) -> WheelSummary {
+fn wheel_summary(wheel: Wheel, profiles: &[Profile]) -> WheelSummary {
+    let profile_count = profiles
+        .iter()
+        .filter(|profile| profile.wheel_id == Some(wheel.id))
+        .count();
     WheelSummary {
         id: wheel.id,
         brand: wheel.brand,
         name: wheel.name,
         has_image: wheel.image.is_some(),
+        profile_count,
     }
 }
 
@@ -510,6 +566,11 @@ pub fn run() {
             profile_wheel_image,
             remove_profile_wheel_image,
             create_wheel,
+            update_wheel,
+            delete_wheel,
+            wheel_image,
+            save_wheel_library_image,
+            remove_wheel_library_image,
             assign_profile_wheel,
             capture_profile,
             import_profile,

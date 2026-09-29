@@ -11,12 +11,14 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
+import { WheelImage } from "../components/WheelImage";
 import type { Profile } from "../models";
 
 type Props = {
   active?: Profile;
   selected?: Profile;
   wheelImageUrl: string | null;
+  wheelImageRevision: number;
   profiles: Profile[];
   busy: boolean;
   onNavigate: (page: "profiles" | "bindings" | "game") => void;
@@ -28,6 +30,7 @@ export function OverviewPage({
   active,
   selected,
   wheelImageUrl,
+  wheelImageRevision,
   profiles,
   busy,
   onNavigate,
@@ -154,7 +157,13 @@ export function OverviewPage({
                 }
                 onClick={() => onActivate(profile)}
               >
-                <span className="profile-number">0{index + 1}</span>
+                <WheelImage
+                  wheelId={profile.wheelId}
+                  hasImage={profile.hasWheelImage}
+                  alt={`${profile.wheelName ?? profile.name} wheel`}
+                  className="mini-profile-wheel"
+                  revision={wheelImageRevision}
+                />
                 <div>
                   <strong>{profile.name}</strong>
                   <small>

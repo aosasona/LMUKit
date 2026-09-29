@@ -10,6 +10,7 @@ import { ComingSoonPage, pageTitle } from "./pages/ComingSoonPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { WheelsPage } from "./pages/WheelsPage";
 
 export default function App() {
   const [page, setPage] = useState<Page>("home");
@@ -199,6 +200,49 @@ export default function App() {
           : `Wheel removed from ${profile.name}.`,
       );
     });
+  const createLibraryWheel = (brand: string, name: string) =>
+    withBusy(async () => {
+      await invoke("create_wheel", { brand: brand || null, name });
+      await refresh();
+      setNotice(
+        `${[brand, name].filter(Boolean).join(" ")} added to your wheel library.`,
+      );
+    });
+  const updateLibraryWheel = (wheel: Wheel, brand: string, name: string) =>
+    withBusy(async () => {
+      await invoke("update_wheel", {
+        wheelId: wheel.id,
+        brand: brand || null,
+        name,
+      });
+      await refresh();
+      setNotice(`${name.trim()} updated.`);
+    });
+  const deleteLibraryWheel = (wheel: Wheel) =>
+    withBusy(async () => {
+      await invoke("delete_wheel", { wheelId: wheel.id });
+      await refresh();
+      setNotice(`${wheel.name} deleted from the wheel library.`);
+    });
+  const saveLibraryWheelImage = (wheel: Wheel, file: File) =>
+    withBusy(async () => {
+      if (file.size > 8 * 1024 * 1024)
+        throw new Error("Wheel images must be 8 MB or smaller.");
+      await invoke("save_wheel_library_image", {
+        wheelId: wheel.id,
+        imageBytes: Array.from(new Uint8Array(await file.arrayBuffer())),
+      });
+      setWheelImageRevision((revision) => revision + 1);
+      await refresh();
+      setNotice(`${wheel.name} image updated for every linked profile.`);
+    });
+  const removeLibraryWheelImage = (wheel: Wheel) =>
+    withBusy(async () => {
+      await invoke("remove_wheel_library_image", { wheelId: wheel.id });
+      setWheelImageRevision((revision) => revision + 1);
+      await refresh();
+      setNotice(`${wheel.name} image removed.`);
+    });
   const importPreset = (file: File) =>
     withBusy(async () => {
       setNotice(`Importing ${file.name}…`);
@@ -286,6 +330,7 @@ export default function App() {
                 active={active}
                 selected={selected}
                 wheelImageUrl={wheelImageUrl}
+                wheelImageRevision={wheelImageRevision}
                 profiles={snapshot.profiles}
                 busy={busy}
                 onNavigate={setPage}
@@ -299,6 +344,7 @@ export default function App() {
                 wheels={snapshot.wheels}
                 selected={selected}
                 wheelImageUrl={wheelImageUrl}
+                wheelImageRevision={wheelImageRevision}
                 activeId={snapshot.activeProfile}
                 activeDirty={snapshot.activeProfileDirty}
                 selectedId={selectedId}
@@ -326,6 +372,19 @@ export default function App() {
                 bindings={bindings}
                 busy={busy}
                 onClear={clearBinding}
+              />
+            )}
+            {page === "wheels" && (
+              <WheelsPage
+                wheels={snapshot.wheels}
+                profiles={snapshot.profiles}
+                busy={busy}
+                imageRevision={wheelImageRevision}
+                onCreate={createLibraryWheel}
+                onUpdate={updateLibraryWheel}
+                onDelete={deleteLibraryWheel}
+                onSaveImage={saveLibraryWheelImage}
+                onRemoveImage={removeLibraryWheelImage}
               />
             )}
             {page === "game" && (

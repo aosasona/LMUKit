@@ -1,5 +1,6 @@
 import {
   Gamepad2,
+  Disc3,
   Keyboard,
   LayoutDashboard,
   Settings,
@@ -11,6 +12,7 @@ import type { Page } from "../models";
 const items = [
   ["home", "Overview", LayoutDashboard],
   ["profiles", "Profiles", Gamepad2],
+  ["wheels", "Wheels", Disc3],
   ["bindings", "Binding editor", SlidersHorizontal],
   ["game", "Game settings", Wrench],
   ["settings", "Settings", Settings],

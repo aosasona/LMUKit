@@ -9,6 +9,7 @@ import { useState } from "react";
 import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
 import { TagPicker } from "../components/TagPicker";
+import { WheelImage } from "../components/WheelImage";
 import type { Device, Profile, Wheel } from "../models";
 
 const DEFAULT_CLASSES = ["GT3", "GTE", "LMP3", "LMP2", "HY"] as const;
@@ -28,6 +29,7 @@ type Props = {
   wheels: Wheel[];
   selected?: Profile;
   wheelImageUrl: string | null;
+  wheelImageRevision: number;
   activeId: string | null;
   activeDirty: boolean | null;
   selectedId: string | null;
@@ -59,6 +61,7 @@ export function ProfilesPage(props: Props) {
     wheels,
     selected,
     wheelImageUrl,
+    wheelImageRevision,
     activeId,
     activeDirty,
     selectedId,
@@ -207,9 +210,13 @@ export function ProfilesPage(props: Props) {
             }}
           >
             <header>
-              <span className="profile-card-icon">
-                <Gamepad2 />
-              </span>
+              <WheelImage
+                wheelId={profile.wheelId}
+                hasImage={profile.hasWheelImage}
+                alt={`${profile.wheelName ?? profile.name} wheel`}
+                className="profile-card-icon"
+                revision={wheelImageRevision}
+              />
               <div>
                 <strong>{profile.name}</strong>
                 <small>

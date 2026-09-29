@@ -21,6 +21,7 @@ export type Wheel = {
   brand: string | null;
   name: string;
   hasImage: boolean;
+  profileCount: number;
 };
 
 export type Binding = {
@@ -47,7 +48,13 @@ export type Snapshot = {
   uiFontScale: number;
 };
 
-export type Page = "home" | "profiles" | "bindings" | "game" | "settings";
+export type Page =
+  | "home"
+  | "profiles"
+  | "wheels"
+  | "bindings"
+  | "game"
+  | "settings";
 
 export const emptySnapshot: Snapshot = {
   profiles: [],

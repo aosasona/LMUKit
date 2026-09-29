@@ -5,6 +5,7 @@ export const pageTitle = (page: Page) =>
   ({
     home: "Your race workspace",
     profiles: "Profiles",
+    wheels: "Wheels",
     bindings: "Binding editor",
     game: "Game settings",
     settings: "Settings",

@@ -22,7 +22,7 @@ The rewrite currently includes the responsive workspace, profile discovery, vali
 - Update an existing profile from LMU's live bindings while backing up its previous version.
 - Browse and edit LMU's `Settings.JSON` with inline descriptions from matching `Option#` fields.
 - Display the active preset separately from the currently selected row.
-- Create reusable wheels with a brand, model, and managed PNG, JPEG, or WebP image, then assign the same wheel to multiple profiles.
+- Create and manage reusable wheels with a brand, model, and managed PNG, JPEG, or WebP image, then assign the same wheel to multiple profiles. Linked profiles display the shared wheel image throughout the workspace.
 - Select any combination of built-in WEC/ELMS classes and optional custom tags per profile before browsing them in a filterable card grid.
 - Adjust the application-wide text scale from the Settings tab; the preference is saved between launches.
 - Browse and search every action stored in a profile.
