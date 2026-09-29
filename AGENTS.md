@@ -8,7 +8,9 @@ LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate util
 
 ## Architecture
 
-- `frontend/` is the React and TypeScript interface. Keep visual components and interaction state here; communicate with Rust through typed Tauri commands.
+- `frontend/src/App.tsx` composes the desktop shell and coordinates Tauri-backed workspace actions.
+- `frontend/src/pages/` contains one component per workspace page, `frontend/src/components/` contains shared shell components, and `frontend/src/models.ts` owns the frontend command payload types. Keep page-specific presentation out of `App.tsx`.
+- `frontend/src/styles.css` owns the shared visual system. Format TypeScript, JSX, and CSS with Prettier after UI changes.
 - `src-tauri/` owns the Tauri desktop shell and narrow command adapters. It must not duplicate storage rules.
 - `crates/lmukit-core/` exposes compatibility-sensitive Rust behavior independently of the UI runtime.
 - `src/storage.rs` currently backs `lmukit-core` and owns LMUKit settings, profile persistence, imports, activation, backups, LMU JSON parsing, `Settings.JSON` persistence, and companion-launcher generation.

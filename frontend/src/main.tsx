@@ -6,7 +6,10 @@ import "./styles.css";
 document.addEventListener("contextmenu", (event) => event.preventDefault());
 document.addEventListener("selectstart", (event) => {
   const target = event.target;
-  if (!(target instanceof HTMLElement) || !target.closest("input, textarea, [contenteditable='true']")) {
+  if (
+    !(target instanceof HTMLElement) ||
+    !target.closest("input, textarea, [contenteditable='true']")
+  ) {
     event.preventDefault();
   }
 });
