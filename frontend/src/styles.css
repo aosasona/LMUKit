@@ -2224,6 +2224,13 @@ footer {
   padding: 0 12px;
   border: 1px solid var(--line);
   background: #0d0d0c;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.binding-action-search:focus-within {
+  border-color: rgba(198, 243, 107, 0.55);
+  box-shadow: inset 3px 0 0 var(--teal);
 }
 .binding-action-search svg {
   width: 16px;
@@ -2233,7 +2240,18 @@ footer {
   flex: 1;
   min-width: 0;
   border: 0;
+  outline: 0;
   background: transparent;
+  color: #e5ece8;
+  caret-color: var(--teal);
+  font-size: calc(13px * var(--font-scale));
+}
+.binding-action-search input::placeholder {
+  color: #59645f;
+  opacity: 1;
+}
+.binding-action-search:focus-within svg {
+  color: var(--teal);
 }
 .binding-action-results {
   max-height: 210px;
