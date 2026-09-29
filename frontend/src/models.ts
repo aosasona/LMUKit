@@ -7,6 +7,8 @@ export type Profile = {
   bindingCount: number;
   devices: Device[];
   hasWheelImage: boolean;
+  wheelTags: string[];
+  classTags: string[];
 };
 
 export type Binding = {

@@ -28,6 +28,8 @@ struct ProfileSummary {
     binding_count: usize,
     devices: Vec<DeviceSummary>,
     has_wheel_image: bool,
+    wheel_tags: Vec<String>,
+    class_tags: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -262,6 +264,19 @@ fn clear_profile_binding(
 }
 
 #[tauri::command]
+fn set_profile_categories(
+    profile_id: Uuid,
+    wheel_tags: Vec<String>,
+    class_tags: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .set_profile_categories(profile_id, wheel_tags, class_tags)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn find_binding_matches(state: State<'_, AppState>) -> Result<BindingLookupResult, String> {
     let pressed = tauri::async_runtime::spawn_blocking(|| {
         std::thread::spawn(detect_controller_input)
@@ -359,6 +374,8 @@ fn profile_summary(store: &Store, profile: &Profile) -> Result<ProfileSummary, S
         binding_count: bindings.len(),
         devices,
         has_wheel_image: profile.wheel_image.is_some(),
+        wheel_tags: profile.wheel_tags.clone(),
+        class_tags: profile.class_tags.clone(),
     })
 }
 
@@ -381,6 +398,7 @@ pub fn run() {
             reveal_profiles,
             profile_bindings,
             clear_profile_binding,
+            set_profile_categories,
             find_binding_matches
         ])
         .run(tauri::generate_context!())

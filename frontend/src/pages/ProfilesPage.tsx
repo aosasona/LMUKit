@@ -4,6 +4,7 @@ import {
   Image as ImageIcon,
   RefreshCw,
   Search,
+  Tags,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -30,6 +31,11 @@ type Props = {
   onRemoveDevice: (profile: Profile, device: Device) => void;
   onSaveWheelImage: (profile: Profile, file: File) => void;
   onRemoveWheelImage: (profile: Profile) => void;
+  onSaveCategories: (
+    profile: Profile,
+    wheelTags: string[],
+    classTags: string[],
+  ) => void;
 };
 
 export function ProfilesPage(props: Props) {
@@ -53,10 +59,24 @@ export function ProfilesPage(props: Props) {
     onRemoveDevice,
     onSaveWheelImage,
     onRemoveWheelImage,
+    onSaveCategories,
   } = props;
   const [confirmDevice, setConfirmDevice] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [captureName, setCaptureName] = useState("");
+  const [wheelFilter, setWheelFilter] = useState<string | null>(null);
+  const [classFilter, setClassFilter] = useState<string | null>(null);
+  const wheelTags = Array.from(
+    new Set(profiles.flatMap((profile) => profile.wheelTags)),
+  ).sort();
+  const classTags = Array.from(
+    new Set(profiles.flatMap((profile) => profile.classTags)),
+  ).sort();
+  const visibleProfiles = profiles.filter(
+    (profile) =>
+      (!wheelFilter || profile.wheelTags.includes(wheelFilter)) &&
+      (!classFilter || profile.classTags.includes(classFilter)),
+  );
   const acceptFiles = (files: FileList | null) => {
     if (files?.[0]) onImport(files[0]);
   };
@@ -112,75 +132,121 @@ export function ProfilesPage(props: Props) {
           </label>
         </div>
       </div>
-      <div className="profile-table-head">
-        <span>Profile</span>
-        <span>Devices</span>
-        <span>Bindings</span>
-        <span>Shortcut</span>
-        <span />
-      </div>
-      {profiles.map((profile) => (
-        <div
-          className={
-            selectedId === profile.id ? "profile-row selected" : "profile-row"
-          }
-          key={profile.id}
-          onClick={() => {
-            setSelectedId(profile.id);
-            setConfirmDevice(null);
-            setConfirmDelete(false);
-          }}
-        >
-          <div className="profile-main">
-            <span className="device-thumb">
-              <Gamepad2 />
-            </span>
-            <div>
-              <strong>{profile.name}</strong>
-              <small>
-                {profile.id === activeId
-                  ? activeDirty
-                    ? "LMU has unsaved changes"
-                    : "Prepared for next launch"
-                  : "Saved profile"}
-              </small>
-            </div>
+      {(wheelTags.length > 0 || classTags.length > 0) && (
+        <div className="category-browser">
+          <div>
+            <span>Wheel</span>
+            <button
+              className={!wheelFilter ? "active" : ""}
+              onClick={() => setWheelFilter(null)}
+            >
+              All
+            </button>
+            {wheelTags.map((tag) => (
+              <button
+                className={wheelFilter === tag ? "active" : ""}
+                key={tag}
+                onClick={() => setWheelFilter(tag)}
+              >
+                {tag}
+              </button>
+            ))}
           </div>
-          <span>
-            {profile.devices
-              .slice(0, 2)
-              .map((device) => device.name)
-              .join(", ") || "Unknown device"}
-          </span>
-          <span>{profile.bindingCount}</span>
-          <span>
-            {profile.hotkeySlot ? (
-              <kbd>Ctrl Alt {profile.hotkeySlot}</kbd>
-            ) : (
-              <small>Not set</small>
-            )}
-          </span>
-          <button
+          <div>
+            <span>Class</span>
+            <button
+              className={!classFilter ? "active" : ""}
+              onClick={() => setClassFilter(null)}
+            >
+              All
+            </button>
+            {classTags.map((tag) => (
+              <button
+                className={classFilter === tag ? "active" : ""}
+                key={tag}
+                onClick={() => setClassFilter(tag)}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="profile-grid">
+        {visibleProfiles.map((profile) => (
+          <article
             className={
-              profile.id === activeId ? "prepared" : "secondary compact"
+              selectedId === profile.id
+                ? "profile-card selected"
+                : "profile-card"
             }
-            disabled={busy || profile.id === activeId}
-            onClick={(event) => {
-              event.stopPropagation();
-              onActivate(profile);
+            key={profile.id}
+            onClick={() => {
+              setSelectedId(profile.id);
+              setConfirmDevice(null);
+              setConfirmDelete(false);
             }}
           >
-            {profile.id === activeId ? "Prepared" : "Use profile"}
-          </button>
-        </div>
-      ))}
-      {!profiles.length && (
+            <header>
+              <span className="profile-card-icon">
+                <Gamepad2 />
+              </span>
+              <div>
+                <strong>{profile.name}</strong>
+                <small>
+                  {profile.id === activeId
+                    ? activeDirty
+                      ? "LMU has unsaved changes"
+                      : "Prepared for next launch"
+                    : "Saved profile"}
+                </small>
+              </div>
+              {profile.id === activeId && (
+                <span className="active-badge">Active</span>
+              )}
+            </header>
+            <div className="profile-tags">
+              {profile.wheelTags.map((tag) => (
+                <span className="wheel-tag" key={`wheel-${tag}`}>
+                  {tag}
+                </span>
+              ))}
+              {profile.classTags.map((tag) => (
+                <span className="class-tag" key={`class-${tag}`}>
+                  {tag}
+                </span>
+              ))}
+              {!profile.wheelTags.length && !profile.classTags.length && (
+                <span className="untagged">Add wheel and class categories</span>
+              )}
+            </div>
+            <div className="profile-card-meta">
+              <span>{profile.bindingCount} bindings</span>
+              <span>{profile.devices.length} devices</span>
+              {profile.hotkeySlot && <kbd>Ctrl Alt {profile.hotkeySlot}</kbd>}
+            </div>
+            <button
+              className={
+                profile.id === activeId ? "prepared" : "secondary compact"
+              }
+              disabled={busy || profile.id === activeId}
+              onClick={(event) => {
+                event.stopPropagation();
+                onActivate(profile);
+              }}
+            >
+              {profile.id === activeId ? "Prepared" : "Use profile"}
+            </button>
+          </article>
+        ))}
+      </div>
+      {!visibleProfiles.length && (
         <div className="empty large">
           <Gamepad2 />
           <strong>No profiles found</strong>
           <span>
             Drop a preset here, import one, or capture your current LMU
-            bindings.
+            bindings. Adjust the category filters if profiles are hidden.
           </span>
         </div>
       )}
@@ -259,6 +325,12 @@ export function ProfilesPage(props: Props) {
               </button>
             )}
           </div>
+          <CategoryEditor
+            key={selected.id}
+            profile={selected}
+            busy={busy}
+            onSave={onSaveCategories}
+          />
           <p className="device-note">
             Removing a device also removes all of its bindings.
           </p>
@@ -311,6 +383,100 @@ export function ProfilesPage(props: Props) {
           </div>
         </div>
       )}
+    </section>
+  );
+}
+
+function CategoryEditor({
+  profile,
+  busy,
+  onSave,
+}: {
+  profile: Profile;
+  busy: boolean;
+  onSave: Props["onSaveCategories"];
+}) {
+  const [wheels, setWheels] = useState(profile.wheelTags);
+  const [classes, setClasses] = useState(profile.classTags);
+  const [wheelInput, setWheelInput] = useState("");
+  const [classInput, setClassInput] = useState("");
+  const addTag = (
+    value: string,
+    tags: string[],
+    setTags: (tags: string[]) => void,
+    clear: () => void,
+  ) => {
+    const tag = value.trim();
+    if (
+      tag &&
+      !tags.some((existing) => existing.toLowerCase() === tag.toLowerCase())
+    )
+      setTags([...tags, tag]);
+    clear();
+  };
+  const tagInput = (
+    label: string,
+    value: string,
+    setValue: (value: string) => void,
+    tags: string[],
+    setTags: (tags: string[]) => void,
+  ) => (
+    <div className="tag-field">
+      <span>{label}</span>
+      <div className="tag-list">
+        {tags.map((tag) => (
+          <button
+            key={tag}
+            title={`Remove ${tag}`}
+            onClick={() => setTags(tags.filter((entry) => entry !== tag))}
+          >
+            {tag} ×
+          </button>
+        ))}
+      </div>
+      <div className="tag-entry">
+        <Tags />
+        <input
+          value={value}
+          maxLength={40}
+          placeholder={`Add ${label.toLowerCase()}`}
+          onChange={(event) => setValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === ",") {
+              event.preventDefault();
+              addTag(value, tags, setTags, () => setValue(""));
+            }
+          }}
+        />
+        <button
+          disabled={!value.trim()}
+          onClick={() => addTag(value, tags, setTags, () => setValue(""))}
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+  const changed =
+    JSON.stringify(wheels) !== JSON.stringify(profile.wheelTags) ||
+    JSON.stringify(classes) !== JSON.stringify(profile.classTags);
+  return (
+    <section className="category-editor">
+      <div>
+        <span className="eyebrow">Categories</span>
+        <h4>Find this setup by wheel or class</h4>
+      </div>
+      <div className="category-fields">
+        {tagInput("Wheel", wheelInput, setWheelInput, wheels, setWheels)}
+        {tagInput("Class", classInput, setClassInput, classes, setClasses)}
+      </div>
+      <button
+        className="primary compact"
+        disabled={busy || !changed}
+        onClick={() => onSave(profile, wheels, classes)}
+      >
+        Save categories
+      </button>
     </section>
   );
 }

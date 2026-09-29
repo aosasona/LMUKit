@@ -21,6 +21,10 @@ pub struct Profile {
     pub hotkey_slot: Option<u8>,
     #[serde(default)]
     pub wheel_image: Option<String>,
+    #[serde(default)]
+    pub wheel_tags: Vec<String>,
+    #[serde(default)]
+    pub class_tags: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -228,6 +232,22 @@ impl Store {
             .context("could not save profile metadata")
     }
 
+    pub fn set_profile_categories(
+        &self,
+        profile_id: Uuid,
+        wheel_tags: Vec<String>,
+        class_tags: Vec<String>,
+    ) -> Result<()> {
+        let mut profile = self
+            .profiles()?
+            .into_iter()
+            .find(|profile| profile.id == profile_id)
+            .context("That profile no longer exists.")?;
+        profile.wheel_tags = normalize_tags(wheel_tags)?;
+        profile.class_tags = normalize_tags(class_tags)?;
+        self.save_profile_metadata(&profile)
+    }
+
     pub fn save_profile_wheel_image(&self, profile: &mut Profile, bytes: &[u8]) -> Result<()> {
         const MAX_IMAGE_SIZE: usize = 8 * 1024 * 1024;
         if bytes.is_empty() || bytes.len() > MAX_IMAGE_SIZE {
@@ -305,6 +325,8 @@ impl Store {
             assignments: Vec::new(),
             hotkey_slot: None,
             wheel_image: None,
+            wheel_tags: Vec::new(),
+            class_tags: Vec::new(),
         };
         let dir = self.profile_dir(profile.id);
         fs::create_dir_all(&dir)?;
@@ -498,6 +520,8 @@ impl Store {
             assignments: Vec::new(),
             hotkey_slot: None,
             wheel_image: None,
+            wheel_tags: Vec::new(),
+            class_tags: Vec::new(),
         };
         let dir = self.profile_dir(profile.id);
         fs::create_dir_all(&dir)?;
@@ -738,6 +762,30 @@ fn image_extension(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
+fn normalize_tags(tags: Vec<String>) -> Result<Vec<String>> {
+    let mut normalized = Vec::new();
+    for tag in tags {
+        let tag = tag.trim();
+        if tag.is_empty() {
+            continue;
+        }
+        if tag.chars().count() > 40 {
+            bail!("Category names must be 40 characters or shorter.");
+        }
+        if !normalized
+            .iter()
+            .any(|existing: &String| existing.eq_ignore_ascii_case(tag))
+        {
+            normalized.push(tag.to_owned());
+        }
+    }
+    if normalized.len() > 12 {
+        bail!("A profile can have at most 12 categories of each type.");
+    }
+    normalized.sort_by_key(|tag| tag.to_lowercase());
+    Ok(normalized)
+}
+
 fn unix_time() -> Result<u64> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
 }
@@ -757,6 +805,8 @@ mod tests {
         .unwrap();
 
         assert_eq!(profile.hotkey_slot, None);
+        assert!(profile.wheel_tags.is_empty());
+        assert!(profile.class_tags.is_empty());
     }
 
     #[test]
@@ -803,6 +853,27 @@ mod tests {
         assert_eq!(profile.name, "First");
         assert_eq!(store.profiles().unwrap().len(), 1);
         assert!(store.import_profile_bytes("bad", b"[]").is_err());
+    }
+
+    #[test]
+    fn saves_normalized_profile_categories() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let profile = store
+            .import_profile_bytes("GT3", br#"{"Input":{}}"#)
+            .unwrap();
+
+        store
+            .set_profile_categories(
+                profile.id,
+                vec![" Simagic GT Neo ".into(), "simagic gt neo".into()],
+                vec!["GT3".into(), "Hypercar".into()],
+            )
+            .unwrap();
+
+        let saved = store.profiles().unwrap().remove(0);
+        assert_eq!(saved.wheel_tags, ["Simagic GT Neo"]);
+        assert_eq!(saved.class_tags, ["GT3", "Hypercar"]);
     }
 
     #[test]

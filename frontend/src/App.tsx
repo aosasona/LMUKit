@@ -28,7 +28,10 @@ export default function App() {
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return snapshot.profiles.filter((profile) =>
-      profile.name.toLowerCase().includes(needle),
+      [profile.name, ...profile.wheelTags, ...profile.classTags]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle),
     );
   }, [query, snapshot.profiles]);
 
@@ -139,6 +142,20 @@ export default function App() {
       await refresh();
       setNotice(`Wheel image removed from ${profile.name}.`);
     });
+  const saveCategories = (
+    profile: Profile,
+    wheelTags: string[],
+    classTags: string[],
+  ) =>
+    withBusy(async () => {
+      await invoke("set_profile_categories", {
+        profileId: profile.id,
+        wheelTags,
+        classTags,
+      });
+      await refresh();
+      setNotice(`Categories updated for ${profile.name}.`);
+    });
   const importPreset = (file: File) =>
     withBusy(async () => {
       setNotice(`Importing ${file.name}…`);
@@ -247,6 +264,7 @@ export default function App() {
                 onRemoveDevice={removeDevice}
                 onSaveWheelImage={saveWheelImage}
                 onRemoveWheelImage={removeWheelImage}
+                onSaveCategories={saveCategories}
               />
             )}
             {page === "bindings" && (

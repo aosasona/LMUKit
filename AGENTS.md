@@ -64,7 +64,7 @@ profiles/<uuid>/direct input.json
 profiles/<uuid>/wheel-image.<png|jpg|webp>  # optional
 ```
 
-Profile metadata may reference an optional managed wheel image; never retain an external source path. Settings track the LMU path, active profile UUID, and companion applications. Timestamped backups under `backups/` preserve both replaced live configurations and saved profiles updated from LMU.
+Profile metadata may reference an optional managed wheel image and contains independent `wheel_tags` and `class_tags` arrays used by the profile browser; never retain an external image source path. Settings track the LMU path, active profile UUID, and companion applications. Timestamped backups under `backups/` preserve both replaced live configurations and saved profiles updated from LMU.
 
 ## Required checks
 
