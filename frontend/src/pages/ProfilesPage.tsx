@@ -1,9 +1,4 @@
-import {
-  FolderOpen,
-  Gamepad2,
-  Search,
-  Upload,
-} from "lucide-react";
+import { FolderOpen, Gamepad2, Search, Upload } from "lucide-react";
 import { useState } from "react";
 import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
@@ -324,8 +319,8 @@ export function ProfilesPage(props: Props) {
           </div>
           <div className="profile-management">
             {selected.hotkeySlot && (
-              <span className="migration-note">
-                <kbd>Ctrl Alt {selected.hotkeySlot}</kbd> shortcut migration
+              <span className="global-shortcut-note">
+                <kbd>Ctrl Alt {selected.hotkeySlot}</kbd> global shortcut
                 pending
               </span>
             )}

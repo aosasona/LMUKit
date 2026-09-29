@@ -17,7 +17,7 @@ import type {
   Wheel,
 } from "./models";
 import { emptySnapshot } from "./models";
-import { pageTitle } from "./pages/ComingSoonPage";
+import { pageTitle } from "./lib/navigation";
 import { GameSettingsPage } from "./pages/GameSettingsPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ProfilesPage } from "./pages/ProfilesPage";

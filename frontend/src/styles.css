@@ -1563,7 +1563,7 @@ img.profile-card-icon {
 .profile-management .remove-device {
   margin-left: auto;
 }
-.migration-note {
+.global-shortcut-note {
   color: #68736d;
   font-size: 9px;
   display: flex;
@@ -1904,7 +1904,7 @@ img.profile-card-icon {
 .tag-entry input,
 .tag-entry button,
 .device-note,
-.migration-note,
+.global-shortcut-note,
 .binding-summary span,
 .binding-device header em,
 .control-pill,
@@ -2297,7 +2297,7 @@ body {
 .device-manager-head > small,
 .device-row small,
 .device-note,
-.migration-note,
+.global-shortcut-note,
 .binding-summary span,
 .binding-device header em,
 .binding-row small,
