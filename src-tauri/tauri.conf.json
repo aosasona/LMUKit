@@ -31,8 +31,10 @@
     "active": true,
     "targets": ["nsis"],
     "icon": [
-      "../assets/icon/lmukit-256.png",
-      "../assets/icon/lmukit.ico"
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
     ]
   }
 }

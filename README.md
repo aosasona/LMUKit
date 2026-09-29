@@ -5,7 +5,7 @@
 
 LMUKit is a modern Windows toolkit for Le Mans Ultimate. It brings profiles, control mappings, game settings, and companion tools into one focused race workspace.
 
-<img src="assets/icon/lmukit-256.png" alt="LMUKit icon" width="128">
+<img src="assets/icon/lmukit.png" alt="LMUKit icon" width="128">
 
 The interface is being rebuilt with Tauri and React. Existing LMUKit profiles, settings, and recovery backups remain compatible; the previous egui application is preserved on the `legacy/egui-v0.2` branch while features move into the new workspace.
 
