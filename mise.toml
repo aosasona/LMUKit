@@ -1,33 +1,39 @@
 [tools]
 rust = "1.91.1"
 "cargo:cargo-xwin" = "latest"
+node = "22"
+pnpm = "10"
 
 [env]
 WINDOWS_TARGET = "x86_64-pc-windows-msvc"
 
 [tasks.dev]
-description = "Build and launch the Windows debug executable through WSL interoperability"
+description = "Build and launch the Windows Tauri app from WSL"
 run = """
-cargo xwin build --target "$WINDOWS_TARGET"
-./target/$WINDOWS_TARGET/debug/lmukit.exe
+pnpm build
+cargo xwin build -p lmukit --target "$WINDOWS_TARGET"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run-windows.ps1
 """
 
 [tasks.test]
 description = "Run the test suite"
-run = "cargo test"
+run = "cargo test -p lmukit-core"
 
 [tasks.check]
 description = "Check the project"
-run = "cargo check"
+run = "cargo check -p lmukit-core"
 
 [tasks.fmt]
 description = "Check Rust formatting"
-run = "cargo fmt --check"
+run = "cargo fmt --all --check"
 
 [tasks.lint]
 description = "Run Clippy"
-run = "cargo clippy --all-targets --all-features -- -D warnings"
+run = "cargo clippy -p lmukit-core --all-targets --all-features -- -D warnings"
 
 [tasks.build]
-description = "Build an optimized Windows executable"
-run = "cargo xwin build --release --target \"$WINDOWS_TARGET\""
+description = "Build the frontend and optimized Windows executable"
+run = """
+pnpm build
+cargo xwin build -p lmukit --release --target "$WINDOWS_TARGET"
+"""

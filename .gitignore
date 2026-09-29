@@ -1,5 +1,9 @@
 # Rust build output
 /target/
+/dist/
+/node_modules/
+/src-tauri/target/
+*.tsbuildinfo
 **/*.rs.bk
 
 # Windows build artifacts copied outside target/
