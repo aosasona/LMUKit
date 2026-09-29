@@ -7,9 +7,20 @@ $destination = Join-Path $runtimeDirectory "lmukit.exe"
 
 New-Item -ItemType Directory -Force $runtimeDirectory | Out-Null
 
-Get-Process -Name "lmukit" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -eq $destination } |
-    Stop-Process -Force
+$running = Get-Process -Name "lmukit" -ErrorAction SilentlyContinue |
+    Where-Object { [string]::Equals($_.Path, $destination, [System.StringComparison]::OrdinalIgnoreCase) }
+if ($running) {
+    $running | Stop-Process -Force
+    $running | Wait-Process -Timeout 5 -ErrorAction SilentlyContinue
+}
 
-Copy-Item $source $destination -Force
+for ($attempt = 0; $attempt -lt 10; $attempt++) {
+    try {
+        Copy-Item $source $destination -Force
+        break
+    } catch {
+        if ($attempt -eq 9) { throw }
+        Start-Sleep -Milliseconds 200
+    }
+}
 Start-Process $destination
