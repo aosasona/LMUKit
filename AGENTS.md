@@ -12,6 +12,7 @@ LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate util
 - `src/app.rs` owns egui state, the Profiles, Editor, Game settings, and Settings tabs, interaction flows, dialogs, and status messages.
 - `src/storage.rs` owns LMUKit settings, profile persistence, imports, activation, backups, LMU JSON parsing, `Settings.JSON` persistence, and companion-launcher generation.
 - `src/input.rs` reads Windows raw game-controller state and converts buttons, POVs, and axes to LMU input IDs. Its non-Windows implementation keeps native development and tests working.
+- `src/hotkeys.rs` registers Windows global shortcuts and maps them to compact-switcher and profile-activation actions. Its non-Windows implementation is inert so native checks remain portable.
 - `mise.toml` pins tooling and defines the supported developer commands.
 - `.github/workflows/release.yml` builds and publishes the Windows x86-64 archive for `v*` tags.
 - `build.rs` embeds the executable icon and metadata during native Windows builds. It intentionally skips resource compilation for WSL cross-builds, where `rc.exe` is unavailable.
@@ -31,6 +32,7 @@ Keep filesystem and parsing behavior in `storage.rs`; keep platform input detail
 - Use the `LMUKIT_DATA_DIR` environment override with synthetic data for screenshots and isolated manual testing.
 - Keep non-Windows tests and checks functional even when adding Windows-only behavior.
 - Do not silently edit Steam configuration. Generate and copy an explicit launch option for the user.
+- LMU does not hot-reload `direct input.json`. Profile activation while LMU is closed prepares the next launch; do not present file replacement as an in-session switch.
 
 ## LMU binding format
 
@@ -84,4 +86,4 @@ Use `mise run dev` to cross-compile and launch the Windows debug executable from
 
 ## Future work
 
-The likely route for car/class detection is LMU's built-in `Local\\LMUSharedMem` mapping. Player scoring exposes vehicle name, class, and vehicle filename. Before implementing automatic activation, determine whether LMU reloads `direct input.json` safely after session/car selection; detection alone does not prove that live replacement is safe.
+The likely route for car/class detection is LMU's built-in `Local\\LMUSharedMem` mapping. Player scoring exposes vehicle name, class, and vehicle filename. LMU does not reload `direct input.json` during a running session, so detection should recommend a mapped profile or prepare it before the next launch rather than promising live automatic switching.

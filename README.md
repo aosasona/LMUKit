@@ -14,6 +14,8 @@ LMUKit is a growing native Windows toolkit for Le Mans Ultimate. It brings usefu
 - Capture LMU's current `direct input.json` as a named profile.
 - Import preset JSON files or profile folders with drag and drop.
 - Activate a saved profile with an automatic recovery backup.
+- Assign `Ctrl+Alt+1` through `Ctrl+Alt+9` to profiles for direct switching.
+- Open a compact searchable profile switcher with `Ctrl+Alt+Space`.
 - Detect and warn when the live bindings differ from the active profile.
 - Update an existing profile from LMU's live bindings while backing up its previous version.
 - Browse and edit LMU's `Settings.JSON` with inline descriptions from matching `Option#` fields.
@@ -32,6 +34,14 @@ LMUKit stores its own profiles in the current Windows user's application-data di
 2. Open **Settings** and confirm the path to LMU's live `direct input.json`.
 3. Configure the wheel in LMU and enter a name under **Capture current bindings**.
 4. Select a profile and choose **Activate selected** when changing setups.
+
+LMU does not reload its bindings file while running. Close LMU before activating a profile; LMUKit installs the selected file for the next game launch and creates a recovery backup first.
+
+### Faster profile switching
+
+Open **Settings → Profile keyboard shortcuts** to assign `Ctrl+Alt+1` through `Ctrl+Alt+9` to individual profiles. Shortcut assignments are unique, so assigning a number to a different profile moves it automatically.
+
+Press `Ctrl+Alt+Space` anywhere in Windows to open the compact switcher. Search by profile name, use the arrow keys to move, and press Enter to activate the highlighted profile. Direct shortcuts and the compact switcher both prepare the selected profile for the next LMU launch; they cannot change bindings in a running LMU session.
 
 Existing preset files can be dropped directly onto the saved-profile panel. A file is named from its filename; a folder should contain `direct input.json`.
 
@@ -117,7 +127,7 @@ Repository-specific guidance for future human and LLM contributors is in [AGENTS
 
 ## Planned work
 
-Automatic car- or class-based selection is the next major direction. LMU exposes player vehicle and class information through its built-in Windows shared-memory interface, but the safe timing and reload behavior for applying control files while LMU is running still needs to be validated.
+LMU exposes player vehicle and class information through its built-in Windows shared-memory interface. Because LMU does not hot-reload `direct input.json`, future detection should recommend or prepare a profile for the next launch rather than swapping controls during a running session.
 
 ## License
 
