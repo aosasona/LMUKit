@@ -327,6 +327,33 @@ impl Store {
         Ok(())
     }
 
+    pub fn remove_device(document: &mut serde_json::Value, device: &str) -> Result<usize> {
+        let devices = document
+            .get_mut("Devices")
+            .and_then(serde_json::Value::as_object_mut)
+            .context("the profile does not contain a valid Devices object")?;
+        if devices.remove(device).is_none() {
+            bail!("the selected device no longer exists in this profile");
+        }
+
+        let mut removed = 0;
+        for section in ["Input", "Alternative Input"] {
+            let Some(bindings) = document
+                .get_mut(section)
+                .and_then(serde_json::Value::as_object_mut)
+            else {
+                continue;
+            };
+            bindings.retain(|_, mapping| {
+                let belongs_to_device =
+                    mapping.get("device").and_then(serde_json::Value::as_str) == Some(device);
+                removed += usize::from(belongs_to_device);
+                !belongs_to_device
+            });
+        }
+        Ok(removed)
+    }
+
     pub fn binding_matches(
         &self,
         profiles: &[Profile],
@@ -804,6 +831,31 @@ mod tests {
             Some("Wheel-123")
         );
         assert_eq!(store.profiles().unwrap()[0].assignments, ["Shift Up"]);
+    }
+
+    #[test]
+    fn removes_a_device_and_its_bindings_without_touching_unknown_data() {
+        let mut document = serde_json::json!({
+            "Devices": {
+                "Moza-R9": {"name": "MOZA R9"},
+                "Pedals": {"name": "MOZA CRP Pedals"}
+            },
+            "Input": {
+                "Steer": {"device": "Moza-R9", "id": 0},
+                "Brake": {"device": "Pedals", "id": 2}
+            },
+            "Alternative Input": {
+                "Pause": {"device": "Moza-R9", "id": 40}
+            },
+            "Future LMU Field": {"keep": true}
+        });
+
+        assert_eq!(Store::remove_device(&mut document, "Moza-R9").unwrap(), 2);
+        assert!(document["Devices"].get("Moza-R9").is_none());
+        assert!(document["Input"].get("Steer").is_none());
+        assert!(document["Alternative Input"].get("Pause").is_none());
+        assert_eq!(document["Input"]["Brake"]["device"], "Pedals");
+        assert_eq!(document["Future LMU Field"]["keep"], true);
     }
 
     #[test]

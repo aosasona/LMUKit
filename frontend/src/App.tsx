@@ -13,6 +13,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Square,
+  Trash2,
   Upload,
   Wrench,
   X,
@@ -25,7 +26,13 @@ type Profile = {
   name: string;
   hotkeySlot: number | null;
   bindingCount: number;
-  devices: string[];
+  devices: Device[];
+};
+
+type Device = {
+  key: string;
+  name: string;
+  bindingCount: number;
 };
 
 type Snapshot = {
@@ -96,9 +103,34 @@ export default function App() {
     }
   }
 
+  async function removeDevice(profile: Profile, device: Device) {
+    setBusy(true);
+    setNotice(`Removing ${device.name} from ${profile.name}…`);
+    try {
+      const removed = await invoke<number>("remove_profile_device", {
+        profileId: profile.id,
+        deviceKey: device.key,
+      });
+      await refresh();
+      setNotice(`${device.name} and ${removed} binding${removed === 1 ? "" : "s"} removed. Activate the profile again to apply it to LMU.`);
+    } catch (error) {
+      setNotice(String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="window-shell">
-      <div className="titlebar" data-tauri-drag-region>
+      <div className="titlebar" data-tauri-drag-region onMouseDown={(event) => {
+        if (event.button === 0 && !(event.target as HTMLElement).closest("button")) {
+          void getCurrentWindow().startDragging();
+        }
+      }} onDoubleClick={(event) => {
+        if (!(event.target as HTMLElement).closest("button")) {
+          void getCurrentWindow().toggleMaximize();
+        }
+      }}>
         <div className="titlebar-brand" data-tauri-drag-region>
           <img src="/app-icon.png" alt="" />
           <span data-tauri-drag-region>LMUKit</span>
@@ -141,7 +173,7 @@ export default function App() {
 
         <div className="content">
           {page === "home" && <Overview active={active} selected={selected} profiles={snapshot.profiles} onOpenProfiles={() => setPage("profiles")} onActivate={activate} busy={busy} />}
-          {page === "profiles" && <Profiles profiles={filtered} activeId={snapshot.activeProfile} selectedId={selectedId} query={query} setQuery={setQuery} setSelectedId={setSelectedId} onActivate={activate} busy={busy} />}
+          {page === "profiles" && <Profiles profiles={filtered} selected={selected} activeId={snapshot.activeProfile} selectedId={selectedId} query={query} setQuery={setQuery} setSelectedId={setSelectedId} onActivate={activate} onRemoveDevice={removeDevice} busy={busy} />}
           {page !== "home" && page !== "profiles" && <ComingSoon page={page} selected={selected} />}
         </div>
 
@@ -176,7 +208,7 @@ function Overview({ active, selected, profiles, onOpenProfiles, onActivate, busy
       <div className="section-head"><div><span className="eyebrow">Your garage</span><h3>Race profiles</h3></div><button className="text-button" onClick={onOpenProfiles}>Manage all <ChevronRight size={16} /></button></div>
       <div className="profile-strip">
         {profiles.slice(0, 4).map((profile, index) => <button key={profile.id} className={profile.id === active?.id ? "mini-profile active" : "mini-profile"} onClick={() => onActivate(profile)}>
-          <span className="profile-number">0{index + 1}</span><div><strong>{profile.name}</strong><small>{profile.bindingCount} bindings · {profile.devices[0] ?? "Input profile"}</small></div>{profile.hotkeySlot && <kbd>Ctrl Alt {profile.hotkeySlot}</kbd>}
+          <span className="profile-number">0{index + 1}</span><div><strong>{profile.name}</strong><small>{profile.bindingCount} bindings · {profile.devices[0]?.name ?? "Input profile"}</small></div>{profile.hotkeySlot && <kbd>Ctrl Alt {profile.hotkeySlot}</kbd>}
         </button>)}
         {!profiles.length && <div className="empty"><Sparkles size={22} /><span>Your saved profiles will appear here.</span></div>}
       </div>
@@ -186,8 +218,9 @@ function Overview({ active, selected, profiles, onOpenProfiles, onActivate, busy
   </div>;
 }
 
-function Profiles({ profiles, activeId, selectedId, query, setQuery, setSelectedId, onActivate, busy }: { profiles: Profile[]; activeId: string | null; selectedId: string | null; query: string; setQuery: (value: string) => void; setSelectedId: (value: string) => void; onActivate: (profile: Profile) => void; busy: boolean }) {
-  return <section className="profiles-page panel"><div className="profiles-toolbar"><div className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your profiles" /></div><button className="primary"><Upload size={17} /> Import preset</button></div><div className="profile-table-head"><span>Profile</span><span>Devices</span><span>Bindings</span><span>Shortcut</span><span /></div>{profiles.map((profile) => <div className={selectedId === profile.id ? "profile-row selected" : "profile-row"} key={profile.id} onClick={() => setSelectedId(profile.id)}><div className="profile-main"><span className="device-thumb"><Gamepad2 /></span><div><strong>{profile.name}</strong><small>{profile.id === activeId ? "Prepared for next launch" : "Saved profile"}</small></div></div><span>{profile.devices.slice(0, 2).join(", ") || "Unknown device"}</span><span>{profile.bindingCount}</span><span>{profile.hotkeySlot ? <kbd>Ctrl Alt {profile.hotkeySlot}</kbd> : <small>Not set</small>}</span><button className={profile.id === activeId ? "prepared" : "secondary compact"} disabled={busy || profile.id === activeId} onClick={(event) => { event.stopPropagation(); void onActivate(profile); }}>{profile.id === activeId ? "Prepared" : "Use profile"}</button></div>)}{!profiles.length && <div className="empty large"><Gamepad2 /><strong>No profiles found</strong><span>Import a preset or capture your current LMU bindings.</span></div>}</section>;
+function Profiles({ profiles, selected, activeId, selectedId, query, setQuery, setSelectedId, onActivate, onRemoveDevice, busy }: { profiles: Profile[]; selected?: Profile; activeId: string | null; selectedId: string | null; query: string; setQuery: (value: string) => void; setSelectedId: (value: string) => void; onActivate: (profile: Profile) => void; onRemoveDevice: (profile: Profile, device: Device) => void; busy: boolean }) {
+  const [confirmDevice, setConfirmDevice] = useState<string | null>(null);
+  return <section className="profiles-page panel"><div className="profiles-toolbar"><div className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your profiles" /></div><button className="primary"><Upload size={17} /> Import preset</button></div><div className="profile-table-head"><span>Profile</span><span>Devices</span><span>Bindings</span><span>Shortcut</span><span /></div>{profiles.map((profile) => <div className={selectedId === profile.id ? "profile-row selected" : "profile-row"} key={profile.id} onClick={() => { setSelectedId(profile.id); setConfirmDevice(null); }}><div className="profile-main"><span className="device-thumb"><Gamepad2 /></span><div><strong>{profile.name}</strong><small>{profile.id === activeId ? "Prepared for next launch" : "Saved profile"}</small></div></div><span>{profile.devices.slice(0, 2).map((device) => device.name).join(", ") || "Unknown device"}</span><span>{profile.bindingCount}</span><span>{profile.hotkeySlot ? <kbd>Ctrl Alt {profile.hotkeySlot}</kbd> : <small>Not set</small>}</span><button className={profile.id === activeId ? "prepared" : "secondary compact"} disabled={busy || profile.id === activeId} onClick={(event) => { event.stopPropagation(); void onActivate(profile); }}>{profile.id === activeId ? "Prepared" : "Use profile"}</button></div>)}{!profiles.length && <div className="empty large"><Gamepad2 /><strong>No profiles found</strong><span>Import a preset or capture your current LMU bindings.</span></div>}{selected && <div className="device-manager"><div className="device-manager-head"><div><span className="eyebrow">Profile devices</span><h3>{selected.name}</h3></div><small>Removing a device also removes all of its bindings.</small></div><div className="device-list">{selected.devices.map((device) => <div className="device-row" key={device.key}><span className="device-thumb"><Gamepad2 /></span><div><strong>{device.name}</strong><small>{device.bindingCount} binding{device.bindingCount === 1 ? "" : "s"} · {device.key}</small></div>{confirmDevice === device.key ? <div className="confirm-remove"><span>Remove?</span><button className="danger" disabled={busy} onClick={() => void onRemoveDevice(selected, device)}>Yes, remove</button><button className="secondary compact" onClick={() => setConfirmDevice(null)}>Cancel</button></div> : <button className="remove-device" aria-label={`Remove ${device.name}`} onClick={() => setConfirmDevice(device.key)}><Trash2 /> Remove</button>}</div>)}{!selected.devices.length && <div className="empty">This profile has no registered devices.</div>}</div></div>}</section>;
 }
 
 function ComingSoon({ page, selected }: { page: Page; selected?: Profile }) {
