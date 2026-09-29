@@ -8,6 +8,7 @@ import type {
   Binding,
   CompanionApp,
   Device,
+  JsonObject,
   Page,
   Profile,
   Snapshot,
@@ -15,7 +16,8 @@ import type {
 } from "./models";
 import { emptySnapshot } from "./models";
 import { BindingEditorPage } from "./pages/BindingEditorPage";
-import { ComingSoonPage, pageTitle } from "./pages/ComingSoonPage";
+import { pageTitle } from "./pages/ComingSoonPage";
+import { GameSettingsPage } from "./pages/GameSettingsPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -31,12 +33,31 @@ export default function App() {
   const [wheelImageUrl, setWheelImageUrl] = useState<string | null>(null);
   const [wheelImageRevision, setWheelImageRevision] = useState(0);
   const [bindings, setBindings] = useState<Binding[]>([]);
+  const [gameSettings, setGameSettings] = useState<JsonObject | null>(null);
+  const [gameSettingsBaseline, setGameSettingsBaseline] =
+    useState<JsonObject | null>(null);
+  const [gameSettingsLoading, setGameSettingsLoading] = useState(false);
   const selected =
     snapshot.profiles.find((profile) => profile.id === selectedId) ??
     snapshot.profiles[0];
   const active = snapshot.profiles.find(
     (profile) => profile.id === snapshot.activeProfile,
   );
+  const gameSettingsDirty = Boolean(
+    gameSettings &&
+      gameSettingsBaseline &&
+      JSON.stringify(gameSettings) !== JSON.stringify(gameSettingsBaseline),
+  );
+  const navigate = (next: Page) => {
+    if (
+      page === "game" &&
+      next !== "game" &&
+      gameSettingsDirty &&
+      !window.confirm("Discard your unsaved game-setting changes?")
+    )
+      return;
+    setPage(next);
+  };
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return snapshot.profiles.filter((profile) =>
@@ -140,6 +161,24 @@ export default function App() {
   useEffect(() => {
     if (page === "bindings") void loadBindings();
   }, [page, selected?.id]);
+  async function loadGameSettings() {
+    setGameSettingsLoading(true);
+    try {
+      const document = await invoke<JsonObject>("load_game_settings");
+      setGameSettings(document);
+      setGameSettingsBaseline(structuredClone(document));
+    } catch (error) {
+      setGameSettings(null);
+      setGameSettingsBaseline(null);
+      setNotice(String(error));
+    } finally {
+      setGameSettingsLoading(false);
+    }
+  }
+  useEffect(() => {
+    if (page === "game" && !gameSettings && !gameSettingsLoading)
+      void loadGameSettings();
+  }, [page]);
   async function withBusy(action: () => Promise<void>) {
     setBusy(true);
     try {
@@ -343,6 +382,8 @@ export default function App() {
         launchMode,
       });
       await refresh();
+      setGameSettings(null);
+      setGameSettingsBaseline(null);
       setNotice("Settings saved.");
     });
   const setProfileHotkey = (profile: Profile, slot: number | null) =>
@@ -389,6 +430,13 @@ export default function App() {
       return null;
     }
   };
+  const saveGameSettings = () =>
+    withBusy(async () => {
+      if (!gameSettings) return;
+      await invoke("save_game_settings", { document: gameSettings });
+      setGameSettingsBaseline(structuredClone(gameSettings));
+      setNotice("Settings.JSON saved. A recovery backup was created.");
+    });
 
   return (
     <div className="window-shell">
@@ -397,7 +445,7 @@ export default function App() {
         <Sidebar
           page={page}
           profileCount={snapshot.profiles.length}
-          onNavigate={setPage}
+          onNavigate={navigate}
         />
         <main>
           <header className="topbar">
@@ -423,7 +471,7 @@ export default function App() {
                 wheelImageRevision={wheelImageRevision}
                 profiles={snapshot.profiles}
                 busy={busy}
-                onNavigate={setPage}
+                onNavigate={navigate}
                 onActivate={activate}
                 onUpdate={updateProfile}
               />
@@ -478,7 +526,15 @@ export default function App() {
               />
             )}
             {page === "game" && (
-              <ComingSoonPage page={page} selected={selected} />
+              <GameSettingsPage
+                document={gameSettings}
+                baseline={gameSettingsBaseline}
+                loading={gameSettingsLoading}
+                busy={busy}
+                onChange={setGameSettings}
+                onReload={() => void loadGameSettings()}
+                onSave={saveGameSettings}
+              />
             )}
             {page === "settings" && (
               <SettingsPage

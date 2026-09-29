@@ -178,6 +178,26 @@ fn pick_file(kind: String) -> Result<Option<String>, String> {
     pick_file_dialog(&kind)
 }
 
+#[tauri::command]
+fn load_game_settings(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .load_lmu_settings_document()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_game_settings(
+    document: serde_json::Value,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .save_lmu_settings_document(&document)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
 #[cfg(target_os = "windows")]
 fn pick_file_dialog(kind: &str) -> Result<Option<String>, String> {
     let (filter, filename) = match kind {
@@ -680,7 +700,9 @@ pub fn run() {
             save_app_settings,
             set_profile_hotkey,
             companion_launch_option,
-            pick_file
+            pick_file,
+            load_game_settings,
+            save_game_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running LMUKit");
