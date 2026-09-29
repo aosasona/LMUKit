@@ -275,7 +275,7 @@ export function SettingsPage(props: Props) {
             className={mode === "vr" ? "active" : ""}
             onClick={() => setMode("vr")}
           >
-            VR
+            VR (OpenXR)
           </button>
         </div>
         <div className="companion-list">

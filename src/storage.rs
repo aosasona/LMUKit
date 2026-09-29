@@ -254,7 +254,7 @@ impl Store {
         }
         script.push_str(match self.settings.lmu_launch_mode {
             LaunchMode::Desktop => "%*\r\n",
-            LaunchMode::Vr => "%* -vr\r\n",
+            LaunchMode::Vr => "%* +XR\r\n",
         });
         fs::write(&launcher, script).context("could not create the companion launcher")?;
         Ok(format!("cmd /c \"\"{}\" %command%\"", launcher.display()))
@@ -1560,7 +1560,7 @@ mod tests {
     }
 
     #[test]
-    fn adds_vr_to_the_generated_lmu_launch_command() {
+    fn adds_openxr_to_the_generated_lmu_launch_command() {
         let temp = tempfile::tempdir().unwrap();
         let lmukit = temp.path().join("lmukit.exe");
         fs::write(&lmukit, []).unwrap();
@@ -1569,7 +1569,7 @@ mod tests {
 
         store.companion_launch_option(&lmukit).unwrap();
         let script = fs::read_to_string(store.root.join("launch-lmu-with-companions.cmd")).unwrap();
-        assert!(script.ends_with("%* -vr\r\n"));
+        assert!(script.ends_with("%* +XR\r\n"));
     }
 
     #[test]

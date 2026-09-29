@@ -74,7 +74,7 @@ Use the search field to find text in names or descriptions. Saving preserves uns
 
 ### Companion apps
 
-Open **Settings → LMU and companion apps**, choose Desktop or VR, then add and enable the helper applications you want. Paths, launch mode, and companion-app changes save automatically. **Copy Steam launch option** creates a small launcher and copies the required command. Paste it into:
+Open **Settings → LMU and companion apps**, choose Desktop or VR (OpenXR), then add and enable the helper applications you want. VR mode passes LMU's native `+XR` launch argument. Paths, launch mode, and companion-app changes save automatically. **Copy Steam launch option** creates a small launcher and copies the required command. Paste it into:
 
 **Steam → Le Mans Ultimate → Properties → Launch Options**
 
