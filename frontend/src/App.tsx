@@ -177,15 +177,19 @@ export default function App() {
     }
   }
 
+  function windowAction(action: () => Promise<void>) {
+    void action().catch((error) => setNotice(`Window action failed: ${String(error)}`));
+  }
+
   return (
     <div className="window-shell">
       <div className="titlebar" data-tauri-drag-region onMouseDown={(event) => {
         if (event.button === 0 && !(event.target as HTMLElement).closest("button")) {
-          void getCurrentWindow().startDragging();
+          windowAction(() => getCurrentWindow().startDragging());
         }
       }} onDoubleClick={(event) => {
         if (!(event.target as HTMLElement).closest("button")) {
-          void getCurrentWindow().toggleMaximize();
+          windowAction(() => getCurrentWindow().toggleMaximize());
         }
       }}>
         <div className="titlebar-brand" data-tauri-drag-region>
@@ -193,9 +197,9 @@ export default function App() {
           <span data-tauri-drag-region>LMUKit</span>
         </div>
         <div className="window-controls">
-          <button aria-label="Minimize" onClick={() => void getCurrentWindow().minimize()}><Minus /></button>
-          <button aria-label="Maximize or restore" onClick={() => void getCurrentWindow().toggleMaximize()}><Square /></button>
-          <button className="close" aria-label="Close" onClick={() => void getCurrentWindow().close()}><X /></button>
+          <button aria-label="Minimize" onClick={() => windowAction(() => getCurrentWindow().minimize())}><Minus /></button>
+          <button aria-label="Maximize or restore" onClick={() => windowAction(() => getCurrentWindow().toggleMaximize())}><Square /></button>
+          <button className="close" aria-label="Close" onClick={() => windowAction(() => getCurrentWindow().close())}><X /></button>
         </div>
       </div>
       <div className="app-shell">

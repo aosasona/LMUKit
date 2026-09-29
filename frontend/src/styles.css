@@ -2,6 +2,12 @@
 * { box-sizing: border-box; }
 *:not(.pulse):not(.halo) { border-radius: 0 !important; }
 *:not(input):not(textarea):not([contenteditable="true"]) { user-select:none; }
+* { scrollbar-width:thin;scrollbar-color:#3d4133 #101010; }
+*::-webkit-scrollbar { width:9px;height:9px; }
+*::-webkit-scrollbar-track { background:#101010; }
+*::-webkit-scrollbar-thumb { background:#3d4133;border:2px solid #101010; }
+*::-webkit-scrollbar-thumb:hover { background:#718c3d; }
+*::-webkit-scrollbar-corner { background:#101010; }
 body { margin: 0; min-width: 900px; min-height: 100vh; overflow: hidden; background: radial-gradient(circle at 68% -20%, rgba(154,190,67,.1), transparent 34%), #121212; user-select:none; }
 button, input { font: inherit; }
 button { color: inherit; }
