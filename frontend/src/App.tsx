@@ -29,6 +29,11 @@ export default function App() {
     const needle = query.trim().toLowerCase();
     return snapshot.profiles.filter((profile) =>
       [profile.name, ...profile.wheelTags, ...profile.classTags]
+        .concat(
+          profile.wheelBrand ?? "",
+          profile.wheelName ?? "",
+          ...profile.customTags,
+        )
         .join(" ")
         .toLowerCase()
         .includes(needle),
@@ -144,14 +149,18 @@ export default function App() {
     });
   const saveCategories = (
     profile: Profile,
-    wheelTags: string[],
+    wheelBrand: string,
+    wheelName: string,
     classTags: string[],
+    customTags: string[],
   ) =>
     withBusy(async () => {
       await invoke("set_profile_categories", {
         profileId: profile.id,
-        wheelTags,
+        wheelBrand: wheelBrand || null,
+        wheelName: wheelName || null,
         classTags,
+        customTags,
       });
       await refresh();
       setNotice(`Categories updated for ${profile.name}.`);

@@ -23,7 +23,7 @@ The rewrite currently includes the responsive workspace, profile discovery, vali
 - Browse and edit LMU's `Settings.JSON` with inline descriptions from matching `Option#` fields.
 - Display the active preset separately from the currently selected row.
 - Assign a managed PNG, JPEG, or WebP wheel image to each profile.
-- Categorize profiles with multiple wheel and vehicle-class tags, then browse them in a filterable card grid.
+- Give profiles a wheel brand and model, select any combination of built-in WEC/ELMS classes, and add optional custom tags before browsing them in a filterable card grid.
 - Browse and search every action stored in a profile.
 - Press a wheel button, move a POV, or turn an axis to compare its mapping across profiles.
 - Open the managed profile directory for manual backup or copying.

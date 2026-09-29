@@ -32,7 +32,10 @@ struct ProfileSummary {
     devices: Vec<DeviceSummary>,
     has_wheel_image: bool,
     wheel_tags: Vec<String>,
+    wheel_brand: Option<String>,
+    wheel_name: Option<String>,
     class_tags: Vec<String>,
+    custom_tags: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -269,13 +272,15 @@ fn clear_profile_binding(
 #[tauri::command]
 fn set_profile_categories(
     profile_id: Uuid,
-    wheel_tags: Vec<String>,
+    wheel_brand: Option<String>,
+    wheel_name: Option<String>,
     class_tags: Vec<String>,
+    custom_tags: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
     store
-        .set_profile_categories(profile_id, wheel_tags, class_tags)
+        .set_profile_categories(profile_id, wheel_brand, wheel_name, class_tags, custom_tags)
         .map_err(|error| error.to_string())
 }
 
@@ -387,7 +392,13 @@ fn profile_summary(store: &Store, profile: &Profile) -> Result<ProfileSummary, S
         devices,
         has_wheel_image: profile.wheel_image.is_some(),
         wheel_tags: profile.wheel_tags.clone(),
+        wheel_brand: profile.wheel_brand.clone(),
+        wheel_name: profile
+            .wheel_name
+            .clone()
+            .or_else(|| profile.wheel_tags.first().cloned()),
         class_tags: profile.class_tags.clone(),
+        custom_tags: profile.custom_tags.clone(),
     })
 }
 

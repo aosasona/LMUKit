@@ -24,7 +24,13 @@ pub struct Profile {
     #[serde(default)]
     pub wheel_tags: Vec<String>,
     #[serde(default)]
+    pub wheel_brand: Option<String>,
+    #[serde(default)]
+    pub wheel_name: Option<String>,
+    #[serde(default)]
     pub class_tags: Vec<String>,
+    #[serde(default)]
+    pub custom_tags: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -235,16 +241,21 @@ impl Store {
     pub fn set_profile_categories(
         &self,
         profile_id: Uuid,
-        wheel_tags: Vec<String>,
+        wheel_brand: Option<String>,
+        wheel_name: Option<String>,
         class_tags: Vec<String>,
+        custom_tags: Vec<String>,
     ) -> Result<()> {
         let mut profile = self
             .profiles()?
             .into_iter()
             .find(|profile| profile.id == profile_id)
             .context("That profile no longer exists.")?;
-        profile.wheel_tags = normalize_tags(wheel_tags)?;
+        profile.wheel_brand = normalize_optional_label(wheel_brand)?;
+        profile.wheel_name = normalize_optional_label(wheel_name)?;
         profile.class_tags = normalize_tags(class_tags)?;
+        profile.custom_tags = normalize_tags(custom_tags)?;
+        profile.wheel_tags.clear();
         self.save_profile_metadata(&profile)
     }
 
@@ -326,7 +337,10 @@ impl Store {
             hotkey_slot: None,
             wheel_image: None,
             wheel_tags: Vec::new(),
+            wheel_brand: None,
+            wheel_name: None,
             class_tags: Vec::new(),
+            custom_tags: Vec::new(),
         };
         let dir = self.profile_dir(profile.id);
         fs::create_dir_all(&dir)?;
@@ -521,7 +535,10 @@ impl Store {
             hotkey_slot: None,
             wheel_image: None,
             wheel_tags: Vec::new(),
+            wheel_brand: None,
+            wheel_name: None,
             class_tags: Vec::new(),
+            custom_tags: Vec::new(),
         };
         let dir = self.profile_dir(profile.id);
         fs::create_dir_all(&dir)?;
@@ -786,6 +803,18 @@ fn normalize_tags(tags: Vec<String>) -> Result<Vec<String>> {
     Ok(normalized)
 }
 
+fn normalize_optional_label(value: Option<String>) -> Result<Option<String>> {
+    let value = value.unwrap_or_default();
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if value.chars().count() > 60 {
+        bail!("Wheel brand and name must be 60 characters or shorter.");
+    }
+    Ok(Some(value.to_owned()))
+}
+
 fn unix_time() -> Result<u64> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
 }
@@ -806,7 +835,10 @@ mod tests {
 
         assert_eq!(profile.hotkey_slot, None);
         assert!(profile.wheel_tags.is_empty());
+        assert_eq!(profile.wheel_brand, None);
+        assert_eq!(profile.wheel_name, None);
         assert!(profile.class_tags.is_empty());
+        assert!(profile.custom_tags.is_empty());
     }
 
     #[test]
@@ -866,14 +898,18 @@ mod tests {
         store
             .set_profile_categories(
                 profile.id,
-                vec![" Simagic GT Neo ".into(), "simagic gt neo".into()],
+                Some(" Simagic ".into()),
+                Some(" GT Neo ".into()),
                 vec!["GT3".into(), "Hypercar".into()],
+                vec!["Formula".into(), "formula".into()],
             )
             .unwrap();
 
         let saved = store.profiles().unwrap().remove(0);
-        assert_eq!(saved.wheel_tags, ["Simagic GT Neo"]);
+        assert_eq!(saved.wheel_brand.as_deref(), Some("Simagic"));
+        assert_eq!(saved.wheel_name.as_deref(), Some("GT Neo"));
         assert_eq!(saved.class_tags, ["GT3", "Hypercar"]);
+        assert_eq!(saved.custom_tags, ["Formula"]);
     }
 
     #[test]

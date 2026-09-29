@@ -11,6 +11,18 @@ import {
 import { useState } from "react";
 import type { Device, Profile } from "../models";
 
+const DEFAULT_CLASSES = ["GT3", "GTE", "LMP3", "LMP2", "HY"] as const;
+
+function wheelLabel(profile: Profile) {
+  return (
+    [profile.wheelBrand, profile.wheelName].filter(Boolean).join(" ") || null
+  );
+}
+
+function classSlug(tag: string) {
+  return tag.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
 type Props = {
   profiles: Profile[];
   selected?: Profile;
@@ -33,8 +45,10 @@ type Props = {
   onRemoveWheelImage: (profile: Profile) => void;
   onSaveCategories: (
     profile: Profile,
-    wheelTags: string[],
+    wheelBrand: string,
+    wheelName: string,
     classTags: string[],
+    customTags: string[],
   ) => void;
 };
 
@@ -66,15 +80,19 @@ export function ProfilesPage(props: Props) {
   const [captureName, setCaptureName] = useState("");
   const [wheelFilter, setWheelFilter] = useState<string | null>(null);
   const [classFilter, setClassFilter] = useState<string | null>(null);
-  const wheelTags = Array.from(
-    new Set(profiles.flatMap((profile) => profile.wheelTags)),
+  const wheelOptions = Array.from(
+    new Set(
+      profiles
+        .map((profile) => wheelLabel(profile))
+        .filter((label): label is string => Boolean(label)),
+    ),
   ).sort();
   const classTags = Array.from(
     new Set(profiles.flatMap((profile) => profile.classTags)),
   ).sort();
   const visibleProfiles = profiles.filter(
     (profile) =>
-      (!wheelFilter || profile.wheelTags.includes(wheelFilter)) &&
+      (!wheelFilter || wheelLabel(profile) === wheelFilter) &&
       (!classFilter || profile.classTags.includes(classFilter)),
   );
   const acceptFiles = (files: FileList | null) => {
@@ -132,7 +150,7 @@ export function ProfilesPage(props: Props) {
           </label>
         </div>
       </div>
-      {(wheelTags.length > 0 || classTags.length > 0) && (
+      {(wheelOptions.length > 0 || classTags.length > 0) && (
         <div className="category-browser">
           <div>
             <span>Wheel</span>
@@ -142,7 +160,7 @@ export function ProfilesPage(props: Props) {
             >
               All
             </button>
-            {wheelTags.map((tag) => (
+            {wheelOptions.map((tag) => (
               <button
                 className={wheelFilter === tag ? "active" : ""}
                 key={tag}
@@ -206,19 +224,25 @@ export function ProfilesPage(props: Props) {
               )}
             </header>
             <div className="profile-tags">
-              {profile.wheelTags.map((tag) => (
-                <span className="wheel-tag" key={`wheel-${tag}`}>
-                  {tag}
-                </span>
-              ))}
-              {profile.classTags.map((tag) => (
-                <span className="class-tag" key={`class-${tag}`}>
-                  {tag}
-                </span>
-              ))}
-              {!profile.wheelTags.length && !profile.classTags.length && (
-                <span className="untagged">Add wheel and class categories</span>
+              {wheelLabel(profile) && (
+                <span className="wheel-tag">{wheelLabel(profile)}</span>
               )}
+              {profile.classTags.map((tag) => (
+                <span
+                  className={`class-tag class-${classSlug(tag)}`}
+                  key={`class-${tag}`}
+                >
+                  {tag}
+                </span>
+              ))}
+              {!profile.classTags.length && (
+                <span className="generic-tag">Generic</span>
+              )}
+              {profile.customTags.map((tag) => (
+                <span className="custom-tag" key={`custom-${tag}`}>
+                  {tag}
+                </span>
+              ))}
             </div>
             <div className="profile-card-meta">
               <span>{profile.bindingCount} bindings</span>
@@ -396,10 +420,11 @@ function CategoryEditor({
   busy: boolean;
   onSave: Props["onSaveCategories"];
 }) {
-  const [wheels, setWheels] = useState(profile.wheelTags);
+  const [brand, setBrand] = useState(profile.wheelBrand ?? "");
+  const [wheelName, setWheelName] = useState(profile.wheelName ?? "");
   const [classes, setClasses] = useState(profile.classTags);
-  const [wheelInput, setWheelInput] = useState("");
-  const [classInput, setClassInput] = useState("");
+  const [customTags, setCustomTags] = useState(profile.customTags);
+  const [customInput, setCustomInput] = useState("");
   const addTag = (
     value: string,
     tags: string[],
@@ -414,66 +439,110 @@ function CategoryEditor({
       setTags([...tags, tag]);
     clear();
   };
-  const tagInput = (
-    label: string,
-    value: string,
-    setValue: (value: string) => void,
-    tags: string[],
-    setTags: (tags: string[]) => void,
-  ) => (
-    <div className="tag-field">
-      <span>{label}</span>
-      <div className="tag-list">
-        {tags.map((tag) => (
-          <button
-            key={tag}
-            title={`Remove ${tag}`}
-            onClick={() => setTags(tags.filter((entry) => entry !== tag))}
-          >
-            {tag} ×
-          </button>
-        ))}
-      </div>
-      <div className="tag-entry">
-        <Tags />
-        <input
-          value={value}
-          maxLength={40}
-          placeholder={`Add ${label.toLowerCase()}`}
-          onChange={(event) => setValue(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === ",") {
-              event.preventDefault();
-              addTag(value, tags, setTags, () => setValue(""));
-            }
-          }}
-        />
-        <button
-          disabled={!value.trim()}
-          onClick={() => addTag(value, tags, setTags, () => setValue(""))}
-        >
-          Add
-        </button>
-      </div>
-    </div>
-  );
   const changed =
-    JSON.stringify(wheels) !== JSON.stringify(profile.wheelTags) ||
-    JSON.stringify(classes) !== JSON.stringify(profile.classTags);
+    brand.trim() !== (profile.wheelBrand ?? "") ||
+    wheelName.trim() !== (profile.wheelName ?? "") ||
+    JSON.stringify(classes) !== JSON.stringify(profile.classTags) ||
+    JSON.stringify(customTags) !== JSON.stringify(profile.customTags);
   return (
     <section className="category-editor">
       <div>
-        <span className="eyebrow">Categories</span>
-        <h4>Find this setup by wheel or class</h4>
+        <span className="eyebrow">Profile identity</span>
+        <h4>Wheel and intended car classes</h4>
       </div>
       <div className="category-fields">
-        {tagInput("Wheel", wheelInput, setWheelInput, wheels, setWheels)}
-        {tagInput("Class", classInput, setClassInput, classes, setClasses)}
+        <label className="identity-field">
+          <span>Brand</span>
+          <input
+            value={brand}
+            maxLength={60}
+            placeholder="Simagic"
+            onChange={(event) => setBrand(event.target.value)}
+          />
+        </label>
+        <label className="identity-field">
+          <span>Wheel name</span>
+          <input
+            value={wheelName}
+            maxLength={60}
+            placeholder="GT Neo"
+            onChange={(event) => setWheelName(event.target.value)}
+          />
+        </label>
+        <div className="class-selector">
+          <span>
+            Car classes <em>None means Generic</em>
+          </span>
+          <div>
+            {DEFAULT_CLASSES.map((tag) => (
+              <button
+                className={
+                  classes.includes(tag)
+                    ? `selected class-${classSlug(tag)}`
+                    : ""
+                }
+                key={tag}
+                onClick={() =>
+                  setClasses(
+                    classes.includes(tag)
+                      ? classes.filter((entry) => entry !== tag)
+                      : [...classes, tag],
+                  )
+                }
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="tag-field">
+          <span>Additional tags</span>
+          <div className="tag-list">
+            {customTags.map((tag) => (
+              <button
+                key={tag}
+                title={`Remove ${tag}`}
+                onClick={() =>
+                  setCustomTags(customTags.filter((entry) => entry !== tag))
+                }
+              >
+                {tag} ×
+              </button>
+            ))}
+          </div>
+          <div className="tag-entry">
+            <Tags />
+            <input
+              value={customInput}
+              maxLength={40}
+              placeholder="Formula, Rally…"
+              onChange={(event) => setCustomInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === ",") {
+                  event.preventDefault();
+                  addTag(customInput, customTags, setCustomTags, () =>
+                    setCustomInput(""),
+                  );
+                }
+              }}
+            />
+            <button
+              disabled={!customInput.trim()}
+              onClick={() =>
+                addTag(customInput, customTags, setCustomTags, () =>
+                  setCustomInput(""),
+                )
+              }
+            >
+              Add
+            </button>
+          </div>
+        </div>
       </div>
       <button
         className="primary compact"
         disabled={busy || !changed}
-        onClick={() => onSave(profile, wheels, classes)}
+        onClick={() => onSave(profile, brand, wheelName, classes, customTags)}
       >
         Save categories
       </button>

@@ -8,7 +8,10 @@ export type Profile = {
   devices: Device[];
   hasWheelImage: boolean;
   wheelTags: string[];
+  wheelBrand: string | null;
+  wheelName: string | null;
   classTags: string[];
+  customTags: string[];
 };
 
 export type Binding = {

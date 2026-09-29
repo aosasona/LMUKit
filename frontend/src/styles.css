@@ -739,9 +739,28 @@ main {
   color: #ead479;
   border-color: rgba(244, 211, 94, 0.18);
 }
-.profile-tags .untagged {
+.profile-tags .generic-tag,
+.profile-tags .custom-tag {
+  color: #9da7a2;
   border-style: dashed;
-  color: #59635e;
+}
+.class-hy {
+  --class-color: #d71920;
+}
+.class-gt3,
+.class-gte {
+  --class-color: #f28c28;
+}
+.class-lmp2 {
+  --class-color: #1677c8;
+}
+.class-lmp3 {
+  --class-color: #8b4bb8;
+}
+.profile-tags .class-tag[class*="class-"] {
+  border-color: color-mix(in srgb, var(--class-color) 55%, transparent);
+  background: color-mix(in srgb, var(--class-color) 15%, #171717);
+  color: color-mix(in srgb, var(--class-color) 55%, white);
 }
 .profile-card-meta {
   display: flex;
@@ -776,6 +795,60 @@ main {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 9px;
+}
+.identity-field {
+  display: grid;
+  gap: 5px;
+}
+.identity-field > span,
+.class-selector > span {
+  color: #69746e;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+.identity-field input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  outline: 0;
+  padding: 8px 9px;
+  background: #141414;
+  color: #dce4e0;
+  font-size: 11px;
+}
+.class-selector,
+.tag-field {
+  min-width: 0;
+}
+.class-selector > span {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.class-selector em {
+  color: #59635e;
+  font-size: 9px;
+  font-style: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.class-selector > div {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.class-selector button {
+  border: 1px solid var(--line);
+  background: #191918;
+  color: #7c8781;
+  padding: 7px 10px;
+  font-size: 10px;
+  cursor: pointer;
+}
+.class-selector button.selected {
+  border-color: color-mix(in srgb, var(--class-color) 65%, transparent);
+  background: color-mix(in srgb, var(--class-color) 20%, #171717);
+  color: color-mix(in srgb, var(--class-color) 55%, white);
 }
 .tag-field > span {
   color: #69746e;
