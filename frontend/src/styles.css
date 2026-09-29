@@ -1,6 +1,7 @@
 :root { font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; color: #edf3ef; background: #121212; font-synthesis: none; --panel: #191917; --line: rgba(255,255,255,.09); --muted: #87948e; --teal: #c6f36b; --amber: #f4d35e; }
 * { box-sizing: border-box; }
 *:not(.pulse):not(.halo) { border-radius: 0 !important; }
+*:not(input):not(textarea):not([contenteditable="true"]) { user-select:none; }
 body { margin: 0; min-width: 900px; min-height: 100vh; overflow: hidden; background: radial-gradient(circle at 68% -20%, rgba(154,190,67,.1), transparent 34%), #121212; user-select:none; }
 button, input { font: inherit; }
 button { color: inherit; }
