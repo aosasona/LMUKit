@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
 import { QuickProfileSwitcher } from "./components/QuickProfileSwitcher";
@@ -34,6 +34,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("Ready");
   const [wheelImageUrl, setWheelImageUrl] = useState<string | null>(null);
+  const wheelImageObjectUrl = useRef<string | null>(null);
   const [wheelImageRevision, setWheelImageRevision] = useState(0);
   const [bindings, setBindings] = useState<Binding[]>([]);
   const [profileDocument, setProfileDocument] = useState<JsonObject | null>(
@@ -137,17 +138,27 @@ export default function App() {
     );
   }, [snapshot.uiFontScale]);
   useEffect(() => {
-    let url: string | null = null;
+    let pendingUrl: string | null = null;
     let cancelled = false;
-    setWheelImageUrl(null);
     if (!overviewProfile?.hasWheelImage) {
+      const previousUrl = wheelImageObjectUrl.current;
+      wheelImageObjectUrl.current = null;
+      setWheelImageUrl(null);
+      if (previousUrl) URL.revokeObjectURL(previousUrl);
       return;
     }
     void invoke<number[] | null>("profile_wheel_image", {
       profileId: overviewProfile.id,
     })
-      .then((bytes) => {
-        if (!bytes || cancelled) return;
+      .then(async (bytes) => {
+        if (cancelled) return;
+        if (!bytes) {
+          const previousUrl = wheelImageObjectUrl.current;
+          wheelImageObjectUrl.current = null;
+          setWheelImageUrl(null);
+          if (previousUrl) URL.revokeObjectURL(previousUrl);
+          return;
+        }
         const data = new Uint8Array(bytes);
         const type =
           data[0] === 0x89
@@ -155,15 +166,42 @@ export default function App() {
             : data[0] === 0xff
               ? "image/jpeg"
               : "image/webp";
-        url = URL.createObjectURL(new Blob([data], { type }));
-        setWheelImageUrl(url);
+        pendingUrl = URL.createObjectURL(new Blob([data], { type }));
+        const image = new Image();
+        image.src = pendingUrl;
+        await image.decode();
+        if (cancelled) return;
+
+        const nextUrl = pendingUrl;
+        const previousUrl = wheelImageObjectUrl.current;
+        pendingUrl = null;
+        wheelImageObjectUrl.current = nextUrl;
+        setWheelImageUrl(nextUrl);
+        if (previousUrl) URL.revokeObjectURL(previousUrl);
       })
-      .catch((error) => setNotice(String(error)));
+      .catch((error) => {
+        if (pendingUrl) {
+          URL.revokeObjectURL(pendingUrl);
+          pendingUrl = null;
+        }
+        if (!cancelled) setNotice(String(error));
+      });
     return () => {
       cancelled = true;
-      if (url) URL.revokeObjectURL(url);
+      if (pendingUrl) {
+        URL.revokeObjectURL(pendingUrl);
+        pendingUrl = null;
+      }
     };
   }, [overviewProfile?.id, overviewProfile?.hasWheelImage, wheelImageRevision]);
+  useEffect(
+    () => () => {
+      if (wheelImageObjectUrl.current) {
+        URL.revokeObjectURL(wheelImageObjectUrl.current);
+      }
+    },
+    [],
+  );
 
   async function loadBindings(profile = selected) {
     if (!profile) {
