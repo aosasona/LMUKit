@@ -1,6 +1,6 @@
 import { Check, ChevronDown, Search } from "lucide-react";
 import { useRef, useState } from "react";
-import { positionDropdown } from "../lib/dropdown";
+import { positionDropdown, useDismissableDetails } from "../lib/dropdown";
 
 export function SearchSelect({
   label,
@@ -17,6 +17,7 @@ export function SearchSelect({
 }) {
   const [query, setQuery] = useState("");
   const details = useRef<HTMLDetailsElement>(null);
+  useDismissableDetails(details);
   const filtered = options.filter((option) =>
     option.toLowerCase().includes(query.trim().toLowerCase()),
   );

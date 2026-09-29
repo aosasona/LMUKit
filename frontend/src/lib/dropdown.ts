@@ -1,3 +1,28 @@
+import { useEffect, type RefObject } from "react";
+
+export function useDismissableDetails(
+  details: RefObject<HTMLDetailsElement | null>,
+) {
+  useEffect(() => {
+    const dismissOnOutsidePress = (event: PointerEvent) => {
+      const element = details.current;
+      if (element?.open && !element.contains(event.target as Node)) {
+        element.removeAttribute("open");
+      }
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") details.current?.removeAttribute("open");
+    };
+
+    document.addEventListener("pointerdown", dismissOnOutsidePress);
+    document.addEventListener("keydown", dismissOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOnOutsidePress);
+      document.removeEventListener("keydown", dismissOnEscape);
+    };
+  }, [details]);
+}
+
 export function positionDropdown(
   details: HTMLDetailsElement,
   preferredHeight: number,

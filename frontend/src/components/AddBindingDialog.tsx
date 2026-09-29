@@ -22,13 +22,13 @@ export function AddBindingDialog({
   );
 
   return (
-    <div className="dialog-backdrop" onMouseDown={onClose}>
+    <div className="dialog-backdrop" onPointerDown={onClose}>
       <section
         className="add-binding-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-binding-title"
-        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
       >
         <button className="dialog-close" onClick={onClose} aria-label="Close">
           <X />

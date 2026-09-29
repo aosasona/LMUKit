@@ -1,6 +1,6 @@
 import { Check, ChevronDown, Plus, Search } from "lucide-react";
-import { useState } from "react";
-import { positionDropdown } from "../lib/dropdown";
+import { useRef, useState } from "react";
+import { positionDropdown, useDismissableDetails } from "../lib/dropdown";
 
 type Tags = {
   classTags: string[];
@@ -22,6 +22,8 @@ export function ProfileTagPicker({
 }) {
   const [query, setQuery] = useState("");
   const [availableCustomTags, setAvailableCustomTags] = useState(customTags);
+  const details = useRef<HTMLDetailsElement>(null);
+  useDismissableDetails(details);
   const normalizedQuery = query.trim().toLowerCase();
   const selected = [...classTags, ...customTags];
   const visibleClasses = classOptions.filter((tag) =>
@@ -62,7 +64,10 @@ export function ProfileTagPicker({
   return (
     <div className="tag-picker profile-tag-picker">
       <span>Profile tags</span>
-      <details onToggle={(event) => positionDropdown(event.currentTarget, 300)}>
+      <details
+        ref={details}
+        onToggle={(event) => positionDropdown(event.currentTarget, 300)}
+      >
         <summary>
           <span
             className={

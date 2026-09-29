@@ -22,7 +22,7 @@ export function ConfirmDialog({
     <div
       className="dialog-backdrop"
       role="presentation"
-      onMouseDown={(event) => {
+      onPointerDown={(event) => {
         if (event.target === event.currentTarget && !busy) onClose();
       }}
     >
@@ -31,6 +31,7 @@ export function ConfirmDialog({
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-title"
+        onPointerDown={(event) => event.stopPropagation()}
       >
         <button
           className="dialog-close"

@@ -1,5 +1,6 @@
 import { MoreHorizontal } from "lucide-react";
 import { useRef } from "react";
+import { useDismissableDetails } from "../lib/dropdown";
 
 export type ActionItem = {
   label: string;
@@ -16,6 +17,7 @@ export function ActionMenu({
   items: ActionItem[];
 }) {
   const menu = useRef<HTMLDetailsElement>(null);
+  useDismissableDetails(menu);
   const visible = items.filter((item) => !item.hidden);
   if (!visible.length) return null;
   return (

@@ -45,7 +45,7 @@ export function QuickProfileSwitcher({
   return (
     <div
       className="dialog-backdrop quick-switcher-backdrop"
-      onMouseDown={onClose}
+      onPointerDown={onClose}
       onKeyDown={(event) => {
         if (event.key === "Escape") onClose();
         if (event.key === "ArrowDown") {
@@ -67,7 +67,7 @@ export function QuickProfileSwitcher({
         role="dialog"
         aria-modal="true"
         aria-labelledby="quick-switcher-title"
-        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
       >
         <header>
           <div>
