@@ -2,13 +2,13 @@ import {
   FolderOpen,
   Gamepad2,
   Image as ImageIcon,
-  RefreshCw,
   Search,
   Tags,
-  Trash2,
   Upload,
 } from "lucide-react";
 import { useState } from "react";
+import { ActionMenu } from "../components/ActionMenu";
+import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
 import type { Device, Profile } from "../models";
 
 const DEFAULT_CLASSES = ["GT3", "GTE", "LMP3", "LMP2", "HY"] as const;
@@ -75,8 +75,7 @@ export function ProfilesPage(props: Props) {
     onRemoveWheelImage,
     onSaveCategories,
   } = props;
-  const [confirmDevice, setConfirmDevice] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [captureName, setCaptureName] = useState("");
   const [wheelFilter, setWheelFilter] = useState<string | null>(null);
   const [classFilter, setClassFilter] = useState<string | null>(null);
@@ -201,8 +200,6 @@ export function ProfilesPage(props: Props) {
             key={profile.id}
             onClick={() => {
               setSelectedId(profile.id);
-              setConfirmDevice(null);
-              setConfirmDelete(false);
             }}
           >
             <header>
@@ -299,54 +296,65 @@ export function ProfilesPage(props: Props) {
                   }}
                 />
               </label>
-              {selected.hasWheelImage && (
-                <button
-                  className="remove-device"
-                  disabled={busy}
-                  onClick={() => onRemoveWheelImage(selected)}
-                >
-                  <Trash2 /> Remove image
-                </button>
-              )}
+              <ActionMenu
+                items={[
+                  {
+                    label: "Update from LMU",
+                    hidden: !selected.differsFromLive,
+                    onSelect: () =>
+                      setConfirmation({
+                        title: `Update ${selected.name} from LMU?`,
+                        description:
+                          "This replaces the saved profile with LMU's current bindings. A recovery backup will be created first.",
+                        confirmLabel: "Update from LMU",
+                        onConfirm: () => {
+                          onUpdate(selected);
+                          setConfirmation(null);
+                        },
+                      }),
+                  },
+                  {
+                    label: "Remove wheel image",
+                    hidden: !selected.hasWheelImage,
+                    danger: true,
+                    onSelect: () =>
+                      setConfirmation({
+                        title: "Remove wheel image?",
+                        description: `The managed wheel image will be removed from ${selected.name}.`,
+                        confirmLabel: "Remove image",
+                        danger: true,
+                        onConfirm: () => {
+                          onRemoveWheelImage(selected);
+                          setConfirmation(null);
+                        },
+                      }),
+                  },
+                  {
+                    label: "Delete profile",
+                    danger: true,
+                    onSelect: () =>
+                      setConfirmation({
+                        title: `Delete ${selected.name}?`,
+                        description:
+                          "This permanently removes the saved profile and its managed image. LMU's live configuration is not changed.",
+                        confirmLabel: "Delete profile",
+                        danger: true,
+                        onConfirm: () => {
+                          onDelete(selected);
+                          setConfirmation(null);
+                        },
+                      }),
+                  },
+                ]}
+              />
             </div>
           </div>
           <div className="profile-management">
-            <button
-              className="secondary compact"
-              disabled={busy}
-              onClick={() => onUpdate(selected)}
-            >
-              <RefreshCw /> Update from LMU
-            </button>
             {selected.hotkeySlot && (
               <span className="migration-note">
                 <kbd>Ctrl Alt {selected.hotkeySlot}</kbd> shortcut migration
                 pending
               </span>
-            )}
-            {confirmDelete ? (
-              <>
-                <button
-                  className="danger"
-                  disabled={busy}
-                  onClick={() => onDelete(selected)}
-                >
-                  Delete permanently
-                </button>
-                <button
-                  className="secondary compact"
-                  onClick={() => setConfirmDelete(false)}
-                >
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <button
-                className="remove-device"
-                onClick={() => setConfirmDelete(true)}
-              >
-                <Trash2 /> Delete profile
-              </button>
             )}
           </div>
           <CategoryEditor
@@ -371,32 +379,26 @@ export function ProfilesPage(props: Props) {
                     {device.bindingCount === 1 ? "" : "s"} · {device.key}
                   </small>
                 </div>
-                {confirmDevice === device.key ? (
-                  <div className="confirm-remove">
-                    <span>Remove?</span>
-                    <button
-                      className="danger"
-                      disabled={busy}
-                      onClick={() => onRemoveDevice(selected, device)}
-                    >
-                      Yes, remove
-                    </button>
-                    <button
-                      className="secondary compact"
-                      onClick={() => setConfirmDevice(null)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    className="remove-device"
-                    aria-label={`Remove ${device.name}`}
-                    onClick={() => setConfirmDevice(device.key)}
-                  >
-                    <Trash2 /> Remove
-                  </button>
-                )}
+                <ActionMenu
+                  label={`Actions for ${device.name}`}
+                  items={[
+                    {
+                      label: "Delete device",
+                      danger: true,
+                      onSelect: () =>
+                        setConfirmation({
+                          title: `Delete ${device.name}?`,
+                          description: `This removes the device and its ${device.bindingCount} binding${device.bindingCount === 1 ? "" : "s"} from ${selected.name}. A recovery backup will be created.`,
+                          confirmLabel: "Delete device",
+                          danger: true,
+                          onConfirm: () => {
+                            onRemoveDevice(selected, device);
+                            setConfirmation(null);
+                          },
+                        }),
+                    },
+                  ]}
+                />
               </div>
             ))}
             {!selected.devices.length && (
@@ -407,6 +409,11 @@ export function ProfilesPage(props: Props) {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        confirmation={confirmation}
+        busy={busy}
+        onClose={() => setConfirmation(null)}
+      />
     </section>
   );
 }

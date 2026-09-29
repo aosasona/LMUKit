@@ -12,6 +12,7 @@ export type Profile = {
   wheelName: string | null;
   classTags: string[];
   customTags: string[];
+  differsFromLive: boolean | null;
 };
 
 export type Binding = {

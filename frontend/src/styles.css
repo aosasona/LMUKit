@@ -1504,6 +1504,113 @@ footer {
   border-color: rgba(244, 211, 94, 0.3);
   color: #ead479;
 }
+.action-menu {
+  position: relative;
+  margin-left: auto;
+}
+.action-menu summary {
+  width: 32px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  color: #818c86;
+  cursor: pointer;
+  list-style: none;
+  border: 1px solid transparent;
+}
+.action-menu summary::-webkit-details-marker {
+  display: none;
+}
+.action-menu summary:hover,
+.action-menu[open] summary {
+  border-color: var(--line);
+  background: #22221f;
+  color: #dfe6e2;
+}
+.action-menu summary svg {
+  width: 17px;
+}
+.action-menu > div {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 165px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  background: #191918;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+.action-menu > div button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #bac3be;
+  padding: 9px 10px;
+  text-align: left;
+  font-size: 10px;
+  cursor: pointer;
+}
+.action-menu > div button:hover {
+  background: #272720;
+}
+.action-menu > div button.danger-item {
+  color: #ef9a91;
+}
+.dialog-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(3px);
+}
+.confirm-dialog {
+  position: relative;
+  width: min(430px, 100%);
+  padding: 25px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #191918;
+  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.65);
+}
+.confirm-dialog h2 {
+  margin: 7px 34px 8px 0;
+  font-size: 20px;
+}
+.confirm-dialog p {
+  margin: 0;
+  color: #8b9690;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.confirm-dialog > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+}
+.dialog-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: #808a85;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.dialog-close:hover {
+  background: #292925;
+  color: #fff;
+}
+.dialog-close svg {
+  width: 16px;
+}
 footer {
   border-top: 1px solid var(--line);
   padding: 9px 32px;

@@ -496,7 +496,18 @@ impl Store {
         let Some(active_id) = self.settings.active_profile else {
             return Ok(None);
         };
-        let saved_path = self.profile_dir(active_id).join(CONFIG_FILE_NAME);
+        let Some(profile) = self
+            .profiles()?
+            .into_iter()
+            .find(|profile| profile.id == active_id)
+        else {
+            return Ok(None);
+        };
+        self.profile_has_live_changes(&profile)
+    }
+
+    pub fn profile_has_live_changes(&self, profile: &Profile) -> Result<Option<bool>> {
+        let saved_path = self.profile_dir(profile.id).join(CONFIG_FILE_NAME);
         if !saved_path.is_file() || !self.settings.lmu_config_path.is_file() {
             return Ok(None);
         }

@@ -250,6 +250,7 @@ export default function App() {
                 busy={busy}
                 onNavigate={setPage}
                 onActivate={activate}
+                onUpdate={updateProfile}
               />
             )}
             {page === "profiles" && (

@@ -36,6 +36,7 @@ struct ProfileSummary {
     wheel_name: Option<String>,
     class_tags: Vec<String>,
     custom_tags: Vec<String>,
+    differs_from_live: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -399,6 +400,9 @@ fn profile_summary(store: &Store, profile: &Profile) -> Result<ProfileSummary, S
             .or_else(|| profile.wheel_tags.first().cloned()),
         class_tags: profile.class_tags.clone(),
         custom_tags: profile.custom_tags.clone(),
+        differs_from_live: store
+            .profile_has_live_changes(profile)
+            .map_err(|error| error.to_string())?,
     })
 }
 

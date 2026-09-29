@@ -4,11 +4,12 @@ import {
   Gamepad2,
   Search,
   SlidersHorizontal,
-  Trash2,
   X,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import type { Binding, BindingLookup, Profile } from "../models";
+import { ActionMenu } from "../components/ActionMenu";
+import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
 
 export function BindingEditorPage({
   profile,
@@ -25,6 +26,7 @@ export function BindingEditorPage({
   const [lookup, setLookup] = useState<BindingLookup | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const cancelRequested = useRef(false);
 
   async function findControl() {
@@ -126,13 +128,26 @@ export function BindingEditorPage({
                     {controlLabel(binding.inputId)}
                   </span>
                   <code>ID {binding.inputId}</code>
-                  <button
-                    disabled={busy}
-                    aria-label={`Clear ${binding.action}`}
-                    onClick={() => onClear(profile, binding)}
-                  >
-                    <Trash2 /> Clear
-                  </button>
+                  <ActionMenu
+                    label={`Actions for ${binding.action}`}
+                    items={[
+                      {
+                        label: "Clear binding",
+                        danger: true,
+                        onSelect: () =>
+                          setConfirmation({
+                            title: `Clear ${binding.action}?`,
+                            description: `This removes the ${binding.alternate ? "alternate" : "primary"} binding from ${profile.name}. A recovery backup will be created.`,
+                            confirmLabel: "Clear binding",
+                            danger: true,
+                            onConfirm: () => {
+                              onClear(profile, binding);
+                              setConfirmation(null);
+                            },
+                          }),
+                      },
+                    ]}
+                  />
                 </div>
               ))}
             </div>
@@ -187,6 +202,11 @@ export function BindingEditorPage({
           )}
         </aside>
       )}
+      <ConfirmDialog
+        confirmation={confirmation}
+        busy={busy}
+        onClose={() => setConfirmation(null)}
+      />
     </section>
   );
 }
