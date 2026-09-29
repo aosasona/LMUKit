@@ -757,7 +757,9 @@ main {
 .class-hy {
   --class-color: #d71920;
 }
-.class-gt3,
+.class-gt3 {
+  --class-color: #00a651;
+}
 .class-gte {
   --class-color: #f28c28;
 }
