@@ -13,7 +13,7 @@ const items = [
   ["home", "Overview", LayoutDashboard],
   ["profiles", "Profiles", Gamepad2],
   ["wheels", "Wheels", Disc3],
-  ["bindings", "Binding editor", SlidersHorizontal],
+  ["bindings", "Profile editor", SlidersHorizontal],
   ["game", "Game settings", Wrench],
   ["settings", "Settings", Settings],
 ] as const;

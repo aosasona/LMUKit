@@ -16,11 +16,11 @@ import type {
   Wheel,
 } from "./models";
 import { emptySnapshot } from "./models";
-import { BindingEditorPage } from "./pages/BindingEditorPage";
 import { pageTitle } from "./pages/ComingSoonPage";
 import { GameSettingsPage } from "./pages/GameSettingsPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
+import { ProfileEditorPage } from "./pages/ProfileEditorPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { WheelsPage } from "./pages/WheelsPage";
 
@@ -35,6 +35,12 @@ export default function App() {
   const [wheelImageUrl, setWheelImageUrl] = useState<string | null>(null);
   const [wheelImageRevision, setWheelImageRevision] = useState(0);
   const [bindings, setBindings] = useState<Binding[]>([]);
+  const [profileDocument, setProfileDocument] = useState<JsonObject | null>(
+    null,
+  );
+  const [profileDocumentBaseline, setProfileDocumentBaseline] =
+    useState<JsonObject | null>(null);
+  const [profileDocumentLoading, setProfileDocumentLoading] = useState(false);
   const [gameSettings, setGameSettings] = useState<JsonObject | null>(null);
   const [gameSettingsBaseline, setGameSettingsBaseline] =
     useState<JsonObject | null>(null);
@@ -50,12 +56,25 @@ export default function App() {
       gameSettingsBaseline &&
       JSON.stringify(gameSettings) !== JSON.stringify(gameSettingsBaseline),
   );
+  const profileDocumentDirty = Boolean(
+    profileDocument &&
+      profileDocumentBaseline &&
+      JSON.stringify(profileDocument) !==
+        JSON.stringify(profileDocumentBaseline),
+  );
   const navigate = (next: Page) => {
     if (
       page === "game" &&
       next !== "game" &&
       gameSettingsDirty &&
       !window.confirm("Discard your unsaved game-setting changes?")
+    )
+      return;
+    if (
+      page === "bindings" &&
+      next !== "bindings" &&
+      profileDocumentDirty &&
+      !window.confirm("Discard your unsaved profile changes?")
     )
       return;
     setPage(next);
@@ -147,8 +166,32 @@ export default function App() {
       setNotice(String(error));
     }
   }
+  async function loadProfileDocument(profile = selected) {
+    if (!profile) {
+      setProfileDocument(null);
+      setProfileDocumentBaseline(null);
+      return;
+    }
+    setProfileDocumentLoading(true);
+    try {
+      const document = await invoke<JsonObject>("load_profile_document", {
+        profileId: profile.id,
+      });
+      setProfileDocument(document);
+      setProfileDocumentBaseline(structuredClone(document));
+    } catch (error) {
+      setProfileDocument(null);
+      setProfileDocumentBaseline(null);
+      setNotice(String(error));
+    } finally {
+      setProfileDocumentLoading(false);
+    }
+  }
   useEffect(() => {
-    if (page === "bindings") void loadBindings();
+    if (page === "bindings") {
+      void loadBindings();
+      void loadProfileDocument();
+    }
   }, [page, selected?.id]);
   async function loadGameSettings() {
     setGameSettingsLoading(true);
@@ -334,7 +377,11 @@ export default function App() {
         action: binding.action,
         alternate: binding.alternate,
       });
-      await Promise.all([refresh(), loadBindings(profile)]);
+      await Promise.all([
+        refresh(),
+        loadBindings(profile),
+        loadProfileDocument(profile),
+      ]);
       setNotice(
         `${binding.alternate ? "Alternate " : ""}${binding.action} binding cleared. A backup was created.`,
       );
@@ -353,7 +400,11 @@ export default function App() {
         deviceKey: candidate.deviceKey,
         inputId: candidate.inputId,
       });
-      await Promise.all([refresh(), loadBindings(profile)]);
+      await Promise.all([
+        refresh(),
+        loadBindings(profile),
+        loadProfileDocument(profile),
+      ]);
       setNotice(
         `${alternate ? "Alternate " : ""}${action} assigned to ${candidate.control}. A backup was created.`,
       );
@@ -444,6 +495,22 @@ export default function App() {
       setGameSettingsBaseline(structuredClone(gameSettings));
       setNotice("Settings.JSON saved. A recovery backup was created.");
     });
+  const saveProfileDocument = (activate: boolean) =>
+    withBusy(async () => {
+      if (!selected || !profileDocument) return;
+      await invoke("save_profile_document", {
+        profileId: selected.id,
+        document: profileDocument,
+        activate,
+      });
+      setProfileDocumentBaseline(structuredClone(profileDocument));
+      await refresh();
+      setNotice(
+        activate
+          ? `${selected.name} saved and prepared for the next LMU launch.`
+          : `${selected.name} saved. A recovery backup was created.`,
+      );
+    });
 
   return (
     <div className="window-shell">
@@ -511,12 +578,17 @@ export default function App() {
               />
             )}
             {page === "bindings" && (
-              <BindingEditorPage
+              <ProfileEditorPage
                 profile={selected}
                 bindings={bindings}
+                document={profileDocument}
+                baseline={profileDocumentBaseline}
+                loading={profileDocumentLoading}
                 busy={busy}
                 onClear={clearBinding}
                 onAssign={assignBinding}
+                onChange={setProfileDocument}
+                onSave={saveProfileDocument}
               />
             )}
             {page === "wheels" && (

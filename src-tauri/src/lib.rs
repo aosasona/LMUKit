@@ -498,6 +498,38 @@ fn profile_bindings(
 }
 
 #[tauri::command]
+fn load_profile_document(
+    profile_id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    store
+        .load_profile_document(&profile)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_profile_document(
+    profile_id: Uuid,
+    document: serde_json::Value,
+    activate: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    store
+        .save_profile_document(&profile, &document)
+        .map_err(|error| error.to_string())?;
+    if activate {
+        store
+            .activate(&profile)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn binding_action_catalogue(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     state
         .0
@@ -797,6 +829,8 @@ pub fn run() {
             delete_profile,
             reveal_profiles,
             profile_bindings,
+            load_profile_document,
+            save_profile_document,
             binding_action_catalogue,
             clear_profile_binding,
             assign_profile_binding,

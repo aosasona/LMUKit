@@ -19,7 +19,8 @@ _The screenshot uses isolated synthetic profile data; no personal LMU files are 
 - Detect when LMU's live bindings differ from the active saved profile and safely update either side.
 - Organise profiles in a searchable card grid using reusable wheels, built-in WEC/ELMS class tags, and custom tags.
 - Create a shared wheel library with brand, model, and managed PNG, JPEG, or WebP images. One wheel can be reused by several profiles.
-- Browse bindings by device, replace mappings or add a missing primary/alternate binding, clear unwanted mappings, and press or move a physical control to compare its mapping across every profile.
+- Browse bindings by device, add new LMU actions, replace primary/alternate mappings, clear unwanted mappings, and press or move a physical control to compare its mapping across every profile.
+- Tune recognised force-feedback fields by device—including a friendly `0..100%` FFB gain control—and inspect the complete preserved profile JSON.
 - Remove obsolete devices and all of their bindings from a saved profile after confirmation.
 - Browse and edit LMU's `Settings.JSON`, including descriptions from matching `Option#` fields, while preserving unsupported JSON values.
 - Assign `Ctrl+Alt+1` through `Ctrl+Alt+9` to profiles and open the compact switcher with `Ctrl+Alt+Space`.
@@ -49,11 +50,13 @@ Use **Wheels** to create reusable hardware entries, edit their brand and name, a
 
 Each profile has one searchable tag picker. Select any combination of `GT3`, `GTE`, `LMP3`, `LMP2`, and `HY`, or type a custom tag. Leaving the class selection empty makes the profile generic.
 
-### Bindings
+### Profile editor
 
-The **Binding editor** provides device-grouped browsing, search, safe binding changes, and live control lookup. Open a binding's action menu to replace it or add its missing primary or alternate mapping, then press or move the desired control. LMUKit names any conflicts before applying the change and creates a recovery backup when saving.
+The **Profile editor** provides device-grouped binding management, force-feedback tuning, a read-only JSON preview, and live control lookup. Open a binding's action menu to replace it or add its missing primary or alternate mapping, then press or move the desired control. **Add binding** can search action names found across your saved and live LMU files or accept an exact LMU action name. LMUKit names any conflicts before applying the change and creates a recovery backup when saving.
 
-**Find a wheel control** waits for a button, POV, or axis movement and then shows the matching action for each saved profile; the operation can be cancelled at any time. For safety, assignment only accepts devices already represented in that profile. Entirely new LMU actions that do not appear in either binding section must still be created in LMU before capture.
+**Find a wheel control** waits for a button, POV, or axis movement and then shows the matching action for each saved profile; the operation can be cancelled at any time. For safety, assignment only accepts devices already represented in that profile.
+
+The force-feedback section discovers recognised numeric and boolean fields without inventing missing settings. Changes remain local until explicitly saved, and **Save & use profile** also prepares the edited profile for LMU's next launch. The JSON preview makes preserved device-specific and unknown fields auditable.
 
 ### Faster profile access
 
@@ -135,7 +138,6 @@ The human maintainer directs the product, reviews changes, runs the required che
 
 ## Planned work
 
-- Add an LMU action catalogue so entirely unmapped actions can be introduced without first creating them in LMU.
 - Read LMU's `Local\\LMUSharedMem` data to identify the active vehicle and class, while respecting that LMU does not hot-reload binding profiles.
 
 ## License
