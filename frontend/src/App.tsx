@@ -4,12 +4,14 @@ import {
   Activity,
   ChevronRight,
   CircleGauge,
+  FolderOpen,
   Gamepad2,
   Image as ImageIcon,
   Keyboard,
   LayoutDashboard,
   Minus,
   Search,
+  RefreshCw,
   Settings,
   SlidersHorizontal,
   Sparkles,
@@ -42,6 +44,7 @@ type Snapshot = {
   activeProfile: string | null;
   lmuConfigPath: string;
   lmuSettingsPath: string;
+  activeProfileDirty: boolean | null;
 };
 
 type Page = "home" | "profiles" | "bindings" | "game" | "settings";
@@ -59,6 +62,7 @@ const emptySnapshot: Snapshot = {
   activeProfile: null,
   lmuConfigPath: "",
   lmuSettingsPath: "",
+  activeProfileDirty: null,
 };
 
 export default function App() {
@@ -74,7 +78,7 @@ export default function App() {
     try {
       const next = await invoke<Snapshot>("snapshot");
       setSnapshot(next);
-      setSelectedId((current) => current ?? next.activeProfile ?? next.profiles[0]?.id ?? null);
+      setSelectedId((current) => next.profiles.some((profile) => profile.id === current) ? current : next.activeProfile ?? next.profiles[0]?.id ?? null);
     } catch (error) {
       setNotice(String(error));
     }
@@ -177,6 +181,69 @@ export default function App() {
     }
   }
 
+  async function importPreset(file: File) {
+    setBusy(true);
+    setNotice(`Importing ${file.name}…`);
+    try {
+      const contents = Array.from(new Uint8Array(await file.arrayBuffer()));
+      await invoke("import_profile", { name: file.name, contents });
+      await refresh();
+      setNotice(`${file.name} imported.`);
+    } catch (error) {
+      setNotice(String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function captureProfile(name: string) {
+    setBusy(true);
+    try {
+      await invoke("capture_profile", { name });
+      await refresh();
+      setNotice(`${name.trim()} captured from LMU.`);
+    } catch (error) {
+      setNotice(String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateProfile(profile: Profile) {
+    setBusy(true);
+    try {
+      await invoke("update_profile", { profileId: profile.id });
+      await refresh();
+      setNotice(`${profile.name} updated from LMU. The previous version was backed up.`);
+    } catch (error) {
+      setNotice(String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteProfile(profile: Profile) {
+    setBusy(true);
+    try {
+      await invoke("delete_profile", { profileId: profile.id });
+      await refresh();
+      setNotice(`${profile.name} deleted.`);
+    } catch (error) {
+      setNotice(String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revealProfiles() {
+    try {
+      await invoke("reveal_profiles");
+      setNotice("Opened the managed profiles folder.");
+    } catch (error) {
+      setNotice(String(error));
+    }
+  }
+
   function windowAction(action: () => Promise<void>) {
     void action().catch((error) => setNotice(`Window action failed: ${String(error)}`));
   }
@@ -234,7 +301,7 @@ export default function App() {
 
         <div className="content">
           {page === "home" && <Overview active={active} selected={selected} wheelImageUrl={wheelImageUrl} profiles={snapshot.profiles} onOpenProfiles={() => setPage("profiles")} onActivate={activate} busy={busy} />}
-          {page === "profiles" && <Profiles profiles={filtered} selected={selected} wheelImageUrl={wheelImageUrl} activeId={snapshot.activeProfile} selectedId={selectedId} query={query} setQuery={setQuery} setSelectedId={setSelectedId} onActivate={activate} onRemoveDevice={removeDevice} onSaveWheelImage={saveWheelImage} onRemoveWheelImage={removeWheelImage} busy={busy} />}
+          {page === "profiles" && <Profiles profiles={filtered} selected={selected} wheelImageUrl={wheelImageUrl} activeId={snapshot.activeProfile} activeDirty={snapshot.activeProfileDirty} selectedId={selectedId} query={query} setQuery={setQuery} setSelectedId={setSelectedId} onActivate={activate} onImport={importPreset} onCapture={captureProfile} onUpdate={updateProfile} onDelete={deleteProfile} onReveal={revealProfiles} onRemoveDevice={removeDevice} onSaveWheelImage={saveWheelImage} onRemoveWheelImage={removeWheelImage} busy={busy} />}
           {page !== "home" && page !== "profiles" && <ComingSoon page={page} selected={selected} />}
         </div>
 
@@ -279,9 +346,36 @@ function Overview({ active, selected, wheelImageUrl, profiles, onOpenProfiles, o
   </div>;
 }
 
-function Profiles({ profiles, selected, wheelImageUrl, activeId, selectedId, query, setQuery, setSelectedId, onActivate, onRemoveDevice, onSaveWheelImage, onRemoveWheelImage, busy }: { profiles: Profile[]; selected?: Profile; wheelImageUrl: string | null; activeId: string | null; selectedId: string | null; query: string; setQuery: (value: string) => void; setSelectedId: (value: string) => void; onActivate: (profile: Profile) => void; onRemoveDevice: (profile: Profile, device: Device) => void; onSaveWheelImage: (profile: Profile, file: File) => void; onRemoveWheelImage: (profile: Profile) => void; busy: boolean }) {
+type ProfilesProps = {
+  profiles: Profile[]; selected?: Profile; wheelImageUrl: string | null; activeId: string | null;
+  activeDirty: boolean | null; selectedId: string | null; query: string; busy: boolean;
+  setQuery: (value: string) => void; setSelectedId: (value: string) => void;
+  onActivate: (profile: Profile) => void; onImport: (file: File) => void; onCapture: (name: string) => void;
+  onUpdate: (profile: Profile) => void; onDelete: (profile: Profile) => void;
+  onReveal: () => void;
+  onRemoveDevice: (profile: Profile, device: Device) => void;
+  onSaveWheelImage: (profile: Profile, file: File) => void; onRemoveWheelImage: (profile: Profile) => void;
+};
+
+function Profiles({ profiles, selected, wheelImageUrl, activeId, activeDirty, selectedId, query, setQuery, setSelectedId, onActivate, onImport, onCapture, onUpdate, onDelete, onReveal, onRemoveDevice, onSaveWheelImage, onRemoveWheelImage, busy }: ProfilesProps) {
   const [confirmDevice, setConfirmDevice] = useState<string | null>(null);
-  return <section className="profiles-page panel"><div className="profiles-toolbar"><div className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your profiles" /></div><button className="primary"><Upload size={17} /> Import preset</button></div><div className="profile-table-head"><span>Profile</span><span>Devices</span><span>Bindings</span><span>Shortcut</span><span /></div>{profiles.map((profile) => <div className={selectedId === profile.id ? "profile-row selected" : "profile-row"} key={profile.id} onClick={() => { setSelectedId(profile.id); setConfirmDevice(null); }}><div className="profile-main"><span className="device-thumb"><Gamepad2 /></span><div><strong>{profile.name}</strong><small>{profile.id === activeId ? "Prepared for next launch" : "Saved profile"}</small></div></div><span>{profile.devices.slice(0, 2).map((device) => device.name).join(", ") || "Unknown device"}</span><span>{profile.bindingCount}</span><span>{profile.hotkeySlot ? <kbd>Ctrl Alt {profile.hotkeySlot}</kbd> : <small>Not set</small>}</span><button className={profile.id === activeId ? "prepared" : "secondary compact"} disabled={busy || profile.id === activeId} onClick={(event) => { event.stopPropagation(); void onActivate(profile); }}>{profile.id === activeId ? "Prepared" : "Use profile"}</button></div>)}{!profiles.length && <div className="empty large"><Gamepad2 /><strong>No profiles found</strong><span>Import a preset or capture your current LMU bindings.</span></div>}{selected && <div className="device-manager"><div className="device-manager-head"><div><span className="eyebrow">Profile setup</span><h3>{selected.name}</h3></div><div className="profile-image-actions">{wheelImageUrl && <img src={wheelImageUrl} alt="Assigned wheel" />}<label className="secondary compact image-picker"><ImageIcon />{selected.hasWheelImage ? "Replace wheel image" : "Assign wheel image"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void onSaveWheelImage(selected, file); event.target.value = ""; }} /></label>{selected.hasWheelImage && <button className="remove-device" disabled={busy} onClick={() => void onRemoveWheelImage(selected)}><Trash2 /> Remove image</button>}</div></div><p className="device-note">Removing a device also removes all of its bindings.</p><div className="device-list">{selected.devices.map((device) => <div className="device-row" key={device.key}><span className="device-thumb"><Gamepad2 /></span><div><strong>{device.name}</strong><small>{device.bindingCount} binding{device.bindingCount === 1 ? "" : "s"} · {device.key}</small></div>{confirmDevice === device.key ? <div className="confirm-remove"><span>Remove?</span><button className="danger" disabled={busy} onClick={() => void onRemoveDevice(selected, device)}>Yes, remove</button><button className="secondary compact" onClick={() => setConfirmDevice(null)}>Cancel</button></div> : <button className="remove-device" aria-label={`Remove ${device.name}`} onClick={() => setConfirmDevice(device.key)}><Trash2 /> Remove</button>}</div>)}{!selected.devices.length && <div className="empty">This profile has no registered devices.</div>}</div></div>}</section>;
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [captureName, setCaptureName] = useState("");
+  const acceptFiles = (files: FileList | null) => { if (files?.[0]) void onImport(files[0]); };
+  return <section className="profiles-page panel" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); acceptFiles(event.dataTransfer.files); }}>
+    <div className="profiles-toolbar">
+      <div className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your profiles" /></div>
+      <div className="profile-tools"><div className="capture-box"><input value={captureName} onChange={(event) => setCaptureName(event.target.value)} placeholder="New profile name" /><button disabled={busy || !captureName.trim()} onClick={() => { void onCapture(captureName); setCaptureName(""); }}>Capture LMU</button></div><button className="secondary compact" onClick={() => void onReveal()}><FolderOpen /> Folder</button><label className="primary compact image-picker"><Upload /> Import<input type="file" accept="application/json,.json" disabled={busy} onChange={(event) => { acceptFiles(event.target.files); event.target.value = ""; }} /></label></div>
+    </div>
+    <div className="profile-table-head"><span>Profile</span><span>Devices</span><span>Bindings</span><span>Shortcut</span><span /></div>
+    {profiles.map((profile) => <div className={selectedId === profile.id ? "profile-row selected" : "profile-row"} key={profile.id} onClick={() => { setSelectedId(profile.id); setConfirmDevice(null); setConfirmDelete(false); }}><div className="profile-main"><span className="device-thumb"><Gamepad2 /></span><div><strong>{profile.name}</strong><small>{profile.id === activeId ? activeDirty ? "LMU has unsaved changes" : "Prepared for next launch" : "Saved profile"}</small></div></div><span>{profile.devices.slice(0, 2).map((device) => device.name).join(", ") || "Unknown device"}</span><span>{profile.bindingCount}</span><span>{profile.hotkeySlot ? <kbd>Ctrl Alt {profile.hotkeySlot}</kbd> : <small>Not set</small>}</span><button className={profile.id === activeId ? "prepared" : "secondary compact"} disabled={busy || profile.id === activeId} onClick={(event) => { event.stopPropagation(); void onActivate(profile); }}>{profile.id === activeId ? "Prepared" : "Use profile"}</button></div>)}
+    {!profiles.length && <div className="empty large"><Gamepad2 /><strong>No profiles found</strong><span>Drop a preset here, import one, or capture your current LMU bindings.</span></div>}
+    {selected && <div className="device-manager">
+      <div className="device-manager-head"><div><span className="eyebrow">Profile setup</span><h3>{selected.name}</h3></div><div className="profile-image-actions">{wheelImageUrl && <img src={wheelImageUrl} alt="Assigned wheel" />}<label className="secondary compact image-picker"><ImageIcon />{selected.hasWheelImage ? "Replace image" : "Assign image"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void onSaveWheelImage(selected, file); event.target.value = ""; }} /></label>{selected.hasWheelImage && <button className="remove-device" disabled={busy} onClick={() => void onRemoveWheelImage(selected)}><Trash2 /> Remove image</button>}</div></div>
+      <div className="profile-management"><button className="secondary compact" disabled={busy} onClick={() => void onUpdate(selected)}><RefreshCw /> Update from LMU</button>{selected.hotkeySlot && <span className="migration-note"><kbd>Ctrl Alt {selected.hotkeySlot}</kbd> shortcut migration pending</span>}{confirmDelete ? <><button className="danger" disabled={busy} onClick={() => void onDelete(selected)}>Delete permanently</button><button className="secondary compact" onClick={() => setConfirmDelete(false)}>Cancel</button></> : <button className="remove-device" onClick={() => setConfirmDelete(true)}><Trash2 /> Delete profile</button>}</div>
+      <p className="device-note">Removing a device also removes all of its bindings.</p><div className="device-list">{selected.devices.map((device) => <div className="device-row" key={device.key}><span className="device-thumb"><Gamepad2 /></span><div><strong>{device.name}</strong><small>{device.bindingCount} binding{device.bindingCount === 1 ? "" : "s"} · {device.key}</small></div>{confirmDevice === device.key ? <div className="confirm-remove"><span>Remove?</span><button className="danger" disabled={busy} onClick={() => void onRemoveDevice(selected, device)}>Yes, remove</button><button className="secondary compact" onClick={() => setConfirmDevice(null)}>Cancel</button></div> : <button className="remove-device" aria-label={`Remove ${device.name}`} onClick={() => setConfirmDevice(device.key)}><Trash2 /> Remove</button>}</div>)}{!selected.devices.length && <div className="empty">This profile has no registered devices.</div>}</div>
+    </div>}
+  </section>;
 }
 
 function ComingSoon({ page, selected }: { page: Page; selected?: Profile }) {

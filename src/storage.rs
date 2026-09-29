@@ -290,6 +290,30 @@ impl Store {
         self.store_profile(&source, &name)
     }
 
+    pub fn import_profile_bytes(&self, name: &str, bytes: &[u8]) -> Result<Profile> {
+        validate_lmu_bytes(bytes, name)?;
+        let name = Path::new(name.trim())
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .context("The imported preset has no usable name.")?;
+        let profile = Profile {
+            id: Uuid::new_v4(),
+            name: name.to_owned(),
+            created_at: unix_time()?,
+            assignments: Vec::new(),
+            hotkey_slot: None,
+            wheel_image: None,
+        };
+        let dir = self.profile_dir(profile.id);
+        fs::create_dir_all(&dir)?;
+        fs::write(dir.join(CONFIG_FILE_NAME), bytes)
+            .context("could not store the imported preset")?;
+        write_json(&dir.join("profile.json"), &profile)?;
+        Ok(profile)
+    }
+
     pub fn bindings(&self, profile: &Profile) -> Result<Vec<Binding>> {
         let document = self.profile_document(profile)?;
         Ok(Self::bindings_from_document(&document))
@@ -680,8 +704,15 @@ fn validate_lmu_file(path: &Path) -> Result<()> {
     if !path.is_file() {
         bail!("No LMU config was found at {}", path.display());
     }
-    serde_json::from_slice::<serde_json::Value>(&fs::read(path)?)
-        .with_context(|| format!("{} is not valid JSON", path.display()))?;
+    validate_lmu_bytes(&fs::read(path)?, &path.display().to_string())
+}
+
+fn validate_lmu_bytes(bytes: &[u8], label: &str) -> Result<()> {
+    let document: serde_json::Value =
+        serde_json::from_slice(bytes).with_context(|| format!("{label} is not valid JSON"))?;
+    if !document.is_object() {
+        bail!("{label} does not contain a JSON object");
+    }
     Ok(())
 }
 
@@ -760,6 +791,18 @@ mod tests {
             fs::read_to_string(store.profile_dir(profile.id).join(CONFIG_FILE_NAME)).unwrap(),
             r#"{"wheel":"formula"}"#
         );
+    }
+
+    #[test]
+    fn imports_uploaded_profile_bytes() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let profile = store
+            .import_profile_bytes("First.json", br#"{"Input":{}}"#)
+            .unwrap();
+        assert_eq!(profile.name, "First");
+        assert_eq!(store.profiles().unwrap().len(), 1);
+        assert!(store.import_profile_bytes("bad", b"[]").is_err());
     }
 
     #[test]

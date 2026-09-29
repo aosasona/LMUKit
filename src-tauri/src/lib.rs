@@ -13,6 +13,7 @@ struct AppSnapshot {
     active_profile: Option<Uuid>,
     lmu_config_path: String,
     lmu_settings_path: String,
+    active_profile_dirty: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -47,6 +48,9 @@ fn snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, String> {
         active_profile: store.settings.active_profile,
         lmu_config_path: store.settings.lmu_config_path.display().to_string(),
         lmu_settings_path: store.settings.lmu_settings_path.display().to_string(),
+        active_profile_dirty: store
+            .active_profile_has_unsaved_changes()
+            .map_err(|error| error.to_string())?,
     })
 }
 
@@ -132,6 +136,70 @@ fn remove_profile_wheel_image(profile_id: Uuid, state: State<'_, AppState>) -> R
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn capture_profile(name: String, state: State<'_, AppState>) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    store.capture(&name).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn import_profile(
+    name: String,
+    contents: Vec<u8>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if contents.len() > 16 * 1024 * 1024 {
+        return Err("Preset files must be 16 MB or smaller.".to_owned());
+    }
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .import_profile_bytes(&name, &contents)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn update_profile(profile_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    store
+        .update_profile(&profile)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_profile(profile_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    store.delete(&profile).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn reveal_profiles(state: State<'_, AppState>) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    reveal_directory(&store.profiles_dir())
+}
+
+#[cfg(target_os = "windows")]
+fn reveal_directory(path: &std::path::Path) -> Result<(), String> {
+    std::process::Command::new("explorer.exe")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not open {}: {error}", path.display()))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn reveal_directory(path: &std::path::Path) -> Result<(), String> {
+    std::process::Command::new("xdg-open")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not open {}: {error}", path.display()))
+}
+
 fn profile_summary(store: &Store, profile: &Profile) -> Result<ProfileSummary, String> {
     let document = store
         .load_profile_document(profile)
@@ -180,7 +248,12 @@ pub fn run() {
             remove_profile_device,
             save_profile_wheel_image,
             profile_wheel_image,
-            remove_profile_wheel_image
+            remove_profile_wheel_image,
+            capture_profile,
+            import_profile,
+            update_profile,
+            delete_profile,
+            reveal_profiles
         ])
         .run(tauri::generate_context!())
         .expect("error while running LMUKit");
