@@ -15,7 +15,7 @@
         "title": "LMUKit",
         "width": 1280,
         "height": 820,
-        "minWidth": 980,
+        "minWidth": 1100,
         "minHeight": 680,
         "center": true,
         "resizable": true,

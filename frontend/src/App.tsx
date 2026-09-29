@@ -568,6 +568,10 @@ export default function App() {
                 setQuery={setQuery}
                 setSelectedId={setSelectedId}
                 onActivate={activate}
+                onEdit={(profile) => {
+                  setSelectedId(profile.id);
+                  navigate("bindings");
+                }}
                 onImport={importPreset}
                 onCapture={captureProfile}
                 onUpdate={updateProfile}
