@@ -53,6 +53,7 @@ export default function App() {
   const active = snapshot.profiles.find(
     (profile) => profile.id === snapshot.activeProfile,
   );
+  const overviewProfile = active ?? selected;
   const gameSettingsDirty = Boolean(
     gameSettings &&
       gameSettingsBaseline &&
@@ -139,11 +140,11 @@ export default function App() {
     let url: string | null = null;
     let cancelled = false;
     setWheelImageUrl(null);
-    if (!selected?.hasWheelImage) {
+    if (!overviewProfile?.hasWheelImage) {
       return;
     }
     void invoke<number[] | null>("profile_wheel_image", {
-      profileId: selected.id,
+      profileId: overviewProfile.id,
     })
       .then((bytes) => {
         if (!bytes || cancelled) return;
@@ -162,7 +163,7 @@ export default function App() {
       cancelled = true;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [selected?.id, selected?.hasWheelImage, wheelImageRevision]);
+  }, [overviewProfile?.id, overviewProfile?.hasWheelImage, wheelImageRevision]);
 
   async function loadBindings(profile = selected) {
     if (!profile) {

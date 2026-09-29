@@ -39,7 +39,7 @@ export function OverviewPage({
   onActivate,
   onUpdate,
 }: Props) {
-  const hero = selected ?? active;
+  const hero = active ?? selected;
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   return (
     <>
