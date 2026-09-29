@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   windows:
     name: Build Windows release
@@ -15,12 +19,12 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Rust
         shell: pwsh
         run: |
-          rustup toolchain install 1.91.1 --profile minimal
+          rustup toolchain install 1.91.1 --profile minimal --component rustfmt clippy
           rustup default 1.91.1
 
       - name: Install pnpm
@@ -29,7 +33,7 @@ jobs:
           version: 10
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -40,30 +44,67 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Run core tests
+        run: cargo test --locked -p lmukit-core
+
+      - name: Run Clippy
+        run: cargo clippy --locked -p lmukit-core --all-targets --all-features -- -D warnings
+
       - name: Validate version tag
         shell: pwsh
         run: |
           $tagVersion = "${{ github.ref_name }}".Substring(1)
           $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
           $packageVersion = ($metadata.packages | Where-Object name -eq "lmukit").version
+          $tauriVersion = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
           if ($tagVersion -ne $packageVersion) {
             throw "Tag version $tagVersion does not match Cargo package version $packageVersion"
           }
+          if ($tagVersion -ne $tauriVersion) {
+            throw "Tag version $tagVersion does not match Tauri package version $tauriVersion"
+          }
 
-      - name: Build LMUKit
-        run: cargo build --manifest-path src-tauri/Cargo.toml --release --locked
+      - name: Build executable and NSIS installer
+        run: pnpm tauri build --ci -- --locked
 
       - name: Package release
         id: package
         shell: pwsh
         run: |
-          $archive = "LMUKit-${{ github.ref_name }}-windows-x86_64.zip"
-          $checksum = "$($archive).sha256"
+          $version = "${{ github.ref_name }}".Substring(1)
+          $archive = "LMUKit-$version-windows-x86_64-portable.zip"
+          $installerName = "LMUKit-$version-windows-x86_64-setup.exe"
           Compress-Archive -Path "target/release/lmukit.exe" -DestinationPath $archive
-          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
-          "$hash  $archive" | Set-Content -Path $checksum -Encoding ascii
+
+          $installer = Get-ChildItem "target/release/bundle/nsis" -Filter "*-setup.exe" |
+            Select-Object -First 1
+          if (-not $installer) {
+            throw "Tauri did not produce an NSIS installer"
+          }
+          Copy-Item $installer.FullName $installerName
+
+          foreach ($asset in @($archive, $installerName)) {
+            $hash = (Get-FileHash -Algorithm SHA256 $asset).Hash.ToLowerInvariant()
+            "$hash  $asset" | Set-Content -Path "$asset.sha256" -Encoding ascii
+          }
           "archive=$archive" >> $env:GITHUB_OUTPUT
-          "checksum=$checksum" >> $env:GITHUB_OUTPUT
+          "archive_checksum=$archive.sha256" >> $env:GITHUB_OUTPUT
+          "installer=$installerName" >> $env:GITHUB_OUTPUT
+          "installer_checksum=$installerName.sha256" >> $env:GITHUB_OUTPUT
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: LMUKit-${{ github.ref_name }}-windows-x86_64
+          if-no-files-found: error
+          path: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.archive_checksum }}
+            ${{ steps.package.outputs.installer }}
+            ${{ steps.package.outputs.installer_checksum }}
 
       - name: Create GitHub release
         shell: pwsh
@@ -73,7 +114,9 @@ jobs:
           $tag = "${{ github.ref_name }}"
           $assets = @(
             "${{ steps.package.outputs.archive }}",
-            "${{ steps.package.outputs.checksum }}"
+            "${{ steps.package.outputs.archive_checksum }}",
+            "${{ steps.package.outputs.installer }}",
+            "${{ steps.package.outputs.installer_checksum }}"
           )
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {

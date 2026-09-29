@@ -16,7 +16,7 @@ LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate util
 - `src/storage.rs` currently backs `lmukit-core` and owns LMUKit settings, profile persistence, imports, activation, backups, LMU JSON parsing, `Settings.JSON` persistence, and companion-launcher generation.
 - `src/input.rs` reads Windows raw controller state for Tauri's binding lookup. Initialize each listener on its own fresh OS thread so WinRT apartment mode cannot conflict with the webview thread. `src/hotkeys.rs` owns global shortcuts; its native manager stays on a dedicated thread that pumps Windows messages and accepts live shortcut updates over a channel.
 - `mise.toml` pins tooling and defines the supported developer commands.
-- `.github/workflows/release.yml` builds and publishes the Windows x86-64 archive for `v*` tags.
+- `.github/workflows/release.yml` gates `v*` tags on the required checks, then builds and publishes a portable Windows x86-64 archive, NSIS installer, and checksums.
 - `build.rs` embeds the executable icon and metadata during native Windows builds. It intentionally skips resource compilation for WSL cross-builds, where `rc.exe` is unavailable.
 
 Keep filesystem and parsing behavior in `lmukit-core`; keep platform input details in Rust; keep presentation and transient interaction state in React. The previous egui UI is preserved on `legacy/egui-v0.2` and must not be copied into the new frontend component-for-component.
@@ -80,7 +80,7 @@ pnpm build
 cargo xwin check -p lmukit --target x86_64-pc-windows-msvc
 ```
 
-Use `mise run dev` for Tauri development and `mise run build` for a release bundle. WSL cross-checks the Windows backend with `cargo xwin`; native Windows builds embed resources and produce the distributable.
+Use `mise run dev` to cross-build and launch the Windows debug app from WSL, and `mise run build` for a Windows release executable. WSL cross-checks the Windows backend with `cargo xwin`; the tagged native-Windows workflow embeds resources and produces the portable archive and NSIS installer.
 
 ## Change discipline
 
