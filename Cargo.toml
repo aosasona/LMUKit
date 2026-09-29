@@ -21,6 +21,7 @@ tempfile = "3.19"
 winres = "0.1"
 
 [target.'cfg(windows)'.dependencies]
+global-hotkey = "0.7"
 windows = { version = "0.58", features = [
     "Foundation_Collections",
     "Gaming_Input",

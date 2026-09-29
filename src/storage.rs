@@ -17,6 +17,8 @@ pub struct Profile {
     pub created_at: u64,
     #[serde(default)]
     pub assignments: Vec<String>,
+    #[serde(default)]
+    pub hotkey_slot: Option<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -219,6 +221,11 @@ impl Store {
         Ok(profiles)
     }
 
+    pub fn save_profile_metadata(&self, profile: &Profile) -> Result<()> {
+        write_json(&self.profile_dir(profile.id).join("profile.json"), profile)
+            .context("could not save profile metadata")
+    }
+
     pub fn capture(&self, name: &str) -> Result<Profile> {
         let source = &self.settings.lmu_config_path;
         self.store_profile(source, name)
@@ -389,6 +396,7 @@ impl Store {
             name: name.to_owned(),
             created_at: unix_time()?,
             assignments: Vec::new(),
+            hotkey_slot: None,
         };
         let dir = self.profile_dir(profile.id);
         fs::create_dir_all(&dir)?;
@@ -617,6 +625,19 @@ fn unix_time() -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn loads_profile_metadata_without_a_hotkey() {
+        let profile: Profile = serde_json::from_value(serde_json::json!({
+            "id": Uuid::nil(),
+            "name": "Legacy profile",
+            "created_at": 1,
+            "assignments": []
+        }))
+        .unwrap();
+
+        assert_eq!(profile.hotkey_slot, None);
+    }
 
     #[test]
     fn captures_and_restores_a_profile() {

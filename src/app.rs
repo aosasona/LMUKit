@@ -1,4 +1,5 @@
 use crate::{
+    hotkeys::{HotkeyAction, HotkeyManager},
     input::{InputListener, PressedInput},
     storage::{Binding, BindingMatch, CompanionApp, Profile, Store},
 };
@@ -28,6 +29,10 @@ pub struct LmuKitApp {
     discard_prompt: Option<DiscardAction>,
     active_profile_dirty: bool,
     last_dirty_check: Instant,
+    hotkeys: Option<HotkeyManager>,
+    switcher_open: bool,
+    switcher_filter: String,
+    switcher_selected: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -134,6 +139,7 @@ impl LmuKitApp {
                 let lmu_settings_path = store.settings.lmu_settings_path.display().to_string();
                 let companion_apps = store.settings.companion_apps.clone();
                 let profiles = store.profiles().unwrap_or_default();
+                let (hotkeys, hotkey_error) = create_hotkey_manager(&profiles);
                 Self {
                     store: Some(store),
                     active_tab: AppTab::Profiles,
@@ -143,7 +149,10 @@ impl LmuKitApp {
                     config_path,
                     lmu_settings_path,
                     companion_apps,
-                    status: Status::Ready("Choose a tool to get started.".into()),
+                    status: hotkey_error.map_or_else(
+                        || Status::Ready("Choose a tool to get started.".into()),
+                        Status::Error,
+                    ),
                     binding_view: None,
                     input_lookup: None,
                     profile_editor: None,
@@ -151,6 +160,10 @@ impl LmuKitApp {
                     discard_prompt: None,
                     active_profile_dirty: false,
                     last_dirty_check: Instant::now() - Duration::from_secs(2),
+                    hotkeys,
+                    switcher_open: false,
+                    switcher_filter: String::new(),
+                    switcher_selected: 0,
                 }
             }
             Err(error) => Self {
@@ -170,6 +183,10 @@ impl LmuKitApp {
                 discard_prompt: None,
                 active_profile_dirty: false,
                 last_dirty_check: Instant::now() - Duration::from_secs(2),
+                hotkeys: None,
+                switcher_open: false,
+                switcher_filter: String::new(),
+                switcher_selected: 0,
             },
         }
     }
@@ -177,9 +194,95 @@ impl LmuKitApp {
     fn refresh(&mut self) {
         if let Some(store) = &self.store {
             match store.profiles() {
-                Ok(profiles) => self.profiles = profiles,
+                Ok(profiles) => {
+                    self.profiles = profiles;
+                    self.reconfigure_hotkeys();
+                }
                 Err(error) => self.status = Status::Error(error.to_string()),
             }
+        }
+    }
+
+    fn reconfigure_hotkeys(&mut self) {
+        self.hotkeys = None;
+        let (hotkeys, error) = create_hotkey_manager(&self.profiles);
+        self.hotkeys = hotkeys;
+        if let Some(error) = error {
+            self.status = Status::Error(error);
+        }
+    }
+
+    fn set_profile_hotkey(&mut self, profile_id: uuid::Uuid, slot: Option<u8>) {
+        if let Some(slot) = slot {
+            for profile in &mut self.profiles {
+                if profile.id != profile_id && profile.hotkey_slot == Some(slot) {
+                    profile.hotkey_slot = None;
+                    if let Some(store) = &self.store
+                        && let Err(error) = store.save_profile_metadata(profile)
+                    {
+                        self.status = Status::Error(error.to_string());
+                        return;
+                    }
+                }
+            }
+        }
+        let Some(profile) = self
+            .profiles
+            .iter_mut()
+            .find(|profile| profile.id == profile_id)
+        else {
+            return;
+        };
+        profile.hotkey_slot = slot;
+        if let Some(store) = &self.store {
+            match store.save_profile_metadata(profile) {
+                Ok(()) => {
+                    self.status = Status::Success(format!(
+                        "Shortcut for '{}' set to {}.",
+                        profile.name,
+                        shortcut_label(slot)
+                    ));
+                    self.reconfigure_hotkeys();
+                }
+                Err(error) => self.status = Status::Error(error.to_string()),
+            }
+        }
+    }
+
+    fn activate_profile(&mut self, profile_id: uuid::Uuid) {
+        let Some(profile) = self
+            .profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .cloned()
+        else {
+            return;
+        };
+        if let Some(store) = &mut self.store {
+            match store.activate(&profile) {
+                Ok(_) => {
+                    self.active_profile_dirty = false;
+                    self.status = Status::Success(format!(
+                        "'{}' is prepared for the next LMU launch.",
+                        profile.name
+                    ));
+                }
+                Err(error) => self.status = Status::Error(error.to_string()),
+            }
+        }
+    }
+
+    fn poll_hotkeys(&mut self, ctx: &egui::Context) {
+        let action = self.hotkeys.as_ref().and_then(HotkeyManager::poll);
+        match action {
+            Some(HotkeyAction::OpenSwitcher) => {
+                self.switcher_open = true;
+                self.switcher_filter.clear();
+                self.switcher_selected = 0;
+                ctx.request_repaint();
+            }
+            Some(HotkeyAction::ActivateProfile(id)) => self.activate_profile(id),
+            None => {}
         }
     }
 
@@ -297,15 +400,7 @@ impl LmuKitApp {
         let Some(profile) = self.selected.and_then(|i| self.profiles.get(i)).cloned() else {
             return;
         };
-        if let Some(store) = &mut self.store {
-            match store.activate(&profile) {
-                Ok(_) => {
-                    self.active_profile_dirty = false;
-                    self.status = Status::Success(format!("'{}' is now active.", profile.name))
-                }
-                Err(error) => self.status = Status::Error(error.to_string()),
-            }
-        }
+        self.activate_profile(profile.id);
     }
 
     fn update_profile_from_live(&mut self, profile: Profile) {
@@ -771,6 +866,7 @@ impl LmuKitApp {
 
 impl eframe::App for LmuKitApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.poll_hotkeys(ctx);
         self.check_active_profile();
         ctx.request_repaint_after(Duration::from_secs(1));
         self.poll_input_lookup(ctx);
@@ -912,6 +1008,51 @@ impl eframe::App for LmuKitApp {
                                     }
                                     if ui.button("Save paths").clicked() {
                                         self.save_path();
+                                    }
+                                });
+                                ui.separator();
+                                ui.collapsing("Profile keyboard shortcuts", |ui| {
+                                    ui.weak(
+                                        "Ctrl+Alt+Space opens the compact switcher. Assign Ctrl+Alt+1–9 to profiles for direct access.",
+                                    );
+                                    ui.colored_label(
+                                        egui::Color32::from_rgb(235, 185, 80),
+                                        "Close LMU first. A shortcut prepares the selected profile for the next launch.",
+                                    );
+                                    ui.add_space(6.0);
+                                    let mut change = None;
+                                    for profile in &self.profiles {
+                                        ui.horizontal(|ui| {
+                                            ui.label(&profile.name);
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(egui::Align::Center),
+                                                |ui| {
+                                                    let mut slot = profile.hotkey_slot;
+                                                    egui::ComboBox::from_id_salt(("profile_hotkey", profile.id))
+                                                        .selected_text(shortcut_label(slot))
+                                                        .width(120.0)
+                                                        .show_ui(ui, |ui| {
+                                                            ui.selectable_value(&mut slot, None, "No shortcut");
+                                                            for number in 1..=9 {
+                                                                ui.selectable_value(
+                                                                    &mut slot,
+                                                                    Some(number),
+                                                                    format!("Ctrl+Alt+{number}"),
+                                                                );
+                                                            }
+                                                        });
+                                                    if slot != profile.hotkey_slot {
+                                                        change = Some((profile.id, slot));
+                                                    }
+                                                },
+                                            );
+                                        });
+                                    }
+                                    if self.profiles.is_empty() {
+                                        ui.weak("Save or import a profile to assign shortcuts.");
+                                    }
+                                    if let Some((profile, slot)) = change {
+                                        self.set_profile_hotkey(profile, slot);
                                     }
                                 });
                                 ui.separator();
@@ -1155,10 +1296,110 @@ impl eframe::App for LmuKitApp {
         self.show_binding_view(ctx);
         self.show_input_lookup(ctx);
         self.show_discard_prompt(ctx);
+        self.show_compact_switcher(ctx);
     }
 }
 
 impl LmuKitApp {
+    fn show_compact_switcher(&mut self, ctx: &egui::Context) {
+        if !self.switcher_open {
+            return;
+        }
+        let viewport_id = egui::ViewportId::from_hash_of("profile_switcher");
+        let builder = egui::ViewportBuilder::default()
+            .with_title("LMUKit profile switcher")
+            .with_inner_size([430.0, 390.0])
+            .with_min_inner_size([360.0, 280.0])
+            .with_resizable(true)
+            .with_always_on_top()
+            .with_active(true);
+        let mut activate = None;
+        let mut close = false;
+        ctx.show_viewport_immediate(viewport_id, builder, |switcher_ctx, _class| {
+            egui::CentralPanel::default().show(switcher_ctx, |ui| {
+                ui.heading("Choose a profile");
+                ui.weak("The profile will be installed for the next LMU launch.");
+                let search = ui.add(
+                    egui::TextEdit::singleline(&mut self.switcher_filter)
+                        .hint_text("Search profiles…")
+                        .desired_width(f32::INFINITY),
+                );
+                search.request_focus();
+
+                let filter = self.switcher_filter.trim().to_lowercase();
+                let matches: Vec<_> = self
+                    .profiles
+                    .iter()
+                    .filter(|profile| {
+                        filter.is_empty() || profile.name.to_lowercase().contains(&filter)
+                    })
+                    .collect();
+                if self.switcher_selected >= matches.len() {
+                    self.switcher_selected = matches.len().saturating_sub(1);
+                }
+                if switcher_ctx.input(|input| input.key_pressed(egui::Key::ArrowDown))
+                    && self.switcher_selected + 1 < matches.len()
+                {
+                    self.switcher_selected += 1;
+                }
+                if switcher_ctx.input(|input| input.key_pressed(egui::Key::ArrowUp)) {
+                    self.switcher_selected = self.switcher_selected.saturating_sub(1);
+                }
+                if switcher_ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+                    close = true;
+                }
+                if switcher_ctx.input(|input| input.key_pressed(egui::Key::Enter)) {
+                    activate = matches
+                        .get(self.switcher_selected)
+                        .map(|profile| profile.id);
+                }
+
+                ui.separator();
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for (index, profile) in matches.iter().enumerate() {
+                        let active = self
+                            .store
+                            .as_ref()
+                            .is_some_and(|store| store.settings.active_profile == Some(profile.id));
+                        let shortcut = profile
+                            .hotkey_slot
+                            .map(|slot| format!("  Ctrl+Alt+{slot}"))
+                            .unwrap_or_default();
+                        let label = format!(
+                            "{}{}{}",
+                            profile.name,
+                            if active { "  • prepared" } else { "" },
+                            shortcut
+                        );
+                        if ui
+                            .add_sized(
+                                [ui.available_width(), 34.0],
+                                egui::Button::new(label).selected(index == self.switcher_selected),
+                            )
+                            .clicked()
+                        {
+                            activate = Some(profile.id);
+                        }
+                    }
+                    if matches.is_empty() {
+                        ui.weak("No matching profiles.");
+                    }
+                });
+            });
+            if switcher_ctx.input(|input| input.viewport().close_requested()) {
+                close = true;
+            }
+        });
+        if let Some(profile_id) = activate {
+            self.activate_profile(profile_id);
+            close = true;
+        }
+        if close {
+            self.switcher_open = false;
+            ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Close);
+        }
+    }
+
     fn show_game_settings_editor(&mut self, ui: &mut egui::Ui) {
         let Some(editor) = &mut self.game_settings_editor else {
             ui.heading("Game settings");
@@ -1931,6 +2172,26 @@ fn json_value_mut<'a>(
         current = current.as_object_mut()?.get_mut(segment)?;
     }
     Some(current)
+}
+
+fn create_hotkey_manager(profiles: &[Profile]) -> (Option<HotkeyManager>, Option<String>) {
+    let configured: Vec<_> = profiles
+        .iter()
+        .filter_map(|profile| profile.hotkey_slot.map(|slot| (profile.id, slot)))
+        .collect();
+    match HotkeyManager::new(&configured) {
+        Ok(manager) => (Some(manager), None),
+        Err(error) => (
+            None,
+            Some(format!(
+                "Global shortcuts are unavailable: {error}. Another app may be using one of them."
+            )),
+        ),
+    }
+}
+
+fn shortcut_label(slot: Option<u8>) -> String {
+    slot.map_or_else(|| "No shortcut".into(), |slot| format!("Ctrl+Alt+{slot}"))
 }
 
 fn open_folder(path: &std::path::Path) -> Result<()> {
