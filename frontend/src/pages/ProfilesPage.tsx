@@ -1,6 +1,8 @@
 import {
+  CircleCheck,
   FolderOpen,
   Gamepad2,
+  Play,
   Search,
   SlidersHorizontal,
   Upload,
@@ -271,58 +273,50 @@ export function ProfilesPage(props: Props) {
                 <h3>{selected.name}</h3>
                 <small>{wheelLabel(selected) ?? "No wheel assigned"}</small>
               </div>
-              <ActionMenu
-                items={[
-                  {
-                    label: "Update from LMU",
-                    hidden: !selected.differsFromLive,
-                    onSelect: () =>
-                      setConfirmation({
-                        title: `Update ${selected.name} from LMU?`,
-                        description:
-                          "This replaces the saved profile with LMU's current bindings. A recovery backup will be created first.",
-                        confirmLabel: "Update from LMU",
-                        onConfirm: () => {
-                          onUpdate(selected);
-                          setConfirmation(null);
-                        },
-                      }),
-                  },
-                  {
-                    label: "Delete profile",
-                    danger: true,
-                    onSelect: () =>
-                      setConfirmation({
-                        title: `Delete ${selected.name}?`,
-                        description:
-                          "This permanently removes the saved profile. LMU's live configuration and the shared wheel library are not changed.",
-                        confirmLabel: "Delete profile",
-                        danger: true,
-                        onConfirm: () => {
-                          onDelete(selected);
-                          setConfirmation(null);
-                        },
-                      }),
-                  },
-                ]}
-              />
+              <div className="profile-detail-head-controls">
+                <button
+                  className="secondary compact"
+                  onClick={() => onEdit(selected)}
+                >
+                  <SlidersHorizontal /> Edit profile
+                </button>
+                <ActionMenu
+                  items={[
+                    {
+                      label: "Update from LMU",
+                      hidden: !selected.differsFromLive,
+                      onSelect: () =>
+                        setConfirmation({
+                          title: `Update ${selected.name} from LMU?`,
+                          description:
+                            "This replaces the saved profile with LMU's current bindings. A recovery backup will be created first.",
+                          confirmLabel: "Update from LMU",
+                          onConfirm: () => {
+                            onUpdate(selected);
+                            setConfirmation(null);
+                          },
+                        }),
+                    },
+                    {
+                      label: "Delete profile",
+                      danger: true,
+                      onSelect: () =>
+                        setConfirmation({
+                          title: `Delete ${selected.name}?`,
+                          description:
+                            "This permanently removes the saved profile. LMU's live configuration and the shared wheel library are not changed.",
+                          confirmLabel: "Delete profile",
+                          danger: true,
+                          onConfirm: () => {
+                            onDelete(selected);
+                            setConfirmation(null);
+                          },
+                        }),
+                    },
+                  ]}
+                />
+              </div>
             </header>
-            <div className="profile-detail-actions">
-              <button
-                className="primary"
-                disabled={busy || (selected.id === activeId && !activeDirty)}
-                onClick={() => onActivate(selected)}
-              >
-                {selected.id === activeId
-                  ? activeDirty
-                    ? "Restore profile"
-                    : "Prepared"
-                  : "Use profile"}
-              </button>
-              <button className="secondary" onClick={() => onEdit(selected)}>
-                <SlidersHorizontal /> Edit bindings &amp; FFB
-              </button>
-            </div>
             <div className="profile-detail-metrics">
               <span>
                 <strong>{selected.bindingCount}</strong> bindings
@@ -398,6 +392,34 @@ export function ProfilesPage(props: Props) {
                   This profile has no registered devices.
                 </div>
               )}
+            </div>
+            <div className="profile-activation-bar">
+              <div>
+                {selected.id === activeId && !activeDirty ? (
+                  <CircleCheck />
+                ) : (
+                  <Play />
+                )}
+                <span>
+                  <strong>
+                    {selected.id === activeId && !activeDirty
+                      ? "Profile ready"
+                      : "Prepare this profile"}
+                  </strong>
+                  <small>LMU will load it the next time the game starts.</small>
+                </span>
+              </div>
+              <button
+                className="primary"
+                disabled={busy || (selected.id === activeId && !activeDirty)}
+                onClick={() => onActivate(selected)}
+              >
+                {selected.id === activeId
+                  ? activeDirty
+                    ? "Restore saved profile"
+                    : "Currently active"
+                  : "Activate for next LMU launch"}
+              </button>
             </div>
           </aside>
         ) : (
