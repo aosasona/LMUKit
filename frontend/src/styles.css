@@ -2562,6 +2562,25 @@ textarea,
   justify-content: space-between;
   margin-top: 16px;
 }
+.autosave-state {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  color: #7f8b85;
+  font-size: calc(12px * var(--font-scale));
+  white-space: nowrap;
+}
+.autosave-state svg {
+  width: 15px;
+}
+.autosave-state.saved {
+  color: #a8c875;
+}
+.autosave-state.error {
+  color: #e68c82;
+}
 .font-scale-control button {
   width: 38px;
   height: 38px;

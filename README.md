@@ -74,7 +74,7 @@ Use the search field to find text in names or descriptions. Saving preserves uns
 
 ### Companion apps
 
-Open **Settings**, expand **Launch companion apps with LMU**, choose each executable, and enable the apps you want. **Copy Steam launch option** creates a small launcher and copies the required command. Paste it into:
+Open **Settings → LMU and companion apps**, choose Desktop or VR, then add and enable the helper applications you want. Paths, launch mode, and companion-app changes save automatically. **Copy Steam launch option** creates a small launcher and copies the required command. Paste it into:
 
 **Steam → Le Mans Ultimate → Properties → Launch Options**
 
@@ -137,8 +137,6 @@ Repository-specific guidance for future human and LLM contributors is in [AGENTS
 ## Planned work
 
 LMU exposes player vehicle and class information through its built-in Windows shared-memory interface. Because LMU does not hot-reload `direct input.json`, future detection should recommend or prepare a profile for the next launch rather than swapping controls during a running session.
-
-The Settings migration will also replace the current companion-launcher form with a clearer launch setup. It should let the user choose an LMU launch mode, including the normal desktop mode and VR, then independently enable companion applications such as RaceLab, Crew Chief, LMUFFB, and custom executables. LMUKit must continue to generate an explicit Steam launch option for the user to review and copy rather than modifying Steam configuration itself.
 
 ## License
 

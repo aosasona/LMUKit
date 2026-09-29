@@ -350,18 +350,29 @@ export default function App() {
     companionApps: CompanionApp[],
     launchMode: "desktop" | "vr",
   ) =>
-    withBusy(async () => {
-      await invoke("save_app_settings", {
-        lmuConfigPath: configPath,
-        lmuSettingsPath: settingsPath,
-        companionApps,
-        launchMode,
-      });
-      await refresh();
-      setGameSettings(null);
-      setGameSettingsBaseline(null);
-      setNotice("Settings saved.");
-    });
+    (async () => {
+      try {
+        await invoke("save_app_settings", {
+          lmuConfigPath: configPath,
+          lmuSettingsPath: settingsPath,
+          companionApps,
+          launchMode,
+        });
+        setSnapshot((current) => ({
+          ...current,
+          lmuConfigPath: configPath.trim(),
+          lmuSettingsPath: settingsPath.trim(),
+          companionApps,
+          lmuLaunchMode: launchMode,
+        }));
+        setGameSettings(null);
+        setGameSettingsBaseline(null);
+        setNotice("Settings saved automatically.");
+      } catch (error) {
+        setNotice(String(error));
+        throw error;
+      }
+    })();
   const setProfileHotkey = (profile: Profile, slot: number | null) =>
     withBusy(async () => {
       await invoke("set_profile_hotkey", { profileId: profile.id, slot });

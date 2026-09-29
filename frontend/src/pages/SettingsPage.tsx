@@ -1,13 +1,16 @@
 import {
+  AlertCircle,
+  Check,
   Copy,
   FileJson,
+  LoaderCircle,
   Minus,
   Plus,
   PlusCircle,
   Trash2,
   Type,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { CompanionApp, Profile } from "../models";
 
 const MIN_SCALE = 0.85;
@@ -28,7 +31,7 @@ type Props = {
     settingsPath: string,
     apps: CompanionApp[],
     launchMode: "desktop" | "vr",
-  ) => void;
+  ) => Promise<void>;
   onSetHotkey: (profile: Profile, slot: number | null) => void;
   onCreateLaunchOption: (
     configPath: string,
@@ -61,12 +64,75 @@ export function SettingsPage(props: Props) {
   const [gameSettings, setGameSettings] = useState(settingsPath);
   const [apps, setApps] = useState(companionApps);
   const [mode, setMode] = useState(launchMode);
+  const [saveState, setSaveState] = useState<
+    "saved" | "pending" | "saving" | "error"
+  >("saved");
+  const saveRevision = useRef(0);
+  const saveSettings = useRef(onSaveSettings);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const latestDraft = useRef({ bindings, gameSettings, apps, mode });
+  const pendingSave = useRef(false);
+  const dirty =
+    bindings.trim() !== configPath ||
+    gameSettings.trim() !== settingsPath ||
+    JSON.stringify(apps) !== JSON.stringify(companionApps) ||
+    mode !== launchMode;
 
   useEffect(() => setDraftScale(fontScale), [fontScale]);
-  useEffect(() => setBindings(configPath), [configPath]);
-  useEffect(() => setGameSettings(settingsPath), [settingsPath]);
-  useEffect(() => setApps(companionApps), [companionApps]);
-  useEffect(() => setMode(launchMode), [launchMode]);
+  useEffect(() => {
+    saveSettings.current = onSaveSettings;
+  }, [onSaveSettings]);
+  useEffect(() => {
+    latestDraft.current = { bindings, gameSettings, apps, mode };
+  }, [bindings, gameSettings, apps, mode]);
+  useEffect(() => {
+    if (!dirty) {
+      pendingSave.current = false;
+      setSaveState("saved");
+      return;
+    }
+
+    const revision = ++saveRevision.current;
+    pendingSave.current = true;
+    setSaveState("pending");
+    const timeout = window.setTimeout(() => {
+      setSaveState("saving");
+      const request = saveQueue.current
+        .catch(() => undefined)
+        .then(() => saveSettings.current(bindings, gameSettings, apps, mode));
+      saveQueue.current = request;
+      void request
+        .then(() => {
+          if (revision === saveRevision.current) {
+            pendingSave.current = false;
+            setSaveState("saved");
+          }
+        })
+        .catch(() => {
+          if (revision === saveRevision.current) setSaveState("error");
+        });
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [bindings, gameSettings, apps, mode, dirty]);
+  useEffect(
+    () => () => {
+      const draft = latestDraft.current;
+      if (pendingSave.current) {
+        saveQueue.current = saveQueue.current
+          .catch(() => undefined)
+          .then(() =>
+            saveSettings.current(
+              draft.bindings,
+              draft.gameSettings,
+              draft.apps,
+              draft.mode,
+            ),
+          );
+      }
+    },
+    [],
+  );
 
   const previewScale = (scale: number) => {
     const normalized = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
@@ -76,7 +142,6 @@ export function SettingsPage(props: Props) {
       normalized.toString(),
     );
   };
-  const save = () => onSaveSettings(bindings, gameSettings, apps, mode);
   const updateApp = (index: number, update: Partial<CompanionApp>) =>
     setApps((current) =>
       current.map((app, i) => (i === index ? { ...app, ...update } : app)),
@@ -274,14 +339,20 @@ export function SettingsPage(props: Props) {
             <PlusCircle /> Add app
           </button>
           <div>
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy}
-              onClick={save}
-            >
-              Save settings
-            </button>
+            <span className={`autosave-state ${saveState}`}>
+              {saveState === "saved" && <Check />}
+              {(saveState === "pending" || saveState === "saving") && (
+                <LoaderCircle className="spin" />
+              )}
+              {saveState === "error" && <AlertCircle />}
+              {saveState === "saved"
+                ? "Saved automatically"
+                : saveState === "pending"
+                  ? "Waiting to save…"
+                  : saveState === "saving"
+                    ? "Saving…"
+                    : "Could not save"}
+            </span>
             <button
               type="button"
               className="primary"
