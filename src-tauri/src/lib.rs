@@ -3,8 +3,8 @@ use lmukit_core::storage::{
     VirtualProfileMapping, Wheel,
 };
 use lmukit_virtual::{
-    LogicalAction, PhysicalButton, ProfileBinding, ProfileMapping, SetupButtonAllocator,
-    VirtualLayout,
+    EncoderGroup, EncoderMode, LogicalAction, PhysicalButton, ProfileBinding, ProfileMapping,
+    SetupButtonAllocator, VirtualLayout,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -599,7 +599,8 @@ fn remove_virtual_profile_button(
             && entry.physical_button == physical_button
             && entry.modifiers == modifiers)
     });
-    let saved = (!mapping.buttons.is_empty()).then_some(mapping.clone());
+    let saved = (!mapping.buttons.is_empty() || !mapping.encoder_groups.is_empty())
+        .then_some(mapping.clone());
     store
         .set_profile_virtual_mapping(profile_id, saved)
         .map_err(|error| error.to_string())?;
@@ -719,7 +720,7 @@ fn start_virtual_routing_inner(
         let persisted_mapping = profile
             .virtual_mapping
             .as_ref()
-            .filter(|mapping| !mapping.buttons.is_empty())
+            .filter(|mapping| !mapping.buttons.is_empty() || !mapping.encoder_groups.is_empty())
             .ok_or_else(|| {
                 "Learn at least one physical button for this profile first.".to_owned()
             })?;
@@ -759,6 +760,40 @@ fn start_virtual_routing_inner(
                         .map_err(|error| error.to_string())?;
                     ProfileBinding::new(trigger, modifiers, action)
                         .map_err(|error| error.to_string())
+                })
+                .collect::<Result<Vec<_>, String>>()?,
+        )
+        .map_err(|error| error.to_string())?
+        .with_encoder_groups(
+            persisted_mapping
+                .encoder_groups
+                .iter()
+                .map(|encoder| {
+                    let control = |control: &lmukit_core::storage::VirtualEncoderControl| {
+                        PhysicalButton::new(control.device_id.clone(), control.physical_button)
+                            .map_err(|error| error.to_string())
+                    };
+                    EncoderGroup::new(
+                        encoder.name.clone(),
+                        control(&encoder.clockwise)?,
+                        control(&encoder.counterclockwise)?,
+                        control(&encoder.cycle)?,
+                        encoder
+                            .modes
+                            .iter()
+                            .map(|mode| {
+                                EncoderMode::new(
+                                    mode.name.clone(),
+                                    LogicalAction::new(mode.clockwise_action.clone())
+                                        .map_err(|error| error.to_string())?,
+                                    LogicalAction::new(mode.counterclockwise_action.clone())
+                                        .map_err(|error| error.to_string())?,
+                                )
+                                .map_err(|error| error.to_string())
+                            })
+                            .collect::<Result<Vec<_>, String>>()?,
+                    )
+                    .map_err(|error| error.to_string())
                 })
                 .collect::<Result<Vec<_>, String>>()?,
         )

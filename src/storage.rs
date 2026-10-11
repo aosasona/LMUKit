@@ -42,6 +42,32 @@ pub struct Profile {
 pub struct VirtualProfileMapping {
     #[serde(default)]
     pub buttons: Vec<VirtualButtonMapping>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub encoder_groups: Vec<VirtualEncoderGroup>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VirtualEncoderGroup {
+    pub name: String,
+    pub clockwise: VirtualEncoderControl,
+    pub counterclockwise: VirtualEncoderControl,
+    pub cycle: VirtualEncoderControl,
+    pub modes: Vec<VirtualEncoderMode>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct VirtualEncoderControl {
+    pub device_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub device_name: String,
+    pub physical_button: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VirtualEncoderMode {
+    pub name: String,
+    pub clockwise_action: String,
+    pub counterclockwise_action: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -1685,6 +1711,7 @@ fn validate_virtual_mapping(
         .map(|entry| entry.logical_action.as_str())
         .collect::<BTreeSet<_>>();
     let mut sources = BTreeSet::new();
+    let mut occupied_controls = BTreeSet::new();
     for entry in &mapping.buttons {
         validate_virtual_label(&entry.device_id, "Input device ID")?;
         validate_virtual_label(&entry.logical_action, "Logical action")?;
@@ -1692,6 +1719,7 @@ fn validate_virtual_mapping(
             entry.physical_button > 0,
             "Physical button IDs must be greater than zero."
         );
+        occupied_controls.insert((entry.device_id.clone(), entry.physical_button));
         ensure!(
             entry.modifiers.len() <= 4,
             "A button mapping cannot have more than four modifiers."
@@ -1703,6 +1731,7 @@ fn validate_virtual_mapping(
                 modifier.physical_button > 0,
                 "Modifier button IDs must be greater than zero."
             );
+            occupied_controls.insert((modifier.device_id.clone(), modifier.physical_button));
             ensure!(
                 !(modifier.device_id == entry.device_id
                     && modifier.physical_button == entry.physical_button),
@@ -1726,6 +1755,52 @@ fn validate_virtual_mapping(
             "Logical action '{}' is missing from the shared virtual layout.",
             entry.logical_action
         );
+    }
+    ensure!(
+        mapping.encoder_groups.len() <= 8,
+        "A virtual profile cannot contain more than eight encoders."
+    );
+    let mut encoder_names = BTreeSet::new();
+    for encoder in &mapping.encoder_groups {
+        validate_virtual_label(&encoder.name, "Encoder name")?;
+        ensure!(
+            encoder_names.insert(encoder.name.to_lowercase()),
+            "Encoder names must be unique."
+        );
+        ensure!(
+            !encoder.modes.is_empty() && encoder.modes.len() <= 8,
+            "An encoder must contain between one and eight modes."
+        );
+        for control in [
+            &encoder.clockwise,
+            &encoder.counterclockwise,
+            &encoder.cycle,
+        ] {
+            validate_virtual_label(&control.device_id, "Encoder device ID")?;
+            ensure!(
+                control.physical_button > 0,
+                "Encoder button IDs must be greater than zero."
+            );
+            ensure!(
+                occupied_controls.insert((control.device_id.clone(), control.physical_button)),
+                "Encoder controls cannot be shared with another profile control."
+            );
+        }
+        let mut mode_names = BTreeSet::new();
+        for mode in &encoder.modes {
+            validate_virtual_label(&mode.name, "Encoder mode name")?;
+            ensure!(
+                mode_names.insert(mode.name.to_lowercase()),
+                "Encoder mode names must be unique within an encoder."
+            );
+            for action in [&mode.clockwise_action, &mode.counterclockwise_action] {
+                validate_virtual_label(action, "Encoder logical action")?;
+                ensure!(
+                    actions.contains(action.as_str()),
+                    "Encoder logical action '{action}' is missing from the shared virtual layout."
+                );
+            }
+        }
     }
     Ok(())
 }
@@ -2391,6 +2466,29 @@ mod tests {
                             logical_action: "headlights".into(),
                         },
                     ],
+                    encoder_groups: vec![VirtualEncoderGroup {
+                        name: "Encoder 1".into(),
+                        clockwise: VirtualEncoderControl {
+                            device_id: "simagic-alpha-evo".into(),
+                            device_name: "Simagic Alpha EVO".into(),
+                            physical_button: 10,
+                        },
+                        counterclockwise: VirtualEncoderControl {
+                            device_id: "simagic-alpha-evo".into(),
+                            device_name: "Simagic Alpha EVO".into(),
+                            physical_button: 11,
+                        },
+                        cycle: VirtualEncoderControl {
+                            device_id: "simagic-alpha-evo".into(),
+                            device_name: "Simagic Alpha EVO".into(),
+                            physical_button: 12,
+                        },
+                        modes: vec![VirtualEncoderMode {
+                            name: "Race".into(),
+                            clockwise_action: "pit_limiter".into(),
+                            counterclockwise_action: "headlights".into(),
+                        }],
+                    }],
                 }),
             )
             .unwrap();
@@ -2406,8 +2504,9 @@ mod tests {
 
         assert_eq!(reopened.settings.input_mode, InputMode::Virtual);
         assert_eq!(reopened.settings.virtual_layout.len(), 2);
+        let saved_mapping = saved_profile.virtual_mapping.unwrap();
         assert_eq!(
-            saved_profile.virtual_mapping.unwrap().buttons,
+            saved_mapping.buttons,
             vec![
                 VirtualButtonMapping {
                     device_id: "simagic-alpha-evo".into(),
@@ -2429,6 +2528,9 @@ mod tests {
                 },
             ]
         );
+        assert_eq!(saved_mapping.encoder_groups.len(), 1);
+        assert_eq!(saved_mapping.encoder_groups[0].name, "Encoder 1");
+        assert_eq!(saved_mapping.encoder_groups[0].modes[0].name, "Race");
     }
 
     #[test]
@@ -2520,6 +2622,7 @@ mod tests {
                 modifiers: Vec::new(),
                 logical_action: "headlights".into(),
             }],
+            encoder_groups: Vec::new(),
         };
         assert!(
             store
