@@ -127,9 +127,14 @@ export default function App() {
         }
       },
     );
+    const virtualAutoStart = listen<string>(
+      "virtual-autostart-result",
+      (event) => setNotice(event.payload),
+    );
     return () => {
       void switcher.then((unlisten) => unlisten());
       void activation.then((unlisten) => unlisten());
+      void virtualAutoStart.then((unlisten) => unlisten());
     };
   }, []);
   useEffect(() => {
@@ -499,6 +504,19 @@ export default function App() {
       setSnapshot((current) => ({ ...current, uiFontScale: scale }));
       setNotice(`Text size set to ${Math.round(scale * 100)}%.`);
     });
+  const setVirtualAutoStart = (enabled: boolean) =>
+    withBusy(async () => {
+      await invoke("set_virtual_auto_start", { enabled });
+      setSnapshot((current) => ({
+        ...current,
+        autoStartVirtualProfile: enabled,
+      }));
+      setNotice(
+        enabled
+          ? "The last live profile will start automatically with LMUKit."
+          : "Automatic live-profile startup disabled.",
+      );
+    });
   const saveAppSettings = (
     configPath: string,
     settingsPath: string,
@@ -742,7 +760,9 @@ export default function App() {
                 settingsPath={snapshot.lmuSettingsPath}
                 companionApps={snapshot.companionApps}
                 launchMode={snapshot.lmuLaunchMode}
+                autoStartVirtualProfile={snapshot.autoStartVirtualProfile}
                 onSaveFontScale={saveFontScale}
+                onSetVirtualAutoStart={setVirtualAutoStart}
                 onSaveSettings={saveAppSettings}
                 onSetHotkey={setProfileHotkey}
                 onCreateLaunchOption={createLaunchOption}

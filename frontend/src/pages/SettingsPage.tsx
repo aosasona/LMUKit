@@ -7,6 +7,7 @@ import {
   Download,
   FileJson,
   FolderOpen,
+  Gamepad2,
   LoaderCircle,
   Minus,
   Plus,
@@ -43,7 +44,9 @@ type Props = {
   settingsPath: string;
   companionApps: CompanionApp[];
   launchMode: "desktop" | "vr";
+  autoStartVirtualProfile: boolean;
   onSaveFontScale: (scale: number) => void;
+  onSetVirtualAutoStart: (enabled: boolean) => void;
   onSaveSettings: (
     configPath: string,
     settingsPath: string,
@@ -71,7 +74,9 @@ export function SettingsPage(props: Props) {
     settingsPath,
     companionApps,
     launchMode,
+    autoStartVirtualProfile,
     onSaveFontScale,
+    onSetVirtualAutoStart,
     onSaveSettings,
     onSetHotkey,
     onCreateLaunchOption,
@@ -302,6 +307,32 @@ export function SettingsPage(props: Props) {
             }
           />
         </div>
+      </section>
+
+      <section className="settings-card">
+        <SettingsHeading
+          icon={<Gamepad2 />}
+          eyebrow="Virtual input"
+          title="Live profile startup"
+        >
+          Optionally resume the most recently used live profile when LMUKit
+          opens.
+        </SettingsHeading>
+        <label className="settings-toggle-row">
+          <span>
+            <strong>Start the last live profile automatically</strong>
+            <small>
+              Runs only when the global input method is Virtual Input. LMUKit
+              leaves live remapping stopped if this is disabled.
+            </small>
+          </span>
+          <input
+            type="checkbox"
+            checked={autoStartVirtualProfile}
+            disabled={busy}
+            onChange={(event) => onSetVirtualAutoStart(event.target.checked)}
+          />
+        </label>
       </section>
 
       <section className="settings-card">

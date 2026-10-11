@@ -79,7 +79,7 @@ Each captured detent queues a 32 ms virtual-button pulse followed by at least 8 
 
 1. Start LMUKit and LMU with the already configured virtual controller available.
 2. LMUKit uses a reliably identified wheel or the user's manual wheel selection.
-3. The user starts a profile manually from the Profiles detail pane, or chooses a wheel and class on the Virtual Input page to resolve the exact class default and then the wheel fallback.
+3. The user starts a profile manually from the Profiles detail pane, chooses a wheel and class on the Virtual Input page to resolve the exact class default and then the wheel fallback, or explicitly enables automatic startup for the most recently used live profile.
 4. LMUKit translates physical button events through that profile into the stable virtual layout.
 5. The user may change virtual profiles while LMU is running without rebinding the virtual controller.
 
@@ -89,6 +89,8 @@ The current wheel and class selection is manual. LMUKit shows whether the active
 
 - **Legacy JSON:** profile activation safely backs up and replaces LMU's live `direct input.json`; LMU must be restarted because it does not hot-reload the file.
 - **Virtual Input:** profile activation changes the in-memory physical-to-logical mapping; LMU keeps the same virtual device and bindings.
+
+Automatic live-profile startup is disabled by default. When enabled, it runs only if the persisted global mode is Virtual Input and a previously successful live profile still exists. A startup failure remains visible in virtual-input health and never falls back to Legacy JSON or rewrites LMU's configuration.
 
 The modes share profile identity, wheel metadata, and class tags, but keep their binding data distinct. Importing an old JSON profile never silently creates a complete virtual mapping.
 

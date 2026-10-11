@@ -55,6 +55,7 @@ export type Snapshot = {
   activeProfileDirty: boolean | null;
   uiFontScale: number;
   inputMode: "legacy" | "virtual";
+  autoStartVirtualProfile: boolean;
   companionApps: CompanionApp[];
   lmuLaunchMode: "desktop" | "vr";
 };
@@ -177,6 +178,7 @@ export const emptySnapshot: Snapshot = {
   activeProfileDirty: null,
   uiFontScale: 1,
   inputMode: "legacy",
+  autoStartVirtualProfile: false,
   companionApps: [],
   lmuLaunchMode: "desktop",
 };

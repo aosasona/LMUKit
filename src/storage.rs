@@ -145,6 +145,10 @@ pub struct Settings {
     #[serde(default)]
     pub input_mode: InputMode,
     #[serde(default)]
+    pub auto_start_virtual_profile: bool,
+    #[serde(default)]
+    pub last_virtual_profile: Option<Uuid>,
+    #[serde(default)]
     pub virtual_layout: Vec<VirtualLayoutEntry>,
     #[serde(default)]
     pub virtual_device_key: Option<String>,
@@ -203,6 +207,8 @@ impl Default for Settings {
             log_retention_days: default_log_retention_days(),
             lmu_launch_mode: LaunchMode::Desktop,
             input_mode: InputMode::Legacy,
+            auto_start_virtual_profile: false,
+            last_virtual_profile: None,
             virtual_layout: Vec::new(),
             virtual_device_key: None,
             virtual_device_id: default_virtual_device_id(),
@@ -1495,10 +1501,15 @@ impl Store {
         self.settings
             .virtual_profile_defaults
             .retain(|entry| entry.profile_id != profile.id);
-        if self.settings.active_profile == Some(profile.id) {
+        let active_changed = self.settings.active_profile == Some(profile.id);
+        let last_virtual_changed = self.settings.last_virtual_profile == Some(profile.id);
+        if active_changed {
             self.settings.active_profile = None;
-            self.save_settings()?;
-        } else if defaults_changed {
+        }
+        if last_virtual_changed {
+            self.settings.last_virtual_profile = None;
+        }
+        if active_changed || last_virtual_changed || defaults_changed {
             self.save_settings()?;
         }
         Ok(())
@@ -2440,6 +2451,8 @@ mod tests {
         assert_eq!(store.settings.ui_font_scale, 1.0);
         assert_eq!(store.settings.log_retention_days, 5);
         assert_eq!(store.settings.input_mode, InputMode::Legacy);
+        assert!(!store.settings.auto_start_virtual_profile);
+        assert_eq!(store.settings.last_virtual_profile, None);
         assert!(store.settings.virtual_layout.is_empty());
         assert_eq!(store.settings.virtual_device_key, None);
         assert_eq!(store.settings.virtual_device_id, 1);
@@ -2454,6 +2467,8 @@ mod tests {
             .import_profile_bytes("GT Neo GT3", br#"{"Input":{}}"#)
             .unwrap();
         store.settings.input_mode = InputMode::Virtual;
+        store.settings.auto_start_virtual_profile = true;
+        store.settings.last_virtual_profile = Some(profile.id);
         store.settings.virtual_layout = vec![
             VirtualLayoutEntry {
                 logical_action: "pit_limiter".into(),
@@ -2522,6 +2537,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(reopened.settings.input_mode, InputMode::Virtual);
+        assert!(reopened.settings.auto_start_virtual_profile);
+        assert_eq!(reopened.settings.last_virtual_profile, Some(profile.id));
         assert_eq!(reopened.settings.virtual_layout.len(), 2);
         let saved_mapping = saved_profile.virtual_mapping.unwrap();
         assert_eq!(
@@ -2813,6 +2830,8 @@ mod tests {
         assert!(store.settings.virtual_profile_defaults.is_empty());
 
         store.set_virtual_profile_default(profile.id, None).unwrap();
+        store.settings.last_virtual_profile = Some(profile.id);
+        store.save_settings().unwrap();
         let saved = store
             .profiles()
             .unwrap()
@@ -2821,6 +2840,7 @@ mod tests {
             .unwrap();
         store.delete(&saved).unwrap();
         assert!(store.settings.virtual_profile_defaults.is_empty());
+        assert_eq!(store.settings.last_virtual_profile, None);
     }
 
     #[test]

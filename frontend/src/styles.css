@@ -2965,6 +2965,33 @@ textarea,
   gap: 12px;
   margin-top: 20px;
 }
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  background: #141414;
+}
+.settings-toggle-row > span {
+  min-width: 0;
+}
+.settings-toggle-row strong,
+.settings-toggle-row small {
+  display: block;
+}
+.settings-toggle-row strong {
+  color: #dfe7e2;
+  font-size: calc(13px * var(--font-scale));
+}
+.settings-toggle-row small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: calc(11px * var(--font-scale));
+  line-height: 1.4;
+}
 .path-input {
   display: flex;
   border: 1px solid var(--line);

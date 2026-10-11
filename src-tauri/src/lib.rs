@@ -199,6 +199,7 @@ struct AppSnapshot {
     active_profile_dirty: Option<bool>,
     ui_font_scale: f32,
     input_mode: InputMode,
+    auto_start_virtual_profile: bool,
     companion_apps: Vec<CompanionApp>,
     lmu_launch_mode: LaunchMode,
 }
@@ -346,6 +347,7 @@ fn snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, String> {
             .map_err(|error| error.to_string())?,
         ui_font_scale: store.settings.ui_font_scale,
         input_mode: store.settings.input_mode,
+        auto_start_virtual_profile: store.settings.auto_start_virtual_profile,
         companion_apps: store.settings.companion_apps.clone(),
         lmu_launch_mode: store.settings.lmu_launch_mode,
     })
@@ -380,6 +382,22 @@ fn set_input_mode(
         match input_mode {
             InputMode::Legacy => "Input method changed to Legacy JSON",
             InputMode::Virtual => "Input method changed to Virtual Input",
+        },
+    );
+    Ok(())
+}
+
+#[tauri::command]
+fn set_virtual_auto_start(enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    store.settings.auto_start_virtual_profile = enabled;
+    store.save_settings().map_err(|error| error.to_string())?;
+    diagnostics::info(
+        "routing.autostart.changed",
+        if enabled {
+            "Automatic live-profile startup enabled"
+        } else {
+            "Automatic live-profile startup disabled"
         },
     );
     Ok(())
@@ -1112,6 +1130,15 @@ fn start_virtual_routing_inner(
             next.identity.as_deref().unwrap_or("Unknown virtual device")
         ),
     );
+    match app_state.0.lock() {
+        Ok(mut store) => {
+            store.settings.last_virtual_profile = Some(profile_id);
+            if let Err(error) = store.save_settings() {
+                diagnostics::warn("routing.last-profile.save", error.to_string());
+            }
+        }
+        Err(error) => diagnostics::warn("routing.last-profile.lock", error.to_string()),
+    }
     Ok(next)
 }
 
@@ -2307,6 +2334,50 @@ pub fn run() {
         .setup(move |app| {
             let handle = app.handle().clone();
             std::thread::spawn(move || poll_hotkeys(handle, hotkey_rx, shortcuts));
+            let auto_start_profile = {
+                let state = app.state::<AppState>();
+                state.0.lock().ok().and_then(|store| {
+                    (store.settings.input_mode == InputMode::Virtual
+                        && store.settings.auto_start_virtual_profile)
+                        .then_some(store.settings.last_virtual_profile)
+                        .flatten()
+                })
+            };
+            if let Some(profile_id) = auto_start_profile {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let app_state = handle.state::<AppState>();
+                    let routing_state = handle.state::<VirtualRoutingState>();
+                    match start_virtual_routing_inner(
+                        profile_id,
+                        "Restored after launch".to_owned(),
+                        &app_state,
+                        &routing_state,
+                    ) {
+                        Ok(status) => {
+                            let _ = handle.emit(
+                                "virtual-autostart-result",
+                                format!(
+                                    "{} is now remapping live.",
+                                    status.profile_name.as_deref().unwrap_or("The last profile")
+                                ),
+                            );
+                        }
+                        Err(error) => {
+                            diagnostics::warn("routing.autostart.failed", &error);
+                            if let Ok(mut status) = routing_state.status.lock() {
+                                status.error = Some(format!(
+                                    "Could not restore the last live profile: {error}"
+                                ));
+                            }
+                            let _ = handle.emit(
+                                "virtual-autostart-result",
+                                format!("Could not restore live remapping: {error}"),
+                            );
+                        }
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -2344,6 +2415,7 @@ pub fn run() {
             cancel_binding_lookup,
             set_ui_font_scale,
             set_input_mode,
+            set_virtual_auto_start,
             set_log_retention_days,
             save_app_settings,
             set_profile_hotkey,
