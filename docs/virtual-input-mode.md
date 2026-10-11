@@ -28,7 +28,7 @@ Because the virtual layout is shared, `B1` continues to mean Pit Limiter when th
 
 ## Initial setup
 
-The user installs and explicitly configures vJoy, then binds its virtual buttons in LMU once. vJoy is an optional external dependency: LMUKit does not bundle, install, update, or silently configure it. Legacy JSON mode remains fully usable without vJoy.
+The user installs and explicitly configures vJoy, then binds its virtual buttons in LMU once. Device 1 should be configured for vJoy's full 128-button capacity before LMU or LMUKit starts; the default/minimal eight-button configuration is insufficient for the intended shared action layout. LMUKit reports the actual capacity and warns when it is below 128, but it does not silently reconfigure the driver. After changing the capacity, restart LMU and LMUKit and verify any existing assignments. vJoy is an optional external dependency: LMUKit does not bundle, install, update, or silently configure it. Legacy JSON mode remains fully usable without vJoy.
 
 Only actions that should be managed by LMUKit need virtual bindings. After LMU has saved those bindings, LMUKit reads `direct input.json` and builds the shared layout from the selected virtual device: LMU input ID 32 is vJoy B1, ID 33 is B2, and so on. The LMU action name becomes the stable logical action.
 

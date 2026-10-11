@@ -24,6 +24,7 @@ import type {
 import type { InputMode } from "../components/InputModeSwitch";
 
 const WHEEL_FALLBACK = "__wheel_fallback__";
+const RECOMMENDED_VJOY_BUTTON_COUNT = 128;
 
 export function VirtualInputPage({
   busy,
@@ -205,7 +206,13 @@ export function VirtualInputPage({
         "start_virtual_binding_setup",
       );
       setSetup(status);
-      onNotice("Binding setup ready. Ctrl+Alt+V sends the next vJoy button.");
+      if (status.buttonCount < RECOMMENDED_VJOY_BUTTON_COUNT) {
+        onNotice(
+          `vJoy device 1 exposes only ${status.buttonCount} buttons. Configure it for ${RECOMMENDED_VJOY_BUTTON_COUNT} before assigning LMU actions.`,
+        );
+      } else {
+        onNotice("Binding setup ready. Ctrl+Alt+V sends the next vJoy button.");
+      }
     } catch (reason) {
       setSetupError(String(reason));
       onNotice(String(reason));
@@ -380,6 +387,23 @@ export function VirtualInputPage({
             {setupError && <div className="virtual-error">{setupError}</div>}
             {setup ? (
               <>
+                {setup.buttonCount < RECOMMENDED_VJOY_BUTTON_COUNT && (
+                  <div className="virtual-capacity-warning">
+                    <AlertTriangle />
+                    <span>
+                      <strong>
+                        Device 1 has only {setup.buttonCount} virtual buttons
+                      </strong>
+                      <small>
+                        Close LMU and LMUKit, open Configure vJoy, set Buttons to
+                        {` ${RECOMMENDED_VJOY_BUTTON_COUNT}`}, apply the change,
+                        then reopen both apps. Existing B1–B
+                        {setup.buttonCount} assignments should be checked after
+                        the restart.
+                      </small>
+                    </span>
+                  </div>
+                )}
                 <div className="virtual-wizard-status">
                   <Radio />
                   <span>

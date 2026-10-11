@@ -4722,6 +4722,30 @@ textarea,
   margin: 0;
   padding: 10px 12px;
 }
+.virtual-capacity-warning {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 190, 77, 0.42);
+  background: rgba(255, 190, 77, 0.08);
+  color: #f5c86e;
+}
+.virtual-capacity-warning > svg {
+  width: 19px;
+  flex: 0 0 auto;
+}
+.virtual-capacity-warning strong,
+.virtual-capacity-warning small {
+  display: block;
+}
+.virtual-capacity-warning small {
+  margin-top: 4px;
+  color: #c8b994;
+  font-size: calc(10px * var(--font-scale));
+  line-height: 1.5;
+}
 .virtual-next-button {
   min-width: 150px;
   display: grid;

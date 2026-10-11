@@ -74,7 +74,9 @@ Press `Ctrl+Alt+Space` anywhere in Windows to open the compact profile switcher.
 
 ### Virtual input setup
 
-Virtual Input Mode requires vJoy device 1 to be installed and configured separately. Open **Virtual input**, start the guided binding setup, and leave LMU listening for the action you want to assign. Press `Ctrl+Alt+V` to send the next unused virtual button, or use the on-screen fallback. The shortcut is registered only while that setup session is active.
+Virtual Input Mode requires vJoy device 1 to be installed and configured separately. Open **Configure vJoy**, select device 1, set **Buttons** to **128**, and apply the change before opening LMU and LMUKit. The common eight-button configuration is not enough for a useful LMU action layout; LMUKit reports the device's actual capacity and warns when it is below 128. After changing the capacity, restart both apps and check any existing assignments.
+
+Open **Virtual input**, start the guided binding setup, and leave LMU listening for the action you want to assign. Press `Ctrl+Alt+V` to send the next unused virtual button, or use the on-screen fallback. The shortcut is registered only while that setup session is active.
 
 LMUKit reserves each successfully emitted button for the rest of the session, so it advances safely even before LMU writes `direct input.json`. After assigning and saving the actions in LMU, choose **Finish & rescan**, select the vJoy device, and choose **Save LMU button layout**. LMUKit does not claim that a pulse was accepted until it appears in LMU's saved bindings.
 
