@@ -71,7 +71,7 @@ The mapping engine tracks every currently pressed physical button. For a given t
 
 ## Encoder modes
 
-The encoder editor captures clockwise and counter-clockwise detents as digital buttons plus a separate mode-cycle button. Each encoder contains one to eight ordered modes, and each mode assigns a named LMU action to each direction. Pressing the mode control advances once per physical press, emits no virtual button itself, and updates the on-screen active-mode indicator. Encoder controls are reserved for that encoder and cannot also be ordinary mappings or controls for another encoder.
+The encoder editor guides the user through capturing a clockwise/increase detent and then a counter-clockwise/decrease detent as digital buttons. A single-mode encoder needs no other control. Adding a second mode asks for a separate mode-cycle button; each of up to eight ordered modes assigns a named LMU action to each direction. Pressing the mode control advances once per physical press, emits no virtual button itself, and updates the on-screen active-mode indicator. Encoder controls are reserved for that encoder and cannot also be ordinary mappings or controls for another encoder.
 
 This initial implementation follows the physical button press/release duration reported by DirectInput. A bounded, serialised minimum-duration pulse queue remains required if hardware testing shows that rapid detents can be missed by LMU.
 
