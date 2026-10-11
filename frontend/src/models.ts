@@ -202,7 +202,8 @@ export type Page =
   | "bindings"
   | "virtual"
   | "game"
-  | "settings";
+  | "settings"
+  | "help";
 
 export const emptySnapshot: Snapshot = {
   profiles: [],

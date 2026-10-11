@@ -28,6 +28,7 @@ import {
 } from "./models";
 import { pageTitle } from "./lib/navigation";
 import { GameSettingsPage } from "./pages/GameSettingsPage";
+import { HelpPage } from "./pages/HelpPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
 import { ProfileEditorPage } from "./pages/ProfileEditorPage";
@@ -919,6 +920,9 @@ export default function App() {
                 onCreateLaunchOption={createLaunchOption}
                 onBrowse={browseForPath}
               />
+            )}
+            {page === "help" && (
+              <HelpPage inputMode={snapshot.inputMode} onNavigate={navigate} />
             )}
           </div>
           <footer>

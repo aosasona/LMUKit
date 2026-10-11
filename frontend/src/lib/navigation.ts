@@ -9,4 +9,5 @@ export const pageTitle = (page: Page) =>
     virtual: "Virtual input",
     game: "Game settings",
     settings: "Settings",
+    help: "Help & setup",
   })[page];

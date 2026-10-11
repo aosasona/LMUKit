@@ -39,6 +39,7 @@ _The screenshot uses isolated synthetic profile data; no personal LMU files are 
 - Assign `Ctrl+Alt+1` through `Ctrl+Alt+9` to profiles, open the compact switcher with `Ctrl+Alt+Space`, or search profiles with `Ctrl+K`.
 - Configure Desktop or native OpenXR (`+XR`) launching and start LMUKit, LMUFFB, Crew Chief, RaceLab, or custom companion applications through one explicit Steam launch option.
 - Autosave LMU paths, launch mode, and companion-app setup.
+- Follow an in-app Help & Setup guide for wheels, DirectInput-visible controllers, button boxes, Legacy JSON, Virtual Input, and common recovery steps.
 - Scale the entire interface from Settings.
 - Hide to the Windows notification area while live remapping continues, with explicit **Show LMUKit** and confirmed **Exit LMUKit** tray actions.
 - Inspect virtual-input health and attached controllers, open rotating local logs, and export a privacy-redacted diagnostic report from Settings.

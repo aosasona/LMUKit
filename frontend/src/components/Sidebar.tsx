@@ -2,6 +2,7 @@ import {
   Gamepad2,
   Disc3,
   LayoutDashboard,
+  CircleHelp,
   Power,
   Settings,
   SlidersHorizontal,
@@ -57,6 +58,13 @@ export function Sidebar({
         ))}
       </nav>
       <div className="sidebar-foot">
+        <button
+          className={page === "help" ? "nav-item active" : "nav-item"}
+          onClick={() => onNavigate("help")}
+        >
+          <CircleHelp size={18} strokeWidth={1.8} />
+          <span>Help & setup</span>
+        </button>
         <button className="app-exit" onClick={onExit}>
           <Power size={16} />
           <span>Exit LMUKit</span>
