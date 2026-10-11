@@ -87,7 +87,7 @@ pub fn summary() -> Option<LogSummary> {
     })
 }
 
-fn remember_error(event: &str, message: &str) {
+fn remember_error(event: &str, _message: &str) {
     let Some(logger) = LOGGER.get() else { return };
     let Ok(mut errors) = logger.recent_errors.lock() else {
         return;
@@ -95,7 +95,7 @@ fn remember_error(event: &str, message: &str) {
     if errors.len() == RETAINED_ERRORS {
         errors.pop_front();
     }
-    errors.push_back(format!("{event}: {}", clean(message)));
+    errors.push_back(format!("{} · See the local log for details", clean(event)));
 }
 
 fn write(level: &str, event: &str, message: &str) {
