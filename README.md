@@ -5,6 +5,8 @@
 
 LMUKit is a modern Windows toolkit for Le Mans Ultimate. It brings binding profiles, reusable wheel metadata, control inspection, game settings, and companion-app launching into one focused race workspace.
 
+Closing the main window minimizes LMUKit to the Windows taskbar so live remapping can continue. Use **Exit LMUKit** at the bottom of the sidebar to stop routing, release virtual buttons, and fully quit.
+
 <img src="assets/icon/lmukit.png" alt="LMUKit icon" width="112">
 
 ![LMUKit overview showing the active Hypercar profile, wheel image, garage, and quick actions](assets/lmukit-overview.png)

@@ -445,6 +445,11 @@ fn set_log_retention_days(retention_days: usize, state: State<'_, AppState>) -> 
 }
 
 #[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
 fn save_app_settings(
     lmu_config_path: String,
     lmu_settings_path: String,
@@ -2530,6 +2535,7 @@ pub fn run() {
             set_input_mode,
             set_virtual_auto_start,
             set_log_retention_days,
+            exit_app,
             save_app_settings,
             set_profile_hotkey,
             companion_launch_option,
@@ -2563,12 +2569,23 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building LMUKit");
-    app.run(|app_handle, event| {
-        if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+    app.run(|app_handle, event| match event {
+        tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::CloseRequested { api, .. },
+            ..
+        } => {
+            api.prevent_close();
+            if let Some(window) = app_handle.get_webview_window(&label) {
+                let _ = window.minimize();
+            }
+        }
+        tauri::RunEvent::ExitRequested { .. } => {
             diagnostics::info("app.exit", "Application exit requested");
             let state = app_handle.state::<VirtualRoutingState>();
             let _ = stop_virtual_routing_inner(&state);
         }
+        _ => {}
     });
 }
 

@@ -41,8 +41,9 @@ export function TitleBar({ onError }: { onError: (message: string) => void }) {
         </button>
         <button
           className="close"
-          aria-label="Close"
-          onClick={() => run(() => getCurrentWindow().close())}
+          aria-label="Minimize to taskbar"
+          title="Minimize to taskbar"
+          onClick={() => run(() => getCurrentWindow().minimize())}
         >
           <X />
         </button>

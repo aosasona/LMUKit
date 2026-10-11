@@ -3,6 +3,7 @@ import {
   Disc3,
   Keyboard,
   LayoutDashboard,
+  Power,
   Settings,
   SlidersHorizontal,
   Workflow,
@@ -25,11 +26,13 @@ export function Sidebar({
   profileCount,
   onNavigate,
   onOpenSwitcher,
+  onExit,
 }: {
   page: Page;
   profileCount: number;
   onNavigate: (page: Page) => void;
   onOpenSwitcher: () => void;
+  onExit: () => void;
 }) {
   return (
     <aside className="sidebar">
@@ -68,6 +71,10 @@ export function Sidebar({
           <Keyboard size={16} />
           <span>Quick switcher</span>
           <kbd>Ctrl Alt Space</kbd>
+        </button>
+        <button className="app-exit" onClick={onExit}>
+          <Power size={16} />
+          <span>Exit LMUKit</span>
         </button>
       </div>
     </aside>

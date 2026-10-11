@@ -614,6 +614,14 @@ export default function App() {
           : `${selected.name} saved. A recovery backup was created.`,
       );
     });
+  const exitApp = () => {
+    if (
+      (gameSettingsDirty || profileDocumentDirty) &&
+      !window.confirm("Exit LMUKit and discard your unsaved editor changes?")
+    )
+      return;
+    void invoke("exit_app").catch((error) => setNotice(String(error)));
+  };
 
   return (
     <div className="window-shell">
@@ -624,6 +632,7 @@ export default function App() {
           profileCount={snapshot.profiles.length}
           onNavigate={navigate}
           onOpenSwitcher={() => setSwitcherOpen(true)}
+          onExit={exitApp}
         />
         <main>
           <header className="topbar">

@@ -363,6 +363,23 @@ nav {
   cursor: pointer;
   font-size: calc(12px * var(--font-scale));
 }
+.app-exit {
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border: 0;
+  background: transparent;
+  color: #68736e;
+  font-size: calc(11px * var(--font-scale));
+  text-align: left;
+}
+.app-exit:hover {
+  background: rgba(255, 255, 255, 0.045);
+  color: #b7c0bb;
+}
 .keyboard-hint kbd {
   margin-left: auto;
 }
