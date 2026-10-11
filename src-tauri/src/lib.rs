@@ -1394,7 +1394,7 @@ fn run_virtual_routing_worker(
             }
             known_devices = current_devices;
             engine.tick().map_err(|error| error.to_string())?;
-            std::thread::sleep(std::time::Duration::from_millis(4));
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
         engine.disconnect().map_err(|error| error.to_string())
     })();

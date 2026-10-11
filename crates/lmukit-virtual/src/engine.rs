@@ -9,6 +9,7 @@ use crate::{VirtualCapabilities, VirtualInputBackend};
 
 const ENCODER_PULSE_DURATION: Duration = Duration::from_millis(32);
 const ENCODER_PULSE_GAP: Duration = Duration::from_millis(8);
+const MINIMUM_BUTTON_PRESS_DURATION: Duration = Duration::from_millis(32);
 const MAX_QUEUED_ENCODER_PULSES: usize = 128;
 
 /// Stable semantic action shared by every virtual profile and wheel.
@@ -379,6 +380,8 @@ pub struct MappingEngine<B: VirtualInputBackend> {
     pressed_sources: BTreeSet<PhysicalButton>,
     active_bindings: BTreeMap<BindingInput, u32>,
     output_owners: BTreeMap<u32, BTreeSet<BindingInput>>,
+    regular_output_pressed_at: BTreeMap<u32, Instant>,
+    pending_regular_releases: BTreeMap<u32, Instant>,
     encoder_modes: BTreeMap<String, usize>,
     queued_encoder_pulses: VecDeque<u32>,
     active_encoder_pulse: Option<(u32, Instant)>,
@@ -408,6 +411,8 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
             pressed_sources: BTreeSet::new(),
             active_bindings: BTreeMap::new(),
             output_owners: BTreeMap::new(),
+            regular_output_pressed_at: BTreeMap::new(),
+            pending_regular_releases: BTreeMap::new(),
             encoder_modes: BTreeMap::new(),
             queued_encoder_pulses: VecDeque::new(),
             active_encoder_pulse: None,
@@ -433,6 +438,7 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
     ) -> Result<bool> {
         ensure!(self.connected, "mapping engine is disconnected");
         self.advance_encoder_pulses(now)?;
+        self.advance_regular_releases(now)?;
         let mapped = self.profile.references(source);
         let changed = if pressed {
             self.pressed_sources.insert(source.clone())
@@ -455,7 +461,7 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
             }
         }
         if changed {
-            self.reconcile()?;
+            self.reconcile(now)?;
         }
         Ok(mapped)
     }
@@ -467,7 +473,8 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
 
     fn tick_at(&mut self, now: Instant) -> Result<()> {
         ensure!(self.connected, "mapping engine is disconnected");
-        self.advance_encoder_pulses(now)
+        self.advance_encoder_pulses(now)?;
+        self.advance_regular_releases(now)
     }
 
     pub fn set_profile(&mut self, profile: ProfileMapping) -> Result<()> {
@@ -477,6 +484,8 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
         self.pressed_sources.clear();
         self.active_bindings.clear();
         self.output_owners.clear();
+        self.regular_output_pressed_at.clear();
+        self.pending_regular_releases.clear();
         self.encoder_modes.clear();
         self.clear_encoder_pulses();
         self.profile = profile;
@@ -489,6 +498,8 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
         self.pressed_sources.clear();
         self.active_bindings.clear();
         self.output_owners.clear();
+        self.regular_output_pressed_at.clear();
+        self.pending_regular_releases.clear();
         self.encoder_modes.clear();
         self.clear_encoder_pulses();
         self.connected = false;
@@ -510,7 +521,7 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
             .collect()
     }
 
-    fn reconcile(&mut self) -> Result<()> {
+    fn reconcile(&mut self, now: Instant) -> Result<()> {
         let desired_bindings = self
             .profile
             .active_bindings(&self.pressed_sources)
@@ -530,18 +541,73 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
                 .or_default()
                 .insert(input.clone());
         }
-        for button in self.output_owners.keys() {
+        let mut release_now = Vec::new();
+        let mut schedule_release = Vec::new();
+        for (button, owners) in &self.output_owners {
             if !desired_owners.contains_key(button) && !self.encoder_pulse_holds(*button) {
-                self.backend.set_button(*button, false)?;
+                let remapped_trigger = owners.iter().any(|owner| {
+                    desired_bindings
+                        .keys()
+                        .any(|desired| desired.trigger == owner.trigger)
+                });
+                if remapped_trigger {
+                    release_now.push(*button);
+                } else {
+                    let pressed_at = self
+                        .regular_output_pressed_at
+                        .get(button)
+                        .copied()
+                        .unwrap_or(now);
+                    let release_at = pressed_at + MINIMUM_BUTTON_PRESS_DURATION;
+                    if now >= release_at {
+                        release_now.push(*button);
+                    } else {
+                        schedule_release.push((*button, release_at));
+                    }
+                }
             }
         }
+        for button in release_now {
+            self.release_regular_output(button)?;
+        }
+        self.pending_regular_releases.extend(schedule_release);
         for button in desired_owners.keys() {
             if !self.output_owners.contains_key(button) && !self.encoder_pulse_holds(*button) {
-                self.backend.set_button(*button, true)?;
+                if self.pending_regular_releases.remove(button).is_none() {
+                    self.backend.set_button(*button, true)?;
+                    self.regular_output_pressed_at.insert(*button, now);
+                }
+            } else if !self.output_owners.contains_key(button) {
+                self.pending_regular_releases.remove(button);
+                self.regular_output_pressed_at.entry(*button).or_insert(now);
             }
         }
         self.active_bindings = desired_bindings;
         self.output_owners = desired_owners;
+        Ok(())
+    }
+
+    fn advance_regular_releases(&mut self, now: Instant) -> Result<()> {
+        let due = self
+            .pending_regular_releases
+            .iter()
+            .filter_map(|(button, release_at)| {
+                (now >= *release_at
+                    && !self.output_owners.contains_key(button)
+                    && !self.encoder_pulse_holds(*button))
+                .then_some(*button)
+            })
+            .collect::<Vec<_>>();
+        for button in due {
+            self.release_regular_output(button)?;
+        }
+        Ok(())
+    }
+
+    fn release_regular_output(&mut self, button: u32) -> Result<()> {
+        self.backend.set_button(button, false)?;
+        self.regular_output_pressed_at.remove(&button);
+        self.pending_regular_releases.remove(&button);
         Ok(())
     }
 
@@ -560,6 +626,8 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
         {
             if !self.output_owners.contains_key(&button) {
                 self.backend.set_button(button, false)?;
+                self.regular_output_pressed_at.remove(&button);
+                self.pending_regular_releases.remove(&button);
             }
             self.active_encoder_pulse = None;
             self.next_encoder_pulse_at = Some(now + ENCODER_PULSE_GAP);
@@ -604,10 +672,11 @@ impl<B: VirtualInputBackend> Drop for MappingEngine<B> {
 mod tests {
     use super::{
         ENCODER_PULSE_DURATION, ENCODER_PULSE_GAP, EncoderGroup, EncoderMode, LogicalAction,
-        MappingEngine, PhysicalButton, ProfileBinding, ProfileMapping, VirtualLayout,
+        MINIMUM_BUTTON_PRESS_DURATION, MappingEngine, PhysicalButton, ProfileBinding,
+        ProfileMapping, VirtualLayout,
     };
     use crate::MockVirtualBackend;
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
 
     fn action(name: &str) -> LogicalAction {
         LogicalAction::new(name).unwrap()
@@ -639,9 +708,12 @@ mod tests {
             profile(&[("gt-neo", 5, "pit_limiter")]),
         )
         .unwrap();
+        let now = Instant::now();
 
-        engine.handle_button(&source, true).unwrap();
-        engine.handle_button(&source, false).unwrap();
+        engine.handle_button_at(&source, true, now).unwrap();
+        engine.handle_button_at(&source, false, now).unwrap();
+        assert_eq!(engine.backend().events(), [(1, true)]);
+        engine.tick_at(now + MINIMUM_BUTTON_PRESS_DURATION).unwrap();
 
         assert_eq!(engine.backend().events(), [(1, true), (1, false)]);
     }
@@ -656,13 +728,15 @@ mod tests {
             profile(&[("gt-neo", 5, "pit_limiter")]),
         )
         .unwrap();
+        let now = Instant::now();
 
-        engine.handle_button(&mapped, true).unwrap();
-        engine.handle_button(&mapped, true).unwrap();
-        engine.handle_button(&unassigned, true).unwrap();
-        engine.handle_button(&unassigned, false).unwrap();
-        engine.handle_button(&mapped, false).unwrap();
-        engine.handle_button(&mapped, false).unwrap();
+        engine.handle_button_at(&mapped, true, now).unwrap();
+        engine.handle_button_at(&mapped, true, now).unwrap();
+        engine.handle_button_at(&unassigned, true, now).unwrap();
+        engine.handle_button_at(&unassigned, false, now).unwrap();
+        engine.handle_button_at(&mapped, false, now).unwrap();
+        engine.handle_button_at(&mapped, false, now).unwrap();
+        engine.tick_at(now + MINIMUM_BUTTON_PRESS_DURATION).unwrap();
 
         assert_eq!(engine.backend().events(), [(1, true), (1, false)]);
     }
@@ -677,12 +751,14 @@ mod tests {
             profile(&[("gt-neo", 5, "pit_limiter"), ("gt-neo", 6, "pit_limiter")]),
         )
         .unwrap();
+        let now = Instant::now();
 
-        engine.handle_button(&first, true).unwrap();
-        engine.handle_button(&second, true).unwrap();
-        engine.handle_button(&first, false).unwrap();
+        engine.handle_button_at(&first, true, now).unwrap();
+        engine.handle_button_at(&second, true, now).unwrap();
+        engine.handle_button_at(&first, false, now).unwrap();
         assert_eq!(engine.backend().button(1), Some(true));
-        engine.handle_button(&second, false).unwrap();
+        engine.handle_button_at(&second, false, now).unwrap();
+        engine.tick_at(now + MINIMUM_BUTTON_PRESS_DURATION).unwrap();
 
         assert_eq!(engine.backend().events(), [(1, true), (1, false)]);
     }
@@ -719,12 +795,15 @@ mod tests {
             profile(&[("gt-neo", 5, "pit_limiter")]),
         )
         .unwrap();
-        engine.handle_button(&source, true).unwrap();
+        let now = Instant::now();
+        engine.handle_button_at(&source, true, now).unwrap();
         let invalid = profile(&[("gt-neo", 5, "unknown_action")]);
 
         assert!(engine.set_profile(invalid).is_err());
         assert_eq!(engine.backend().button(1), Some(true));
-        engine.handle_button(&source, false).unwrap();
+        engine
+            .handle_button_at(&source, false, now + MINIMUM_BUTTON_PRESS_DURATION)
+            .unwrap();
 
         assert_eq!(engine.backend().events(), [(1, true), (1, false)]);
     }
@@ -769,11 +848,13 @@ mod tests {
         .unwrap();
         let mut engine =
             MappingEngine::connect(MockVirtualBackend::new(8), layout(), mapping).unwrap();
+        let now = Instant::now();
 
-        engine.handle_button(&modifier, true).unwrap();
-        engine.handle_button(&trigger, true).unwrap();
-        engine.handle_button(&trigger, false).unwrap();
-        engine.handle_button(&modifier, false).unwrap();
+        engine.handle_button_at(&modifier, true, now).unwrap();
+        engine.handle_button_at(&trigger, true, now).unwrap();
+        engine.handle_button_at(&trigger, false, now).unwrap();
+        engine.handle_button_at(&modifier, false, now).unwrap();
+        engine.tick_at(now + MINIMUM_BUTTON_PRESS_DURATION).unwrap();
 
         assert_eq!(engine.backend().events(), [(2, true), (2, false)]);
     }
@@ -789,11 +870,13 @@ mod tests {
         .unwrap();
         let mut engine =
             MappingEngine::connect(MockVirtualBackend::new(8), layout(), mapping).unwrap();
+        let now = Instant::now();
 
-        engine.handle_button(&trigger, true).unwrap();
-        engine.handle_button(&modifier, true).unwrap();
-        engine.handle_button(&modifier, false).unwrap();
-        engine.handle_button(&trigger, false).unwrap();
+        engine.handle_button_at(&trigger, true, now).unwrap();
+        engine.handle_button_at(&modifier, true, now).unwrap();
+        engine.handle_button_at(&modifier, false, now).unwrap();
+        engine.handle_button_at(&trigger, false, now).unwrap();
+        engine.tick_at(now + MINIMUM_BUTTON_PRESS_DURATION).unwrap();
 
         assert_eq!(
             engine.backend().events(),
@@ -805,6 +888,58 @@ mod tests {
                 (1, true),
                 (1, false)
             ]
+        );
+    }
+
+    #[test]
+    fn keeps_a_buffered_tap_visible_for_a_minimum_duration() {
+        let source = button("gt-neo", 5);
+        let mut engine = MappingEngine::connect(
+            MockVirtualBackend::new(8),
+            layout(),
+            profile(&[("gt-neo", 5, "pit_limiter")]),
+        )
+        .unwrap();
+        let now = Instant::now();
+
+        engine.handle_button_at(&source, true, now).unwrap();
+        engine.handle_button_at(&source, false, now).unwrap();
+        engine
+            .tick_at(now + MINIMUM_BUTTON_PRESS_DURATION - Duration::from_millis(1))
+            .unwrap();
+        assert_eq!(engine.backend().events(), [(1, true)]);
+
+        engine.tick_at(now + MINIMUM_BUTTON_PRESS_DURATION).unwrap();
+        assert_eq!(engine.backend().events(), [(1, true), (1, false)]);
+    }
+
+    #[test]
+    fn repeated_taps_produce_distinct_virtual_presses() {
+        let source = button("gt-neo", 5);
+        let mut engine = MappingEngine::connect(
+            MockVirtualBackend::new(8),
+            layout(),
+            profile(&[("gt-neo", 5, "pit_limiter")]),
+        )
+        .unwrap();
+        let now = Instant::now();
+
+        engine.handle_button_at(&source, true, now).unwrap();
+        engine.handle_button_at(&source, false, now).unwrap();
+        let second_press = now + MINIMUM_BUTTON_PRESS_DURATION + Duration::from_millis(1);
+        engine
+            .handle_button_at(&source, true, second_press)
+            .unwrap();
+        engine
+            .handle_button_at(&source, false, second_press)
+            .unwrap();
+        engine
+            .tick_at(second_press + MINIMUM_BUTTON_PRESS_DURATION)
+            .unwrap();
+
+        assert_eq!(
+            engine.backend().events(),
+            [(1, true), (1, false), (1, true), (1, false)]
         );
     }
 

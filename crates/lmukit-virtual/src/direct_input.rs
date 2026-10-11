@@ -5,7 +5,9 @@ use std::{
     ffi::c_void,
     mem::size_of,
     ptr,
-    time::{Duration, Instant},
+    sync::mpsc,
+    thread,
+    time::Duration,
 };
 
 use anyhow::{Context, Result, ensure};
@@ -72,7 +74,9 @@ pub struct DirectInputButtonMonitor {
     readers: BTreeMap<String, DirectInputButtonReader>,
     previous: BTreeMap<String, Vec<bool>>,
     pending_events: Vec<DirectInputButtonEvent>,
-    last_refresh: Instant,
+    discovery_updates: mpsc::Receiver<Vec<DirectInputDeviceSummary>>,
+    discovery_stop: mpsc::Sender<()>,
+    discovery_worker: Option<thread::JoinHandle<()>>,
 }
 
 impl DirectInputButtonReader {
@@ -243,19 +247,40 @@ impl DirectInputButtonReader {
 
 impl DirectInputButtonMonitor {
     pub fn new() -> Result<Self> {
+        let initial_devices = list_devices()?;
+        let (updates_tx, updates_rx) = mpsc::channel();
+        let (stop_tx, stop_rx) = mpsc::channel();
+        let discovery_worker = thread::spawn(move || {
+            loop {
+                match stop_rx.recv_timeout(Duration::from_secs(1)) {
+                    Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                }
+                if let Ok(devices) = list_devices()
+                    && updates_tx.send(devices).is_err()
+                {
+                    break;
+                }
+            }
+        });
         let mut monitor = Self {
             readers: BTreeMap::new(),
             previous: BTreeMap::new(),
             pending_events: Vec::new(),
-            last_refresh: Instant::now() - Duration::from_secs(2),
+            discovery_updates: updates_rx,
+            discovery_stop: stop_tx,
+            discovery_worker: Some(discovery_worker),
         };
-        monitor.refresh()?;
+        monitor.apply_discovered_devices(initial_devices)?;
         Ok(monitor)
     }
 
     pub fn poll(&mut self) -> Result<Vec<DirectInputButtonEvent>> {
-        if self.last_refresh.elapsed() >= Duration::from_secs(1) {
-            self.refresh()?;
+        if let Some(devices) = self.discovery_updates.try_iter().last() {
+            // Discovery runs away from this latency-sensitive polling path.
+            // A newly attached device that cannot yet be opened is retried on
+            // the next discovery pass without stopping existing routing.
+            let _ = self.apply_discovered_devices(devices);
         }
         let mut events = std::mem::take(&mut self.pending_events);
         let mut failed = Vec::new();
@@ -320,8 +345,7 @@ impl DirectInputButtonMonitor {
             .collect()
     }
 
-    fn refresh(&mut self) -> Result<()> {
-        let devices = list_devices()?;
+    fn apply_discovered_devices(&mut self, devices: Vec<DirectInputDeviceSummary>) -> Result<()> {
         let present = devices
             .iter()
             .map(|device| device.device_id.clone())
@@ -346,7 +370,6 @@ impl DirectInputButtonMonitor {
             self.previous.insert(device.device_id.clone(), buttons);
             self.readers.insert(device.device_id, reader);
         }
-        self.last_refresh = Instant::now();
         Ok(())
     }
 
@@ -369,6 +392,15 @@ impl DirectInputButtonMonitor {
             }
         }
         self.readers.remove(device_id);
+    }
+}
+
+impl Drop for DirectInputButtonMonitor {
+    fn drop(&mut self) {
+        let _ = self.discovery_stop.send(());
+        if let Some(worker) = self.discovery_worker.take() {
+            let _ = worker.join();
+        }
     }
 }
 

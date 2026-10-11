@@ -75,6 +75,8 @@ The mapping engine tracks every currently pressed physical button. For a given t
 
 The encoder editor automatically listens for an Increase detent and then a Decrease detent as digital buttons; the user turns the encoder once and confirms each step. A single-mode encoder needs no other control. Adding a second mode asks for a separate mode-cycle button; each of up to eight ordered modes assigns a searchable named LMU action to Increase and Decrease. Pressing the mode control advances once per physical press, emits no virtual button itself, and updates the on-screen active-mode indicator. Encoder controls are reserved for that encoder and cannot also be ordinary mappings or controls for another encoder.
 
+Ordinary button transitions use DirectInput's event buffer, and short taps remain visible on vJoy for at least 32 ms. This prevents a complete paddle press/release recovered in one polling pass from becoming an unobservable zero-length output. Modifier-driven changes still replace the previous action immediately. Periodic controller discovery runs outside the latency-sensitive input loop. Encoder detents continue to use their bounded serial pulse queue with a released gap between steps.
+
 Each captured detent queues a 32 ms virtual-button pulse followed by at least 8 ms released. Pulses are serialised in arrival order and bounded to prevent unrestrained backlog. Profile changes, routing shutdown, and backend errors clear pending work and release active outputs. A regular held mapping that targets the same virtual button retains ownership when an encoder pulse finishes.
 
 ## Daily use
