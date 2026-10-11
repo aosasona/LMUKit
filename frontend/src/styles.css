@@ -3308,11 +3308,23 @@ textarea,
   font-size: calc(10px * var(--font-scale));
   line-height: 1.45;
 }
-.profile-virtual-mappings > header > span {
+.profile-virtual-mapping-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.profile-virtual-mapping-actions > span {
   flex: 0 0 auto;
   color: var(--muted);
   font-size: calc(10px * var(--font-scale));
   white-space: nowrap;
+}
+.profile-virtual-mapping-actions button {
+  white-space: nowrap;
+}
+.profile-virtual-mapping-actions svg {
+  width: 14px;
 }
 .profile-mapping-dialog {
   position: relative;

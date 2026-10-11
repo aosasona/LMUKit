@@ -282,7 +282,7 @@ export function ProfilesPage(props: Props) {
                 <ActionMenu
                   items={[
                     {
-                      label: "Manage virtual mappings",
+                      label: "Edit button mappings",
                       onSelect: () => setMappingEditorProfileId(selected.id),
                     },
                     {

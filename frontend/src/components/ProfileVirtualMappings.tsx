@@ -4,6 +4,7 @@ import {
   LoaderCircle,
   Radio,
   Search,
+  SlidersHorizontal,
   Square,
   Trash2,
   WandSparkles,
@@ -280,7 +281,17 @@ export function ProfileVirtualMappings({
               : `${mappings.length} physical mapping${mappings.length === 1 ? "" : "s"} across ${assignedActions.size} of ${actions.length} LMU actions.`}
           </p>
         </div>
-        <span>{mappings.length} assigned</span>
+        <div className="profile-virtual-mapping-actions">
+          <span>{mappings.length} assigned</span>
+          <button
+            type="button"
+            className="secondary compact"
+            disabled={busy || loading || !actions.length}
+            onClick={() => onEditorOpenChange(true)}
+          >
+            <SlidersHorizontal /> Edit button mappings
+          </button>
+        </div>
       </header>
 
       {error && <div className="virtual-error">{error}</div>}
