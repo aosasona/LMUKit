@@ -70,6 +70,7 @@ struct VirtualRoutingStatus {
     routed_event_count: u64,
     last_event: Option<String>,
     error: Option<String>,
+    selection_reason: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -666,7 +667,45 @@ fn start_virtual_routing(
     app_state: State<'_, AppState>,
     routing_state: State<'_, VirtualRoutingState>,
 ) -> Result<VirtualRoutingStatus, String> {
-    stop_virtual_routing_inner(&routing_state)?;
+    start_virtual_routing_inner(
+        profile_id,
+        "Selected manually".to_owned(),
+        &app_state,
+        &routing_state,
+    )
+}
+
+#[tauri::command]
+fn start_default_virtual_routing(
+    wheel_id: Uuid,
+    class_tag: String,
+    app_state: State<'_, AppState>,
+    routing_state: State<'_, VirtualRoutingState>,
+) -> Result<VirtualRoutingStatus, String> {
+    let (profile_id, reason) = {
+        let store = app_state.0.lock().map_err(|error| error.to_string())?;
+        let (profile, exact) = store
+            .resolve_virtual_profile(wheel_id, Some(&class_tag))
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                format!("No {class_tag} default or wheel fallback is configured for this wheel.")
+            })?;
+        let reason = if exact {
+            format!("{class_tag} default")
+        } else {
+            format!("Wheel fallback · no {class_tag} default")
+        };
+        (profile.id, reason)
+    };
+    start_virtual_routing_inner(profile_id, reason, &app_state, &routing_state)
+}
+
+fn start_virtual_routing_inner(
+    profile_id: Uuid,
+    selection_reason: String,
+    app_state: &AppState,
+    routing_state: &VirtualRoutingState,
+) -> Result<VirtualRoutingStatus, String> {
     let (profile_name, device_id, layout, mapping) = {
         let store = app_state.0.lock().map_err(|error| error.to_string())?;
         let profile = find_profile(&store, profile_id)?;
@@ -724,12 +763,14 @@ fn start_virtual_routing(
             mapping,
         )
     };
+    stop_virtual_routing_inner(routing_state)?;
 
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let worker_stop = Arc::clone(&stop);
     let status = Arc::clone(&routing_state.status);
     let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
     let worker_profile_name = profile_name.clone();
+    let worker_selection_reason = selection_reason.clone();
     let worker = std::thread::spawn(move || {
         run_virtual_routing_worker(
             profile_id,
@@ -740,6 +781,7 @@ fn start_virtual_routing(
             worker_stop,
             status,
             ready_tx,
+            worker_selection_reason,
         );
     });
     let identity = match ready_rx.recv_timeout(std::time::Duration::from_secs(5)) {
@@ -763,6 +805,7 @@ fn start_virtual_routing(
         profile_id: Some(profile_id),
         profile_name: Some(profile_name),
         identity: Some(identity),
+        selection_reason: Some(selection_reason),
         ..VirtualRoutingStatus::default()
     };
     *routing_state
@@ -814,6 +857,7 @@ fn run_virtual_routing_worker(
     stop: Arc<std::sync::atomic::AtomicBool>,
     status: Arc<Mutex<VirtualRoutingStatus>>,
     ready: std::sync::mpsc::SyncSender<Result<String, String>>,
+    selection_reason: String,
 ) {
     let result = (|| -> Result<(), String> {
         let mut listener = DirectInputButtonMonitor::new().map_err(|error| error.to_string())?;
@@ -831,6 +875,7 @@ fn run_virtual_routing_worker(
                 profile_id: Some(profile_id),
                 profile_name: Some(profile_name),
                 identity: Some(identity),
+                selection_reason: Some(selection_reason),
                 ..VirtualRoutingStatus::default()
             };
         }
@@ -1805,6 +1850,7 @@ pub fn run() {
             remove_virtual_profile_button,
             virtual_routing_status,
             start_virtual_routing,
+            start_default_virtual_routing,
             stop_virtual_routing,
             start_virtual_binding_setup,
             stop_virtual_binding_setup,

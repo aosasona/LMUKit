@@ -101,6 +101,7 @@ export type VirtualRoutingStatus = {
   routedEventCount: number;
   lastEvent: string | null;
   error: string | null;
+  selectionReason: string | null;
 };
 export type VirtualSetupStatus = {
   identity: string;

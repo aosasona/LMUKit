@@ -670,6 +670,8 @@ export default function App() {
             {page === "virtual" && (
               <VirtualInputPage
                 busy={busy}
+                profiles={snapshot.profiles}
+                wheels={snapshot.wheels}
                 onNotice={setNotice}
                 onOpenProfiles={() => navigate("profiles")}
               />

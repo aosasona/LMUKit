@@ -63,6 +63,7 @@ export function ProfileVirtualMappings({
     routedEventCount: 0,
     lastEvent: null,
     error: null,
+    selectionReason: null,
   });
   const [error, setError] = useState<string | null>(null);
   const routingActive = routing.active;

@@ -12,20 +12,26 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type {
+  Profile,
   VirtualAction,
   VirtualBindingDevice,
   VirtualButtonPulse,
   VirtualRoutingStatus,
   VirtualSetupEvent,
   VirtualSetupStatus,
+  Wheel,
 } from "../models";
 
 export function VirtualInputPage({
   busy,
+  profiles,
+  wheels,
   onNotice,
   onOpenProfiles,
 }: {
   busy: boolean;
+  profiles: Profile[];
+  wheels: Wheel[];
   onNotice: (message: string) => void;
   onOpenProfiles: () => void;
 }) {
@@ -41,6 +47,8 @@ export function VirtualInputPage({
   const [setupError, setSetupError] = useState<string | null>(null);
   const [lastPulse, setLastPulse] = useState<VirtualButtonPulse | null>(null);
   const [routingBusy, setRoutingBusy] = useState(false);
+  const [selectedWheelId, setSelectedWheelId] = useState("");
+  const [selectedClass, setSelectedClass] = useState("");
   const [routing, setRouting] = useState<VirtualRoutingStatus>({
     active: false,
     profileId: null,
@@ -49,7 +57,35 @@ export function VirtualInputPage({
     routedEventCount: 0,
     lastEvent: null,
     error: null,
+    selectionReason: null,
   });
+  const profilesForWheel = profiles.filter(
+    (profile) => profile.wheelId === selectedWheelId,
+  );
+  const availableClasses = Array.from(
+    new Set(profilesForWheel.flatMap((profile) => profile.classTags)),
+  ).sort();
+  const availableClassesKey = availableClasses.join("\u0000");
+
+  useEffect(() => {
+    if (!wheels.length) {
+      setSelectedWheelId("");
+      return;
+    }
+    if (!wheels.some((wheel) => wheel.id === selectedWheelId)) {
+      setSelectedWheelId(wheels[0].id);
+    }
+  }, [selectedWheelId, wheels]);
+
+  useEffect(() => {
+    if (!availableClasses.length) {
+      setSelectedClass("");
+      return;
+    }
+    if (!availableClasses.includes(selectedClass)) {
+      setSelectedClass(availableClasses[0]);
+    }
+  }, [availableClassesKey, selectedClass]);
 
   useEffect(() => {
     const refresh = () => {
@@ -240,6 +276,27 @@ export function VirtualInputPage({
     }
   };
 
+  const startDefaultRouting = async () => {
+    if (!selectedWheelId || !selectedClass) return;
+    setRoutingBusy(true);
+    setError(null);
+    try {
+      const next = await invoke<VirtualRoutingStatus>(
+        "start_default_virtual_routing",
+        { wheelId: selectedWheelId, classTag: selectedClass },
+      );
+      setRouting(next);
+      onNotice(
+        `${next.profileName} selected from the ${selectedClass} default.`,
+      );
+    } catch (reason) {
+      setError(String(reason));
+      onNotice(String(reason));
+    } finally {
+      setRoutingBusy(false);
+    }
+  };
+
   return (
     <section className="virtual-input-page">
       <div className="virtual-mode-banner panel">
@@ -386,16 +443,19 @@ export function VirtualInputPage({
       </details>
 
       <section className="virtual-router panel">
+        {error && (
+          <div className="virtual-error virtual-router-error">{error}</div>
+        )}
         <div className="virtual-router-copy">
           <span className="eyebrow">Live wheel remapping</span>
           <h2>
             {routing.active
-              ? "Wheel remapping is on"
+              ? routing.profileName
               : "Choose a profile from your garage"}
           </h2>
           <p>
             {routing.active
-              ? `${routing.profileName} is sending its assigned buttons to LMU.`
+              ? `${routing.selectionReason ?? "Selected manually"}. Its assigned buttons are being sent to LMU.`
               : "Select and configure a profile in Profiles, then start it from the same detail pane."}
           </p>
         </div>
@@ -404,7 +464,9 @@ export function VirtualInputPage({
           <span>
             <strong>{routing.active ? "Remapping on" : "Remapping off"}</strong>
             <small>
-              {routing.lastEvent ?? "No profile is currently being routed"}
+              {routing.selectionReason ??
+                routing.lastEvent ??
+                "No profile is currently being routed"}
             </small>
           </span>
         </div>
@@ -427,6 +489,53 @@ export function VirtualInputPage({
             <Gamepad2 /> Open profiles
           </button>
         )}
+        <div className="virtual-default-switcher">
+          <span>
+            <strong>Switch by wheel and class</strong>
+            <small>Uses the defaults configured on your profiles.</small>
+          </span>
+          <label>
+            <span>Wheel</span>
+            <select
+              value={selectedWheelId}
+              onChange={(event) => setSelectedWheelId(event.target.value)}
+            >
+              {wheels.map((wheel) => (
+                <option value={wheel.id} key={wheel.id}>
+                  {[wheel.brand, wheel.name].filter(Boolean).join(" ")}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Class</span>
+            <select
+              value={selectedClass}
+              onChange={(event) => setSelectedClass(event.target.value)}
+            >
+              {availableClasses.map((classTag) => (
+                <option value={classTag} key={classTag}>
+                  {classTag}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="primary"
+            disabled={
+              busy ||
+              routingBusy ||
+              setup !== null ||
+              !selectedWheelId ||
+              !selectedClass
+            }
+            onClick={() => void startDefaultRouting()}
+          >
+            {routingBusy ? <LoaderCircle className="spin" /> : <RefreshCw />}
+            {routing.active ? "Switch profile" : "Use class default"}
+          </button>
+        </div>
       </section>
 
       <details className="virtual-layout-details panel">
