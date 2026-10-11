@@ -5,6 +5,8 @@ Audit date: 2026-10-11
 
 This document records the repository audit and the evidence required before LMUKit can describe Virtual Input Mode as compatible with LMU. The first implementation phase is deliberately isolated from the production UI and persistence model. It does not install a driver, alter LMU files, suppress physical controls, or replace the existing JSON profile-switching workflow.
 
+The stable virtual layout, profile responsibilities, one-time LMU binding setup, and daily workflow are defined in the [Virtual Input profile model](virtual-input-mode.md).
+
 ## Repository audit
 
 LMUKit currently has one production operating model: a saved profile owns a validated copy of LMU's `direct input.json`, and activating it prepares that file for LMU's next launch. `lmukit-core` validates JSON and creates a timestamped recovery backup before replacing a live configuration. LMU does not hot-reload that file, so the existing restart guidance remains correct.

@@ -103,7 +103,7 @@ mise run dev
 | `mise run lint`  | Run Clippy with warnings denied                          |
 | `pnpm build`     | Type-check and build the React interface                 |
 
-`mise run build-virtual-probe` cross-builds the isolated, experimental Windows vJoy feasibility probe. It is not part of the production app or release packages, does not install a driver, and does not establish LMU compatibility. See the [feasibility gate and hardware checklist](docs/virtual-input-feasibility.md) before using it.
+`mise run build-virtual-probe` cross-builds the isolated, experimental Windows vJoy feasibility probe. It is not part of the production app or release packages and does not install a driver. The tested compatibility scope and remaining hardware gates are recorded in the [feasibility report](docs/virtual-input-feasibility.md). The intended one-time LMU setup, stable virtual layout, profile mappings, and daily workflow are documented in the [Virtual Input profile model](docs/virtual-input-mode.md).
 
 Use `LMUKIT_DATA_DIR` with an isolated directory for screenshots and manual tests. Never test development builds against personal profiles or live Windows application data.
 
@@ -143,7 +143,7 @@ The human maintainer directs the product, reviews changes, runs the required che
 
 ## Planned work
 
-- Develop an experimental Virtual Input Mode without replacing the existing, backed-up JSON profile workflow. The repository audit, candidate-driver constraints, LMU compatibility gate, and phased plan are documented in [Virtual Input Mode: audit and feasibility gate](docs/virtual-input-feasibility.md).
+- Develop an experimental [Virtual Input Mode](docs/virtual-input-mode.md) without replacing the existing, backed-up JSON profile workflow. The repository audit, candidate-driver constraints, LMU compatibility gate, and phased plan are documented in the [feasibility report](docs/virtual-input-feasibility.md).
 - Verify LMU's current native shared-memory contract from the header shipped with an installed game build before implementing automatic vehicle/class detection; no REST endpoint or memory layout is assumed.
 
 ## License
