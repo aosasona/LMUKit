@@ -1,6 +1,12 @@
-//! DirectInput consumer used only by the Windows feasibility probe.
+//! DirectInput button consumer used by the feasibility probe and desktop router.
 
-use std::{ffi::c_void, mem::size_of, ptr};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ffi::c_void,
+    mem::size_of,
+    ptr,
+    time::{Duration, Instant},
+};
 
 use anyhow::{Context, Result, ensure};
 use windows::{
@@ -28,9 +34,18 @@ unsafe extern "system" {}
 #[derive(Clone, Debug)]
 pub struct DirectInputDeviceSummary {
     pub index: usize,
+    pub device_id: String,
     pub name: String,
     pub product_name: String,
     pub button_count: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DirectInputButtonEvent {
+    pub device_id: String,
+    pub device_name: String,
+    pub button_id: u32,
+    pub pressed: bool,
 }
 
 #[derive(Clone)]
@@ -43,6 +58,13 @@ struct EnumeratedDevice {
 pub struct DirectInputButtonReader {
     device: IDirectInputDevice8W,
     pub summary: DirectInputDeviceSummary,
+}
+
+pub struct DirectInputButtonMonitor {
+    readers: BTreeMap<String, DirectInputButtonReader>,
+    previous: BTreeMap<String, Vec<bool>>,
+    pending_events: Vec<DirectInputButtonEvent>,
+    last_refresh: Instant,
 }
 
 impl DirectInputButtonReader {
@@ -73,8 +95,8 @@ impl DirectInputButtonReader {
                 .context("reading DirectInput capabilities")?
         };
         ensure!(
-            capabilities.dwButtons >= 2,
-            "DirectInput device has fewer than two buttons"
+            capabilities.dwButtons > 0,
+            "DirectInput device has no buttons"
         );
 
         // SAFETY: c_dfDIJoystick2 is DirectInput's process-lifetime standard
@@ -102,6 +124,7 @@ impl DirectInputButtonReader {
             device,
             summary: DirectInputDeviceSummary {
                 index,
+                device_id: guid_id(&selected.instance_guid),
                 name: selected.name.clone(),
                 product_name: selected.product_name.clone(),
                 button_count: capabilities.dwButtons,
@@ -110,22 +133,146 @@ impl DirectInputButtonReader {
     }
 
     pub fn first_two_buttons(&self) -> Result<[bool; 2]> {
+        ensure!(
+            self.summary.button_count >= 2,
+            "DirectInput device has fewer than two buttons"
+        );
+        let buttons = self.buttons()?;
+        Ok([buttons[0], buttons[1]])
+    }
+
+    pub fn buttons(&self) -> Result<Vec<bool>> {
         let mut state = DIJOYSTATE2::default();
         // SAFETY: the device uses c_dfDIJoystick2 and state has the matching
         // layout and writable size.
         unsafe {
             let _ = self.device.Poll();
-            self.device
+            if self
+                .device
                 .GetDeviceState(
                     size_of::<DIJOYSTATE2>() as u32,
                     (&mut state as *mut DIJOYSTATE2).cast(),
                 )
-                .context("reading DirectInput joystick state")?;
+                .is_err()
+            {
+                self.device
+                    .Acquire()
+                    .context("reacquiring the DirectInput device")?;
+                let _ = self.device.Poll();
+                self.device
+                    .GetDeviceState(
+                        size_of::<DIJOYSTATE2>() as u32,
+                        (&mut state as *mut DIJOYSTATE2).cast(),
+                    )
+                    .context("reading DirectInput joystick state")?;
+            }
         }
-        Ok([
-            state.rgbButtons[0] & 0x80 != 0,
-            state.rgbButtons[1] & 0x80 != 0,
-        ])
+        Ok(
+            state.rgbButtons[..self.summary.button_count.min(128) as usize]
+                .iter()
+                .map(|value| value & 0x80 != 0)
+                .collect(),
+        )
+    }
+}
+
+impl DirectInputButtonMonitor {
+    pub fn new() -> Result<Self> {
+        let mut monitor = Self {
+            readers: BTreeMap::new(),
+            previous: BTreeMap::new(),
+            pending_events: Vec::new(),
+            last_refresh: Instant::now() - Duration::from_secs(2),
+        };
+        monitor.refresh()?;
+        Ok(monitor)
+    }
+
+    pub fn poll(&mut self) -> Result<Vec<DirectInputButtonEvent>> {
+        if self.last_refresh.elapsed() >= Duration::from_secs(1) {
+            self.refresh()?;
+        }
+        let mut events = std::mem::take(&mut self.pending_events);
+        let mut failed = Vec::new();
+        for (device_id, reader) in &self.readers {
+            let buttons = match reader.buttons() {
+                Ok(buttons) => buttons,
+                Err(_) => {
+                    failed.push(device_id.clone());
+                    continue;
+                }
+            };
+            let previous = self
+                .previous
+                .entry(device_id.clone())
+                .or_insert_with(|| buttons.clone());
+            for (index, (pressed, was_pressed)) in buttons.iter().zip(previous.iter()).enumerate() {
+                if pressed != was_pressed {
+                    events.push(DirectInputButtonEvent {
+                        device_id: device_id.clone(),
+                        device_name: reader.summary.product_name.clone(),
+                        button_id: index as u32 + 1,
+                        pressed: *pressed,
+                    });
+                }
+            }
+            *previous = buttons;
+        }
+        for device_id in failed {
+            self.release_and_remove(&device_id, &mut events);
+        }
+        Ok(events)
+    }
+
+    fn refresh(&mut self) -> Result<()> {
+        let devices = list_devices()?;
+        let present = devices
+            .iter()
+            .map(|device| device.device_id.clone())
+            .collect::<BTreeSet<_>>();
+        let disconnected = self
+            .readers
+            .keys()
+            .filter(|device_id| !present.contains(*device_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        for device_id in disconnected {
+            let mut released = Vec::new();
+            self.release_and_remove(&device_id, &mut released);
+            self.pending_events.extend(released);
+        }
+        for device in devices.into_iter().filter(|device| device.button_count > 0) {
+            if self.readers.contains_key(&device.device_id) {
+                continue;
+            }
+            let reader = DirectInputButtonReader::open(device.index)?;
+            let buttons = reader.buttons()?;
+            self.previous.insert(device.device_id.clone(), buttons);
+            self.readers.insert(device.device_id, reader);
+        }
+        self.last_refresh = Instant::now();
+        Ok(())
+    }
+
+    fn release_and_remove(&mut self, device_id: &str, events: &mut Vec<DirectInputButtonEvent>) {
+        let name = self
+            .readers
+            .get(device_id)
+            .map(|reader| reader.summary.product_name.clone())
+            .unwrap_or_else(|| "Disconnected controller".to_owned());
+        if let Some(previous) = self.previous.remove(device_id) {
+            for (index, pressed) in previous.into_iter().enumerate() {
+                if pressed {
+                    events.push(DirectInputButtonEvent {
+                        device_id: device_id.to_owned(),
+                        device_name: name.clone(),
+                        button_id: index as u32 + 1,
+                        pressed: false,
+                    });
+                }
+            }
+        }
+        self.readers.remove(device_id);
     }
 }
 
@@ -154,12 +301,17 @@ pub fn list_devices() -> Result<Vec<DirectInputDeviceSummary>> {
             unsafe { device.GetCapabilities(&mut capabilities)? };
             Ok(DirectInputDeviceSummary {
                 index,
+                device_id: guid_id(&item.instance_guid),
                 name: item.name,
                 product_name: item.product_name,
                 button_count: capabilities.dwButtons,
             })
         })
         .collect()
+}
+
+fn guid_id(guid: &GUID) -> String {
+    format!("directinput:{:032x}", guid.to_u128())
 }
 
 fn create_direct_input() -> Result<IDirectInput8W> {

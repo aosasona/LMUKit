@@ -47,6 +47,8 @@ pub struct VirtualProfileMapping {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct VirtualButtonMapping {
     pub device_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub device_name: String,
     pub physical_button: u32,
     pub logical_action: String,
 }
@@ -2011,11 +2013,13 @@ mod tests {
                     buttons: vec![
                         VirtualButtonMapping {
                             device_id: "simagic-alpha-evo".into(),
+                            device_name: "Simagic Alpha EVO".into(),
                             physical_button: 5,
                             logical_action: "pit_limiter".into(),
                         },
                         VirtualButtonMapping {
                             device_id: "simagic-alpha-evo".into(),
+                            device_name: "Simagic Alpha EVO".into(),
                             physical_button: 6,
                             logical_action: "headlights".into(),
                         },
@@ -2040,11 +2044,13 @@ mod tests {
             vec![
                 VirtualButtonMapping {
                     device_id: "simagic-alpha-evo".into(),
+                    device_name: "Simagic Alpha EVO".into(),
                     physical_button: 5,
                     logical_action: "pit_limiter".into(),
                 },
                 VirtualButtonMapping {
                     device_id: "simagic-alpha-evo".into(),
+                    device_name: "Simagic Alpha EVO".into(),
                     physical_button: 6,
                     logical_action: "headlights".into(),
                 },
@@ -2068,6 +2074,7 @@ mod tests {
         let missing_action = VirtualProfileMapping {
             buttons: vec![VirtualButtonMapping {
                 device_id: "simagic-alpha-evo".into(),
+                device_name: "Simagic Alpha EVO".into(),
                 physical_button: 5,
                 logical_action: "headlights".into(),
             }],

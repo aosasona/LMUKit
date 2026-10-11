@@ -182,7 +182,8 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
         self.backend.capabilities()
     }
 
-    pub fn handle_button(&mut self, source: &PhysicalButton, pressed: bool) -> Result<()> {
+    /// Returns true when the physical event belongs to the active profile.
+    pub fn handle_button(&mut self, source: &PhysicalButton, pressed: bool) -> Result<bool> {
         ensure!(self.connected, "mapping engine is disconnected");
         if pressed {
             self.press(source)
@@ -214,12 +215,12 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
         &self.backend
     }
 
-    fn press(&mut self, source: &PhysicalButton) -> Result<()> {
+    fn press(&mut self, source: &PhysicalButton) -> Result<bool> {
         if self.active_sources.contains_key(source) {
-            return Ok(());
+            return Ok(true);
         }
         let Some(action) = self.profile.action_for(source) else {
-            return Ok(());
+            return Ok(false);
         };
         let button_id = self
             .layout
@@ -237,12 +238,12 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
             .or_default()
             .insert(source.clone());
         self.active_sources.insert(source.clone(), button_id);
-        Ok(())
+        Ok(true)
     }
 
-    fn release(&mut self, source: &PhysicalButton) -> Result<()> {
+    fn release(&mut self, source: &PhysicalButton) -> Result<bool> {
         let Some(button_id) = self.active_sources.get(source).copied() else {
-            return Ok(());
+            return Ok(false);
         };
         let last_owner = self
             .output_owners
@@ -259,7 +260,7 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
                 self.output_owners.remove(&button_id);
             }
         }
-        Ok(())
+        Ok(true)
     }
 }
 

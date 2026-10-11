@@ -1,13 +1,19 @@
-use lmukit_core::storage::{CompanionApp, LaunchMode, Profile, Store, Wheel};
-use lmukit_virtual::SetupButtonAllocator;
+use lmukit_core::storage::{
+    CompanionApp, LaunchMode, Profile, Store, VirtualButtonMapping, VirtualProfileMapping, Wheel,
+};
+use lmukit_virtual::{
+    LogicalAction, PhysicalButton, ProfileMapping, SetupButtonAllocator, VirtualLayout,
+};
 use serde::Serialize;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
 use uuid::Uuid;
 
 #[cfg(target_os = "windows")]
-use lmukit_virtual::{VirtualInputBackend, vjoy::VJoyBackend};
+use lmukit_virtual::{
+    MappingEngine, VirtualInputBackend, direct_input::DirectInputButtonMonitor, vjoy::VJoyBackend,
+};
 
 #[path = "../../src/hotkeys.rs"]
 mod hotkeys;
@@ -17,6 +23,15 @@ mod input;
 struct AppState(Mutex<Store>);
 struct HotkeyState(std::sync::mpsc::Sender<HotkeyUpdate>);
 struct VirtualSetupState(Mutex<VirtualSetupSession>);
+struct VirtualRoutingState {
+    session: Mutex<Option<VirtualRoutingSession>>,
+    status: Arc<Mutex<VirtualRoutingStatus>>,
+}
+
+struct VirtualRoutingSession {
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    worker: std::thread::JoinHandle<()>,
+}
 
 enum HotkeyUpdate {
     Profiles(Vec<(Uuid, u8)>),
@@ -42,6 +57,33 @@ impl Default for VirtualSetupSession {
 }
 
 static LOOKUP_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualRoutingStatus {
+    active: bool,
+    profile_id: Option<Uuid>,
+    profile_name: Option<String>,
+    identity: Option<String>,
+    routed_event_count: u64,
+    last_event: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualProfileMappingSummary {
+    device_id: String,
+    device_name: String,
+    physical_button: u32,
+    logical_action: String,
+}
+
+struct LearnedPhysicalButton {
+    device_id: String,
+    device_name: String,
+    button_id: u32,
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -364,6 +406,304 @@ fn import_virtual_layout(
         .save_virtual_layout(device_key, layout)
         .map_err(|error| error.to_string())?;
     Ok(response)
+}
+
+#[tauri::command]
+fn virtual_profile_mapping(
+    profile_id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualProfileMappingSummary>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    Ok(mapping_summaries(profile.virtual_mapping.as_ref()))
+}
+
+#[tauri::command]
+async fn learn_virtual_profile_button(
+    profile_id: Uuid,
+    logical_action: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualProfileMappingSummary>, String> {
+    let pressed = wait_for_direct_input_button().await?;
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    if !store
+        .settings
+        .virtual_layout
+        .iter()
+        .any(|entry| entry.logical_action == logical_action)
+    {
+        return Err("That action is not in the saved LMU button layout.".to_owned());
+    }
+    let profile = find_profile(&store, profile_id)?;
+    let mut mapping = profile.virtual_mapping.unwrap_or_default();
+    mapping.buttons.retain(|entry| {
+        !(entry.device_id == pressed.device_id && entry.physical_button == pressed.button_id)
+    });
+    mapping.buttons.push(VirtualButtonMapping {
+        device_id: pressed.device_id,
+        device_name: pressed.device_name,
+        physical_button: pressed.button_id,
+        logical_action,
+    });
+    store
+        .set_profile_virtual_mapping(profile_id, Some(mapping.clone()))
+        .map_err(|error| error.to_string())?;
+    Ok(mapping_summaries(Some(&mapping)))
+}
+
+#[tauri::command]
+fn remove_virtual_profile_button(
+    profile_id: Uuid,
+    device_id: String,
+    physical_button: u32,
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualProfileMappingSummary>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    let mut mapping = profile.virtual_mapping.unwrap_or_default();
+    mapping.buttons.retain(|entry| {
+        !(entry.device_id == device_id && entry.physical_button == physical_button)
+    });
+    let saved = (!mapping.buttons.is_empty()).then_some(mapping.clone());
+    store
+        .set_profile_virtual_mapping(profile_id, saved)
+        .map_err(|error| error.to_string())?;
+    Ok(mapping_summaries(Some(&mapping)))
+}
+
+fn mapping_summaries(mapping: Option<&VirtualProfileMapping>) -> Vec<VirtualProfileMappingSummary> {
+    mapping
+        .into_iter()
+        .flat_map(|mapping| mapping.buttons.iter())
+        .map(|entry| VirtualProfileMappingSummary {
+            device_id: entry.device_id.clone(),
+            device_name: entry.device_name.clone(),
+            physical_button: entry.physical_button,
+            logical_action: entry.logical_action.clone(),
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn virtual_routing_status(
+    state: State<'_, VirtualRoutingState>,
+) -> Result<VirtualRoutingStatus, String> {
+    state
+        .status
+        .lock()
+        .map(|status| status.clone())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn start_virtual_routing(
+    profile_id: Uuid,
+    app_state: State<'_, AppState>,
+    routing_state: State<'_, VirtualRoutingState>,
+) -> Result<VirtualRoutingStatus, String> {
+    stop_virtual_routing_inner(&routing_state)?;
+    let (profile_name, device_id, layout, mapping) = {
+        let store = app_state.0.lock().map_err(|error| error.to_string())?;
+        let profile = find_profile(&store, profile_id)?;
+        let persisted_mapping = profile
+            .virtual_mapping
+            .as_ref()
+            .filter(|mapping| !mapping.buttons.is_empty())
+            .ok_or_else(|| {
+                "Learn at least one physical button for this profile first.".to_owned()
+            })?;
+        let layout = VirtualLayout::new(
+            store
+                .settings
+                .virtual_layout
+                .iter()
+                .map(|entry| {
+                    LogicalAction::new(entry.logical_action.clone())
+                        .map(|action| (action, entry.virtual_button))
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        let mapping = ProfileMapping::new(
+            persisted_mapping
+                .buttons
+                .iter()
+                .map(|entry| {
+                    let source =
+                        PhysicalButton::new(entry.device_id.clone(), entry.physical_button)
+                            .map_err(|error| error.to_string())?;
+                    let action = LogicalAction::new(entry.logical_action.clone())
+                        .map_err(|error| error.to_string())?;
+                    Ok((source, action))
+                })
+                .collect::<Result<Vec<_>, String>>()?,
+        )
+        .map_err(|error| error.to_string())?;
+        (
+            profile.name,
+            store.settings.virtual_device_id,
+            layout,
+            mapping,
+        )
+    };
+
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let worker_stop = Arc::clone(&stop);
+    let status = Arc::clone(&routing_state.status);
+    let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+    let worker_profile_name = profile_name.clone();
+    let worker = std::thread::spawn(move || {
+        run_virtual_routing_worker(
+            profile_id,
+            worker_profile_name,
+            device_id,
+            layout,
+            mapping,
+            worker_stop,
+            status,
+            ready_tx,
+        );
+    });
+    let identity = match ready_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+        Ok(Ok(identity)) => identity,
+        Ok(Err(error)) => {
+            let _ = worker.join();
+            return Err(error);
+        }
+        Err(_) => {
+            stop.store(true, Ordering::SeqCst);
+            let _ = worker.join();
+            return Err("Virtual routing did not start within five seconds.".to_owned());
+        }
+    };
+    *routing_state
+        .session
+        .lock()
+        .map_err(|error| error.to_string())? = Some(VirtualRoutingSession { stop, worker });
+    let next = VirtualRoutingStatus {
+        active: true,
+        profile_id: Some(profile_id),
+        profile_name: Some(profile_name),
+        identity: Some(identity),
+        ..VirtualRoutingStatus::default()
+    };
+    *routing_state
+        .status
+        .lock()
+        .map_err(|error| error.to_string())? = next.clone();
+    Ok(next)
+}
+
+#[tauri::command]
+fn stop_virtual_routing(
+    state: State<'_, VirtualRoutingState>,
+) -> Result<VirtualRoutingStatus, String> {
+    stop_virtual_routing_inner(&state)?;
+    state
+        .status
+        .lock()
+        .map(|status| status.clone())
+        .map_err(|error| error.to_string())
+}
+
+fn stop_virtual_routing_inner(state: &VirtualRoutingState) -> Result<(), String> {
+    let session = state
+        .session
+        .lock()
+        .map_err(|error| error.to_string())?
+        .take();
+    if let Some(session) = session {
+        session.stop.store(true, Ordering::SeqCst);
+        session
+            .worker
+            .join()
+            .map_err(|_| "The virtual routing worker stopped unexpectedly.".to_owned())?;
+    }
+    if let Ok(mut status) = state.status.lock() {
+        status.active = false;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+#[allow(clippy::too_many_arguments)]
+fn run_virtual_routing_worker(
+    profile_id: Uuid,
+    profile_name: String,
+    device_id: u32,
+    layout: VirtualLayout,
+    mapping: ProfileMapping,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    status: Arc<Mutex<VirtualRoutingStatus>>,
+    ready: std::sync::mpsc::SyncSender<Result<String, String>>,
+) {
+    let result = (|| -> Result<(), String> {
+        let mut listener = DirectInputButtonMonitor::new().map_err(|error| error.to_string())?;
+        let backend = VJoyBackend::new(device_id).map_err(|error| error.to_string())?;
+        let mut engine =
+            MappingEngine::connect(backend, layout, mapping).map_err(|error| error.to_string())?;
+        let identity = engine
+            .capabilities()
+            .map_err(|error| error.to_string())?
+            .identity;
+        let _ = ready.send(Ok(identity.clone()));
+        if let Ok(mut current) = status.lock() {
+            *current = VirtualRoutingStatus {
+                active: true,
+                profile_id: Some(profile_id),
+                profile_name: Some(profile_name),
+                identity: Some(identity),
+                ..VirtualRoutingStatus::default()
+            };
+        }
+        while !stop.load(Ordering::SeqCst) {
+            for event in listener.poll().map_err(|error| error.to_string())? {
+                let source = PhysicalButton::new(event.device_id, event.button_id)
+                    .map_err(|error| error.to_string())?;
+                let routed = engine
+                    .handle_button(&source, event.pressed)
+                    .map_err(|error| error.to_string())?;
+                if routed && let Ok(mut current) = status.lock() {
+                    current.routed_event_count += 1;
+                    current.last_event = Some(format!(
+                        "Button {} {}",
+                        event.button_id,
+                        if event.pressed { "pressed" } else { "released" }
+                    ));
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(4));
+        }
+        engine.disconnect().map_err(|error| error.to_string())
+    })();
+
+    if let Err(error) = result {
+        let _ = ready.send(Err(error.clone()));
+        if let Ok(mut current) = status.lock() {
+            current.active = false;
+            current.error = Some(error);
+        }
+    } else if let Ok(mut current) = status.lock() {
+        current.active = false;
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+#[allow(clippy::too_many_arguments)]
+fn run_virtual_routing_worker(
+    _profile_id: Uuid,
+    _profile_name: String,
+    _device_id: u32,
+    _layout: VirtualLayout,
+    _mapping: ProfileMapping,
+    _stop: Arc<std::sync::atomic::AtomicBool>,
+    _status: Arc<Mutex<VirtualRoutingStatus>>,
+    ready: std::sync::mpsc::SyncSender<Result<String, String>>,
+) {
+    let _ = ready.send(Err(
+        "Virtual routing is only available in the Windows build.".to_owned(),
+    ));
 }
 
 #[tauri::command]
@@ -1046,6 +1386,17 @@ async fn wait_for_controller_input() -> Result<input::PressedInput, String> {
     .map_err(|error| error.to_string())?
 }
 
+async fn wait_for_direct_input_button() -> Result<LearnedPhysicalButton, String> {
+    let generation = LOOKUP_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    tauri::async_runtime::spawn_blocking(move || {
+        std::thread::spawn(move || detect_direct_input_button(generation))
+            .join()
+            .map_err(|_| "The controller input worker stopped unexpectedly.".to_owned())?
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 #[tauri::command]
 fn cancel_binding_lookup() {
     LOOKUP_GENERATION.fetch_add(1, Ordering::SeqCst);
@@ -1064,6 +1415,36 @@ fn detect_controller_input(generation: u64) -> Result<input::PressedInput, Strin
         std::thread::sleep(std::time::Duration::from_millis(16));
     }
     Err("No controller input was detected within 30 seconds.".to_owned())
+}
+
+#[cfg(target_os = "windows")]
+fn detect_direct_input_button(generation: u64) -> Result<LearnedPhysicalButton, String> {
+    let mut listener = DirectInputButtonMonitor::new().map_err(|error| error.to_string())?;
+    let started = std::time::Instant::now();
+    while started.elapsed() < std::time::Duration::from_secs(30) {
+        if LOOKUP_GENERATION.load(Ordering::SeqCst) != generation {
+            return Err("Button learning cancelled.".to_owned());
+        }
+        if let Some(pressed) = listener
+            .poll()
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .find(|event| event.pressed && !event.device_name.to_lowercase().contains("vjoy"))
+        {
+            return Ok(LearnedPhysicalButton {
+                device_id: pressed.device_id,
+                device_name: pressed.device_name,
+                button_id: pressed.button_id,
+            });
+        }
+        std::thread::sleep(std::time::Duration::from_millis(16));
+    }
+    Err("No controller button was detected within 30 seconds.".to_owned())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn detect_direct_input_button(_generation: u64) -> Result<LearnedPhysicalButton, String> {
+    Err("DirectInput button learning is only available in the Windows build.".to_owned())
 }
 
 #[cfg(target_os = "windows")]
@@ -1163,12 +1544,16 @@ pub fn run() {
         .map(|profiles| profile_shortcuts(&profiles))
         .unwrap_or_default();
     let (hotkey_tx, hotkey_rx) = std::sync::mpsc::channel();
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(AppState(Mutex::new(store)))
         .manage(HotkeyState(hotkey_tx))
         .manage(VirtualSetupState(
             Mutex::new(VirtualSetupSession::default()),
         ))
+        .manage(VirtualRoutingState {
+            session: Mutex::new(None),
+            status: Arc::new(Mutex::new(VirtualRoutingStatus::default())),
+        })
         .setup(move |app| {
             let handle = app.handle().clone();
             std::thread::spawn(move || poll_hotkeys(handle, hotkey_rx, shortcuts));
@@ -1214,12 +1599,24 @@ pub fn run() {
             virtual_binding_devices,
             preview_virtual_layout,
             import_virtual_layout,
+            virtual_profile_mapping,
+            learn_virtual_profile_button,
+            remove_virtual_profile_button,
+            virtual_routing_status,
+            start_virtual_routing,
+            stop_virtual_routing,
             start_virtual_binding_setup,
             stop_virtual_binding_setup,
             send_next_virtual_button
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running LMUKit");
+        .build(tauri::generate_context!())
+        .expect("error while building LMUKit");
+    app.run(|app_handle, event| {
+        if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+            let state = app_handle.state::<VirtualRoutingState>();
+            let _ = stop_virtual_routing_inner(&state);
+        }
+    });
 }
 
 fn profile_shortcuts(profiles: &[Profile]) -> Vec<(Uuid, u8)> {
