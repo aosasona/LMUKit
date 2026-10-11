@@ -163,7 +163,6 @@ impl VirtualInputBackend for VJoyBackend {
             self.connected = true;
             self.capabilities = Some(VirtualCapabilities {
                 button_count: button_count as u32,
-                optional_axes: None,
                 identity: format!(
                     "vJoy Device {} (driver {:#06x})",
                     self.device_id,

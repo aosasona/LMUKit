@@ -14,7 +14,6 @@ pub mod vjoy;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VirtualCapabilities {
     pub button_count: u32,
-    pub optional_axes: Option<u32>,
     pub identity: String,
 }
 
@@ -105,7 +104,6 @@ impl MockVirtualBackend {
         Self {
             capabilities: VirtualCapabilities {
                 button_count,
-                optional_axes: None,
                 identity: "LMUKit mock virtual controller".to_owned(),
             },
             connected: false,
@@ -191,7 +189,6 @@ mod tests {
         let capabilities = backend.capabilities().unwrap();
 
         assert_eq!(capabilities.button_count, 32);
-        assert_eq!(capabilities.optional_axes, None);
         assert_eq!(capabilities.identity, "LMUKit mock virtual controller");
     }
 

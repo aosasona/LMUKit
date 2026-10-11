@@ -29,6 +29,7 @@ Keep filesystem and parsing behavior in `lmukit-core`; keep platform input detai
 - Preserve unknown profile JSON fields when editing. Only generate mappings for devices already represented in the profile document.
 - Preserve unknown `Settings.JSON` values and its `Option#` description fields. Back up the live file before every save.
 - Group detected FFB settings by their owning device. LMU's `Steering effects strength` uses a raw `0..10000` value and is presented as a `0..100%` gain control.
+- Virtual Input Mode is button-only. It may translate programmable buttons, switches, encoder steps, and optional digital paddles, but it must never read, transform, suppress, or emit steering/pedal axes or participate in the FFB path. Existing profile/settings editing of LMU's stored FFB values is a separate legacy tool.
 - Compare parsed `serde_json::Value` values for dirty detection so formatting and object-key order do not create false positives.
 - Preserve backward compatibility for `settings.json` with `#[serde(default)]` or an explicit migration.
 - Do not inspect, modify, or commit a developer's real profiles or Windows application data.

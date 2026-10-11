@@ -1,6 +1,6 @@
 # Virtual Input Mode: audit and feasibility gate
 
-Status: **end-to-end Simagic button routing into LMU passed; restart stability and driving-session FFB coexistence pending**
+Status: **end-to-end Simagic button routing into LMU passed; restart stability and driving-session non-interference pending**
 Audit date: 2026-10-11
 
 This document records the repository audit and the evidence required before LMUKit can describe Virtual Input Mode as compatible with LMU. The first implementation phase is deliberately isolated from the production UI and persistence model. It does not install a driver, alter LMU files, suppress physical controls, or replace the existing JSON profile-switching workflow.
@@ -62,7 +62,9 @@ LMU v1.4200 then detected `vJoy Device` and accepted controlled outputs as `B1` 
 
 The recorded environment was vJoy 2.2.2.0, vJoy device 1 configured with eight buttons, LMU v1.4200, and Windows build 26300.9550 (26H2). The initial binding-capture actions shown above were Time Acceleration (`B1`) and Place Replay Marker (`B2`). Both outputs were released by the probe after a 1.5-second hold.
 
-The end-to-end test used a `SIMAGIC Alpha EVO Wheelbase` exposing 116 DirectInput buttons. Windows Gaming Input did not enumerate the wheelbase, so the probe used the DirectInput source adapter. Physical buttons 1 and 2 produced matched vJoy press/release events, and the user confirmed that LMU responded in a replay through the rebound Driving Cameras (`B1`) and Spectator Cameras (`B2`) actions. Rapid repeated button 2 events were delivered, and the probe cleared all virtual outputs when its bounded run ended. This confirms the smallest physical-button -> virtual-button -> live LMU action pipeline on this machine. It does not yet establish steering/FFB coexistence in a driving session, identity stability after restarts, or reliable persisted profile remapping.
+The end-to-end test used a `SIMAGIC Alpha EVO Wheelbase` exposing 116 DirectInput buttons. Windows Gaming Input did not enumerate the wheelbase, so the probe used the DirectInput source adapter. Physical buttons 1 and 2 produced matched vJoy press/release events, and the user confirmed that LMU responded in a replay through the rebound Driving Cameras (`B1`) and Spectator Cameras (`B2`) actions. Rapid repeated button 2 events were delivered, and the probe cleared all virtual outputs when its bounded run ended. This confirms the smallest physical-button -> virtual-button -> live LMU action pipeline on this machine. It does not yet establish non-interference with the direct steering/FFB path in a driving session, identity stability after restarts, or reliable persisted profile remapping.
+
+Virtual Input Mode is intentionally button-only. Steering, throttle, brake, clutch, and FFB always remain direct between the physical hardware and LMU. LMUKit must not read or emit those axes, transform or suppress them, or participate in force-feedback delivery. Device discovery may report axis capability metadata, and a platform API may require ignored axis buffers while reading buttons, but axes never enter the mapping pipeline. Editing LMU's saved FFB configuration values remains an independent legacy profile/settings feature.
 
 Windows `RawGameController` did not enumerate either this vJoy device or the active Simagic wheelbase. That means the existing WGI-based physical-input reader is insufficient for this hardware; the production routing engine needs a DirectInput physical adapter. LMU's successful binding test confirms LMU is not limited to that same enumeration path. One additional inactive/unknown vJoy driver node appeared after reboot, and the difficult installer experience remains a product/distribution concern. Do not weaken Windows security settings. The adapter remains isolated and experimental until the remaining restart-stability and driving-session gates pass.
 
@@ -97,7 +99,7 @@ Windows recognising vJoy does **not** prove that LMU will expose or accept it. B
 1. Install the signed vJoy release manually and configure device 1 with at least two buttons.
 2. Run `lmukit-virtual-probe.exe directinput-list`, locate vJoy's index, then run `lmukit-virtual-probe.exe verify 1 <index>`. Require observed press/release pairs and clean disconnect. `pulse 1 1500` plus Windows controller properties (`joy.cpl`) remains an optional visual check.
 3. **Passed on 2026-10-11:** LMU v1.4200 detected `vJoy Device` and registered buttons 1 and 2 as `B1` and `B2`.
-4. **Button route passed on 2026-10-11:** `directinput-mirror` routed buttons 1 and 2 from the Simagic Alpha EVO Wheelbase through stable vJoy outputs, and LMU changed the bound replay camera actions. Steering and FFB coexistence still requires a driving-session test.
+4. **Button route passed on 2026-10-11:** `directinput-mirror` routed buttons 1 and 2 from the Simagic Alpha EVO Wheelbase through stable vJoy outputs, and LMU changed the bound replay camera actions. A driving-session test must still confirm that this separate button route does not interfere with direct steering or FFB.
 5. Restart LMUKit, then LMU, without recreating or reconfiguring the virtual device. Record the displayed device identity and confirm the bindings remain valid.
 6. Change only the probe mapping/profile and confirm that the same virtual device and LMU bindings continue to work without restarting LMU.
 7. Confirm that direct physical button bindings can coexist and document how users avoid accidental duplicate bindings. LMUKit does not hide or suppress the physical device.
