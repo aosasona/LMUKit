@@ -1,12 +1,17 @@
+import { invoke } from "@tauri-apps/api/core";
 import {
+  Activity,
   AlertCircle,
   Check,
   Copy,
+  Download,
   FileJson,
+  FolderOpen,
   LoaderCircle,
   Minus,
   Plus,
   PlusCircle,
+  RefreshCw,
   Trash2,
   Type,
 } from "lucide-react";
@@ -17,11 +22,18 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import type { CompanionApp, Profile } from "../models";
+import type { CompanionApp, DiagnosticStatus, Profile } from "../models";
 
 const MIN_SCALE = 0.85;
 const MAX_SCALE = 1.4;
 const STEP = 0.05;
+
+const formatBytes = (bytes: number) =>
+  bytes < 1024
+    ? `${bytes} B`
+    : bytes < 1024 * 1024
+      ? `${(bytes / 1024).toFixed(1)} KB`
+      : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
 type Props = {
   fontScale: number;
@@ -73,6 +85,11 @@ export function SettingsPage(props: Props) {
   const [saveState, setSaveState] = useState<
     "saved" | "pending" | "saving" | "error"
   >("saved");
+  const [diagnostics, setDiagnostics] = useState<DiagnosticStatus | null>(null);
+  const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
+  const [diagnosticsMessage, setDiagnosticsMessage] = useState<string | null>(
+    null,
+  );
   const saveRevision = useRef(0);
   const saveSettings = useRef(onSaveSettings);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
@@ -139,6 +156,45 @@ export function SettingsPage(props: Props) {
     },
     [],
   );
+
+  const loadDiagnostics = async () => {
+    try {
+      setDiagnostics(await invoke<DiagnosticStatus>("diagnostic_status"));
+    } catch (error) {
+      setDiagnosticsMessage(String(error));
+    }
+  };
+  useEffect(() => {
+    void loadDiagnostics();
+    const timer = window.setInterval(() => void loadDiagnostics(), 3000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const openLogs = async () => {
+    setDiagnosticsBusy(true);
+    setDiagnosticsMessage(null);
+    try {
+      await invoke("reveal_logs");
+    } catch (error) {
+      setDiagnosticsMessage(String(error));
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  };
+  const exportDiagnostics = async () => {
+    setDiagnosticsBusy(true);
+    setDiagnosticsMessage(null);
+    try {
+      const path = await invoke<string>("export_diagnostic_report");
+      setDiagnosticsMessage(`Diagnostic report saved to ${path}`);
+      await invoke("reveal_logs");
+      await loadDiagnostics();
+    } catch (error) {
+      setDiagnosticsMessage(String(error));
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  };
 
   const previewScale = (scale: number) => {
     const normalized = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
@@ -383,6 +439,114 @@ export function SettingsPage(props: Props) {
             </button>
           </div>
         </div>
+      </section>
+
+      <section className="settings-card diagnostics-card">
+        <SettingsHeading
+          icon={<Activity />}
+          eyebrow="Support"
+          title="Diagnostics and logs"
+        >
+          Check virtual-input health and create a privacy-redacted report when
+          something goes wrong.
+        </SettingsHeading>
+        {diagnostics ? (
+          <>
+            <div className="diagnostic-grid">
+              <span>
+                <small>Virtual input</small>
+                <strong className={diagnostics.routing.error ? "warning" : ""}>
+                  {diagnostics.virtualHealth}
+                </strong>
+              </span>
+              <span>
+                <small>Active profile</small>
+                <strong>{diagnostics.activeProfile ?? "None"}</strong>
+              </span>
+              <span>
+                <small>Input mode</small>
+                <strong>{diagnostics.inputMode}</strong>
+              </span>
+              <span>
+                <small>Controllers</small>
+                <strong>{diagnostics.devices.length} detected</strong>
+              </span>
+            </div>
+            <div className="diagnostic-log-row">
+              <span>
+                <small>Log storage</small>
+                <strong>
+                  {formatBytes(diagnostics.currentLogSize)} ·{" "}
+                  {diagnostics.retainedLogFiles} file
+                  {diagnostics.retainedLogFiles === 1 ? "" : "s"}
+                </strong>
+                <code>{diagnostics.logDirectory}</code>
+              </span>
+              <div>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={diagnosticsBusy}
+                  onClick={() => void loadDiagnostics()}
+                >
+                  <RefreshCw /> Refresh
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={diagnosticsBusy}
+                  onClick={() => void openLogs()}
+                >
+                  <FolderOpen /> Open logs folder
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={diagnosticsBusy}
+                  onClick={() => void exportDiagnostics()}
+                >
+                  {diagnosticsBusy ? (
+                    <LoaderCircle className="spin" />
+                  ) : (
+                    <Download />
+                  )}
+                  Export report
+                </button>
+              </div>
+            </div>
+            {!!diagnostics.devices.length && (
+              <details className="diagnostic-devices">
+                <summary>
+                  Attached DirectInput controllers
+                  <span>{diagnostics.devices.length}</span>
+                </summary>
+                <div>
+                  {diagnostics.devices.map((device, index) => (
+                    <span key={`${device.name}-${device.productName}-${index}`}>
+                      <strong>{device.productName || device.name}</strong>
+                      <small>{device.buttonCount} buttons</small>
+                    </span>
+                  ))}
+                </div>
+              </details>
+            )}
+            {!!diagnostics.recentErrors.length && (
+              <div className="diagnostic-errors">
+                <strong>Recent warnings and errors</strong>
+                {diagnostics.recentErrors.map((error, index) => (
+                  <span key={`${index}-${error}`}>{error}</span>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="diagnostic-loading">
+            <LoaderCircle className="spin" /> Reading diagnostic status…
+          </div>
+        )}
+        {diagnosticsMessage && (
+          <div className="diagnostic-message">{diagnosticsMessage}</div>
+        )}
       </section>
     </section>
   );

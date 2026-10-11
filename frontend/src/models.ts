@@ -136,6 +136,23 @@ export type VirtualSetupEvent = {
   pulse: VirtualButtonPulse | null;
   error: string | null;
 };
+export type DiagnosticDevice = {
+  name: string;
+  productName: string;
+  buttonCount: number;
+};
+export type DiagnosticStatus = {
+  appVersion: string;
+  logDirectory: string;
+  currentLogSize: number;
+  retainedLogFiles: number;
+  recentErrors: string[];
+  activeProfile: string | null;
+  inputMode: string;
+  virtualHealth: string;
+  routing: VirtualRoutingStatus;
+  devices: DiagnosticDevice[];
+};
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };
