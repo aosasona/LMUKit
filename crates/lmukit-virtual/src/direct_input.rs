@@ -37,13 +37,10 @@ const DIPROP_BUFFERSIZE_POINTER: *const GUID = 1usize as *const GUID;
 // sliders, and four POV values. DirectInput buffered events use these offsets.
 const DIJOFS_BUTTON0: u32 = 48;
 
-#[link(name = "dinput8", kind = "static")]
+#[link(name = "dxguid", kind = "static")]
 unsafe extern "system" {
     static c_dfDIJoystick2: DIDATAFORMAT;
 }
-
-#[link(name = "dxguid", kind = "static")]
-unsafe extern "system" {}
 
 #[derive(Clone, Debug)]
 pub struct DirectInputDeviceSummary {

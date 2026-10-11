@@ -186,6 +186,7 @@ cargo clippy -p lmukit-virtual --all-targets --all-features -- -D warnings
 pnpm build
 cargo xwin check -p lmukit --target x86_64-pc-windows-msvc
 cargo xwin check -p lmukit-virtual --target x86_64-pc-windows-msvc
+cargo xwin test -p lmukit-virtual --target x86_64-pc-windows-msvc --no-run
 ```
 
 Repository architecture, data-format invariants, and guidance for human and AI-assisted contributors are maintained in [AGENTS.md](AGENTS.md).

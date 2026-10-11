@@ -90,9 +90,10 @@ cargo clippy -p lmukit-virtual --all-targets --all-features -- -D warnings
 pnpm build
 cargo xwin check -p lmukit --target x86_64-pc-windows-msvc
 cargo xwin check -p lmukit-virtual --target x86_64-pc-windows-msvc
+cargo xwin test -p lmukit-virtual --target x86_64-pc-windows-msvc --no-run
 ```
 
-Use `mise run dev` to cross-build and launch the Windows debug app from WSL, and `mise run build` for a Windows release executable. WSL cross-checks the Windows backend with `cargo xwin`; the tagged native-Windows workflow embeds resources and produces the portable archive and NSIS installer.
+Use `mise run dev` to cross-build and launch the Windows debug app from WSL, and `mise run build` for a Windows release executable. WSL cross-checks the Windows backend with `cargo xwin`; the no-run test build is required because `cargo xwin check` does not catch missing native link libraries. The tagged native-Windows workflow embeds resources and produces the portable archive and NSIS installer.
 
 ## Change discipline
 
