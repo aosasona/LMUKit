@@ -32,6 +32,7 @@ const DIRECT_INPUT_EVENT_BATCH_SIZE: usize = 64;
 // whose address is the property ID, rather than a normal GUID value. The
 // windows crate exposes a GUID-shaped constant, but passing its address makes
 // DirectInput reject the property.
+#[allow(clippy::manual_dangling_ptr)]
 const DIPROP_BUFFERSIZE_POINTER: *const GUID = 1usize as *const GUID;
 #[derive(Clone, Debug)]
 pub struct DirectInputDeviceSummary {

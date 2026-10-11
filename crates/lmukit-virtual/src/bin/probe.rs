@@ -385,7 +385,7 @@ mod windows_probe {
         let controllers = RawGameController::RawGameControllers()?;
         for index in 0..controllers.Size()? {
             let controller = controllers.GetAt(index)?;
-            if controller.NonRoamableId()?.to_string() == non_roamable_id {
+            if controller.NonRoamableId()? == non_roamable_id {
                 return Ok(controller);
             }
         }
