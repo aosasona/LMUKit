@@ -45,6 +45,7 @@ body {
   min-width: 900px;
   min-height: 100vh;
   overflow: hidden;
+  font-weight: 450;
   background:
     radial-gradient(
       circle at 68% -20%,
@@ -59,11 +60,15 @@ input,
 select,
 textarea {
   font: inherit;
+  font-weight: 500;
+}
+small {
+  font-weight: 500;
 }
 input,
 select,
 textarea {
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
 }
 input[type="checkbox"] {
   position: relative;
@@ -253,7 +258,7 @@ button {
 }
 .brand small {
   color: #69756f;
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
   display: block;
   margin-top: 2px;
 }
@@ -304,7 +309,7 @@ nav {
 .nav-item em {
   margin-left: auto;
   font-style: normal;
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
   padding: 2px 6px;
   background: #27291f;
   border-radius: 10px;
@@ -328,11 +333,11 @@ nav {
   display: block;
 }
 .game-state strong {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 .game-state small {
   color: #65716c;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
   margin-top: 2px;
 }
 .pulse {
@@ -356,7 +361,7 @@ nav {
   min-height: 38px;
   padding: 7px 12px;
   cursor: pointer;
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
 }
 .keyboard-hint kbd {
   margin-left: auto;
@@ -408,7 +413,7 @@ main {
 .input-mode-switch > span {
   padding: 0 9px 0 7px;
   color: #69746f;
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   text-transform: uppercase;
   letter-spacing: 0.05em;
   white-space: nowrap;
@@ -422,7 +427,7 @@ main {
   border: 0;
   background: transparent;
   color: #727e78;
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   cursor: pointer;
   white-space: nowrap;
 }
@@ -449,7 +454,7 @@ main {
   display: flex;
   gap: 8px;
   align-items: center;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 .ghost kbd {
   margin-left: 24px;
@@ -516,7 +521,7 @@ main {
   background: rgba(198, 243, 107, 0.07);
   border: 1px solid rgba(198, 243, 107, 0.15);
   color: #d8f5a1;
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
   font-weight: 600;
 }
 .chip .pulse {
@@ -532,7 +537,7 @@ main {
 }
 .hero-copy p {
   color: #839089;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   line-height: 1.6;
   max-width: 390px;
 }
@@ -552,7 +557,7 @@ main {
   justify-content: center;
   gap: 7px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   font-weight: 600;
 }
 .primary {
@@ -633,7 +638,7 @@ main {
 .metric-card small {
   display: block;
   color: #6f7c76;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 .metric-card strong {
   display: inline-block;
@@ -643,7 +648,7 @@ main {
   margin: 2px 0;
 }
 .metric-card strong.word {
-  font-size: 16px;
+  font-size: calc(16px * var(--font-scale));
   color: #d9f6a4;
 }
 .panel {
@@ -671,7 +676,7 @@ main {
   border: 0;
   background: transparent;
   color: #819089;
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
   display: flex;
   align-items: center;
   cursor: pointer;
@@ -708,11 +713,11 @@ main {
   display: block;
 }
 .mini-profile strong {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 .mini-profile small {
   color: #65726c;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
   margin-top: 3px;
 }
 .mini-profile kbd {
@@ -744,11 +749,11 @@ main {
   display: block;
 }
 .quick-actions strong {
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
 }
 .quick-actions small {
   color: #626e68;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
   margin-top: 2px;
 }
 .profiles-page {
@@ -887,7 +892,7 @@ main {
   width: 44px;
   flex: 0 0 auto;
   color: #69746e;
-  font-size: 8px;
+  font-size: calc(11px * var(--font-scale));
   text-transform: uppercase;
   letter-spacing: 1px;
 }
@@ -897,7 +902,7 @@ main {
   background: #1b1b19;
   color: #7e8a84;
   padding: 5px 8px;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
   white-space: nowrap;
 }
 .category-browser button {
@@ -957,12 +962,12 @@ main {
 }
 .profile-card header strong {
   color: #e3e9e6;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 .profile-card header small {
   margin-top: 3px;
   color: #68736d;
-  font-size: 8px;
+  font-size: calc(11px * var(--font-scale));
 }
 .profile-card-icon {
   width: 34px;
@@ -996,7 +1001,7 @@ img.profile-card-icon {
 .active-badge {
   margin-left: auto;
   color: #bedf7a;
-  font-size: 8px;
+  font-size: calc(11px * var(--font-scale));
   text-transform: uppercase;
   letter-spacing: 0.7px;
 }
@@ -1050,7 +1055,7 @@ img.profile-card-icon {
   gap: 9px;
   min-height: 24px;
   color: #69746f;
-  font-size: 8px;
+  font-size: calc(11px * var(--font-scale));
 }
 .profile-card-meta kbd {
   margin-left: auto;
@@ -1074,7 +1079,7 @@ img.profile-card-icon {
 .category-editor h4 {
   margin: 4px 0 0;
   color: #d9e0dc;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 .category-fields {
   display: grid;
@@ -1095,7 +1100,7 @@ img.profile-card-icon {
 .identity-field > span,
 .class-selector > span {
   color: #69746e;
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
   text-transform: uppercase;
   letter-spacing: 0.8px;
 }
@@ -1107,7 +1112,7 @@ img.profile-card-icon {
   padding: 0 11px;
   background: #141414;
   color: #dce4e0;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
 }
 .wheel-library-field {
   grid-column: 1 / -1;
@@ -1148,7 +1153,7 @@ img.profile-card-icon {
 }
 .class-selector em {
   color: #59635e;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
   font-style: normal;
   text-transform: none;
   letter-spacing: 0;
@@ -1163,7 +1168,7 @@ img.profile-card-icon {
   background: #191918;
   color: #7c8781;
   padding: 7px 10px;
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
   cursor: pointer;
 }
 .class-selector button.selected {
@@ -1173,7 +1178,7 @@ img.profile-card-icon {
 }
 .tag-field > span {
   color: #69746e;
-  font-size: 8px;
+  font-size: calc(11px * var(--font-scale));
   text-transform: uppercase;
   letter-spacing: 0.8px;
 }
@@ -1189,7 +1194,7 @@ img.profile-card-icon {
   background: #1c1d19;
   color: #a8b49e;
   padding: 4px 6px;
-  font-size: 8px;
+  font-size: calc(11px * var(--font-scale));
   cursor: pointer;
   white-space: nowrap;
 }
@@ -1212,7 +1217,7 @@ img.profile-card-icon {
   padding: 6px 7px;
   background: transparent;
   color: #dce4e0;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 .tag-entry button {
   align-self: stretch;
@@ -1221,7 +1226,7 @@ img.profile-card-icon {
   background: #22241c;
   color: #bddb79;
   padding: 0 8px;
-  font-size: 8px;
+  font-size: calc(11px * var(--font-scale));
   cursor: pointer;
 }
 .tag-picker {
@@ -1232,7 +1237,7 @@ img.profile-card-icon {
 }
 .tag-picker > span {
   color: #69746e;
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
   text-transform: uppercase;
   letter-spacing: 0.8px;
 }
@@ -1251,7 +1256,7 @@ img.profile-card-icon {
   color: #dce4e0;
   cursor: pointer;
   list-style: none;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
 }
 .tag-picker summary::-webkit-details-marker {
   display: none;
@@ -1313,7 +1318,7 @@ img.profile-card-icon {
   outline: 0;
   background: transparent;
   color: #e3ebe7;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
 }
 .tag-picker-options {
   min-height: 0;
@@ -1335,7 +1340,7 @@ img.profile-card-icon {
   color: #aab5af;
   text-align: left;
   cursor: pointer;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 .tag-picker-options button:hover,
 .tag-picker-options button.selected {
@@ -1358,7 +1363,7 @@ img.profile-card-icon {
   display: block;
   padding: 4px 9px 5px;
   color: #6f7b75;
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   text-transform: uppercase;
   letter-spacing: 0.8px;
 }
@@ -1372,7 +1377,7 @@ img.profile-card-icon {
   display: block;
   padding: 10px 9px;
   color: #69746f;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 .profiles-toolbar {
   display: flex;
@@ -1398,7 +1403,7 @@ img.profile-card-icon {
   background: transparent;
   color: #dce5e0;
   width: 100%;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
 }
 .profile-table-head,
 .profile-row {
@@ -1413,7 +1418,7 @@ img.profile-card-icon {
 .profile-table-head {
   color: #58655f;
   text-transform: uppercase;
-  font-size: 8px;
+  font-size: calc(11px * var(--font-scale));
   letter-spacing: 1.1px;
   border-bottom: 1px solid var(--line);
 }
@@ -1421,7 +1426,7 @@ img.profile-card-icon {
   min-height: 66px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.045);
   color: #849089;
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
   cursor: pointer;
 }
 .profile-row:hover,
@@ -1451,11 +1456,11 @@ img.profile-card-icon {
 }
 .profile-main strong {
   color: #e2eae6;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 .profile-main small {
   color: #5f6c66;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
   margin-top: 3px;
 }
 .compact {
@@ -1466,7 +1471,7 @@ img.profile-card-icon {
   border: 0;
   background: transparent;
   color: #bfe66d;
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
 }
 .empty {
   color: #66736d;
@@ -1521,7 +1526,7 @@ img.profile-card-icon {
 }
 .selected-context small {
   color: #66736d;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 .selected-context strong {
   color: #dfe7e3;
@@ -1539,11 +1544,11 @@ img.profile-card-icon {
 }
 .device-manager-head h3 {
   margin: 4px 0 0;
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale));
 }
 .device-manager-head > small {
   color: #69746f;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 .device-list {
   display: grid;
@@ -1568,13 +1573,13 @@ img.profile-card-icon {
 }
 .device-row strong {
   color: #dfe7e3;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 .device-row small {
   max-width: 310px;
   margin-top: 3px;
   color: #65716c;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1587,7 +1592,7 @@ img.profile-card-icon {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
   cursor: pointer;
 }
 .remove-device:hover {
@@ -1602,7 +1607,7 @@ img.profile-card-icon {
   align-items: center;
   gap: 7px;
   color: #d6a09a;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 .danger {
   border: 1px solid rgba(255, 101, 87, 0.35);
@@ -1610,7 +1615,7 @@ img.profile-card-icon {
   color: #ff9b91;
   padding: 7px 9px;
   cursor: pointer;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 .danger:hover {
   background: #c42b1c;
@@ -1632,7 +1637,7 @@ img.profile-card-icon {
 .device-note {
   margin: 0 0 10px;
   color: #69746f;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 .profile-tools,
 .profile-management {
@@ -1659,7 +1664,7 @@ img.profile-card-icon {
   border: 1px solid rgba(244, 211, 94, 0.24);
   background: transparent;
   color: #ddd08f;
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   cursor: pointer;
 }
 @media (max-width: 1180px) {
@@ -1685,7 +1690,7 @@ img.profile-card-icon {
   outline: 0;
   background: transparent;
   color: #dce5e0;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
 }
 .capture-box button {
   min-height: 38px;
@@ -1695,7 +1700,7 @@ img.profile-card-icon {
   color: #bcd976;
   padding: 0 11px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 .capture-box button:disabled {
   opacity: 0.45;
@@ -1711,7 +1716,7 @@ img.profile-card-icon {
 }
 .global-shortcut-note {
   color: #68736d;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
   display: flex;
   align-items: center;
   gap: 7px;
@@ -1770,7 +1775,7 @@ img.profile-card-icon {
   padding: 3px 7px;
   border: 1px solid var(--line);
   color: #89958e;
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .profile-editor-context-tags .wheel-tag {
   border-color: rgba(198, 243, 107, 0.2);
@@ -1785,7 +1790,7 @@ img.profile-card-icon {
   padding: 5px 8px;
   border: 1px solid rgba(198, 243, 107, 0.18);
   color: #a9c870;
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   text-transform: uppercase;
   letter-spacing: 0.7px;
 }
@@ -1834,7 +1839,7 @@ img.profile-card-icon {
 .profile-editor-save > span {
   margin-right: 4px;
   color: #d6b56c;
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
 }
 .profile-editor-save button {
   height: 34px;
@@ -1842,7 +1847,7 @@ img.profile-card-icon {
 .ffb-editor h2,
 .json-preview h2 {
   margin: 4px 0 0;
-  font-size: 23px;
+  font-size: calc(23px * var(--font-scale));
 }
 .ffb-intro {
   display: flex;
@@ -1855,7 +1860,7 @@ img.profile-card-icon {
 .json-preview > p {
   margin: 6px 0 0;
   color: #7c8881;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 .ffb-groups {
   display: grid;
@@ -1927,7 +1932,7 @@ img.profile-card-icon {
   border: 1px solid var(--line);
   background: #171715;
   color: #727e78;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 .binding-groups {
   display: grid;
@@ -1946,12 +1951,12 @@ img.profile-card-icon {
 }
 .binding-device h3 {
   margin: 3px 0 0;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 .binding-device header em {
   margin-left: auto;
   color: #6e7973;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
   font-style: normal;
 }
 .binding-row {
@@ -1971,13 +1976,13 @@ img.profile-card-icon {
   display: block;
 }
 .binding-row strong {
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
   color: #dce4e0;
 }
 .binding-row small {
   margin-top: 3px;
   color: #b79a56;
-  font-size: 8px;
+  font-size: calc(11px * var(--font-scale));
 }
 .binding-row code {
   color: #68736d;
@@ -1992,7 +1997,7 @@ img.profile-card-icon {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
   cursor: pointer;
 }
 .binding-row button:hover {
@@ -2007,7 +2012,7 @@ img.profile-card-icon {
   background: #22251c;
   color: #c5dd8a;
   border: 1px solid rgba(198, 243, 107, 0.12);
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 .binding-toolbar-actions {
   display: flex;
@@ -2050,14 +2055,14 @@ img.profile-card-icon {
 }
 .lookup-control span {
   color: #68736d;
-  font-size: 8px;
+  font-size: calc(11px * var(--font-scale));
   text-transform: uppercase;
   letter-spacing: 1px;
 }
 .lookup-control strong {
   margin-top: 4px;
   color: #e0e7e3;
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
 }
 .lookup-matches {
   min-width: 0;
@@ -2080,13 +2085,13 @@ img.profile-card-icon {
 }
 .lookup-matches strong {
   color: #dce4e0;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 .lookup-matches span,
 .lookup-matches .no-match {
   margin-top: 3px;
   color: #77827c;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 @keyframes listening-pulse {
   from {
@@ -2099,7 +2104,7 @@ img.profile-card-icon {
 
 /* Readable desktop type scale. */
 .brand strong {
-  font-size: 19px;
+  font-size: calc(19px * var(--font-scale));
 }
 .brand small,
 .game-state small,
@@ -2108,7 +2113,7 @@ img.profile-card-icon {
 .ghost,
 .primary,
 .secondary {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 .game-state small,
 .keyboard-hint,
@@ -2135,18 +2140,18 @@ img.profile-card-icon {
 .lookup-matches strong,
 .lookup-matches span,
 .lookup-matches .no-match {
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
 }
 .topbar h1 {
-  font-size: 28px;
+  font-size: calc(28px * var(--font-scale));
 }
 .hero-copy p,
 .focus-placeholder p {
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
 }
 .section-head h3,
 .device-manager-head h3 {
-  font-size: 16px;
+  font-size: calc(16px * var(--font-scale));
 }
 .profile-card header strong,
 .device-row strong,
@@ -2154,36 +2159,36 @@ img.profile-card-icon {
 .mini-profile strong,
 .binding-device h3,
 .category-editor h4 {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 .profile-main small,
 .mini-profile small,
 .device-row small,
 .quick-actions strong,
 .quick-actions small {
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
 }
 .search-box input,
 .capture-box input {
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
 }
 .capture-box button {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 .binding-row strong {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 .binding-row small {
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 .lookup-control span {
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 .lookup-control strong {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 footer {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 .cancel-listening {
   border-color: rgba(244, 211, 94, 0.3);
@@ -2233,7 +2238,7 @@ footer {
   color: #bac3be;
   padding: 9px 10px;
   text-align: left;
-  font-size: 10px;
+  font-size: calc(12px * var(--font-scale));
   cursor: pointer;
 }
 .action-menu > div button:hover {
@@ -2275,12 +2280,12 @@ footer {
 }
 .add-binding-dialog h2 {
   margin: 7px 34px 8px 0;
-  font-size: 20px;
+  font-size: calc(20px * var(--font-scale));
 }
 .add-binding-dialog > p {
   margin: 0 0 17px;
   color: #8b9690;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   line-height: 1.6;
 }
 .binding-action-search {
@@ -2386,7 +2391,7 @@ footer {
 }
 .quick-switcher h2 {
   margin: 4px 40px 0 0;
-  font-size: 21px;
+  font-size: calc(21px * var(--font-scale));
 }
 .quick-switcher-results {
   min-height: 90px;
@@ -2425,14 +2430,14 @@ footer {
 }
 .quick-switcher-results strong {
   overflow: hidden;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .quick-switcher-results small {
   margin-top: 4px;
   color: #758079;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 .quick-switcher-wheel {
   width: 48px;
@@ -2454,16 +2459,16 @@ footer {
   padding: 11px 0 0;
   border: 0;
   color: #66716b;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
 }
 .confirm-dialog h2 {
   margin: 7px 34px 8px 0;
-  font-size: 20px;
+  font-size: calc(20px * var(--font-scale));
 }
 .confirm-dialog p {
   margin: 0;
   color: #8b9690;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   line-height: 1.6;
 }
 .confirm-dialog > div {
@@ -2496,7 +2501,7 @@ footer {
   border-top: 1px solid var(--line);
   padding: 9px 32px;
   color: #5b6761;
-  font-size: 9px;
+  font-size: calc(11px * var(--font-scale));
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2594,7 +2599,7 @@ kbd,
   font-size: calc(17px * var(--font-scale));
 }
 .lookup-control span {
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .binding-device h3 {
   font-size: calc(14px * var(--font-scale));
@@ -3154,7 +3159,7 @@ textarea,
 .diagnostic-grid small,
 .diagnostic-log-row small {
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -3193,7 +3198,7 @@ textarea,
   margin-top: 5px;
   overflow: hidden;
   color: #758079;
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3222,7 +3227,7 @@ textarea,
 }
 .diagnostic-retention small {
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -3273,7 +3278,7 @@ textarea,
   gap: 12px;
   padding: 0 12px;
   color: #c7d0cb;
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   cursor: pointer;
   list-style: none;
 }
@@ -3302,14 +3307,14 @@ textarea,
 .diagnostic-devices strong {
   overflow: hidden;
   color: #d8dfdb;
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .diagnostic-devices small {
   margin-top: 2px;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .diagnostic-errors,
 .diagnostic-message {
@@ -3318,7 +3323,7 @@ textarea,
   border: 1px solid rgba(244, 211, 94, 0.28);
   background: rgba(244, 211, 94, 0.055);
   color: #d7ca84;
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .diagnostic-errors {
   display: grid;
@@ -3326,7 +3331,7 @@ textarea,
 }
 .diagnostic-errors > strong {
   color: var(--amber);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .diagnostic-loading {
   display: flex;
@@ -3334,7 +3339,7 @@ textarea,
   gap: 9px;
   margin-top: 20px;
   color: var(--muted);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .diagnostic-loading svg {
   width: 16px;
@@ -3488,7 +3493,7 @@ textarea,
 .profile-list-title em {
   flex: 0 0 auto;
   color: #badb78;
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   font-style: normal;
   text-transform: uppercase;
   letter-spacing: 0.7px;
@@ -3505,7 +3510,7 @@ textarea,
   max-width: 140px;
   padding: 3px 6px;
   overflow: hidden;
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   text-overflow: ellipsis;
 }
 .profile-detail-pane {
@@ -3536,7 +3541,7 @@ textarea,
   display: block;
   margin-top: 5px;
   color: #748078;
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .profile-detail-wheel {
   width: 76px;
@@ -3572,7 +3577,7 @@ textarea,
   min-width: 0;
   padding: 10px 12px;
   color: #6f7b75;
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .profile-detail-metrics span + span {
   border-left: 1px solid var(--line);
@@ -3614,7 +3619,7 @@ textarea,
   max-width: 560px;
   margin: 5px 0 0;
   color: var(--muted);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   line-height: 1.45;
 }
 .profile-virtual-mapping-actions {
@@ -3626,7 +3631,7 @@ textarea,
 .profile-virtual-mapping-actions > span {
   flex: 0 0 auto;
   color: var(--muted);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   white-space: nowrap;
 }
 .profile-virtual-mapping-actions button {
@@ -3658,7 +3663,7 @@ textarea,
 .encoder-dialog > header p {
   margin: 5px 0 0;
   color: var(--muted);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .encoder-landing,
 .encoder-wizard {
@@ -3692,7 +3697,7 @@ textarea,
 .encoder-landing-copy p {
   margin-top: 4px;
   color: var(--muted);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .encoder-card-grid {
   display: grid;
@@ -3738,14 +3743,14 @@ textarea,
 .encoder-card-grid small {
   margin-top: 3px;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .encoder-empty {
   grid-column: 1 / -1;
   padding: 30px;
   border: 1px dashed var(--line);
   color: var(--muted);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   text-align: center;
 }
 .encoder-wizard {
@@ -3766,7 +3771,7 @@ textarea,
   gap: 8px;
   padding: 11px;
   color: #686b63;
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .encoder-progress b {
   width: 21px;
@@ -3775,7 +3780,7 @@ textarea,
   place-items: center;
   border: 1px solid #484b44;
   color: inherit;
-  font-size: calc(8px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .encoder-progress span.active {
   color: var(--text);
@@ -3797,7 +3802,7 @@ textarea,
 }
 .encoder-step-number {
   color: var(--teal);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -3810,7 +3815,7 @@ textarea,
 .encoder-actions-heading p {
   margin: 7px 0 20px;
   color: var(--muted);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   line-height: 1.55;
 }
 .encoder-details-step label,
@@ -3823,7 +3828,7 @@ textarea,
   display: block;
   margin-bottom: 6px;
   color: var(--muted);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .encoder-details-step input,
 .encoder-actions-step input {
@@ -3889,14 +3894,14 @@ textarea,
 .encoder-listener small {
   margin-top: 5px;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .encoder-capture-warning,
 .encoder-conflicts {
   border: 1px solid rgba(244, 211, 94, 0.34);
   background: rgba(244, 211, 94, 0.07);
   color: #e7d98e;
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   line-height: 1.45;
 }
 .encoder-capture-warning {
@@ -3912,7 +3917,7 @@ textarea,
 .encoder-conflicts strong {
   margin-bottom: 2px;
   color: var(--amber);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .encoder-capture-actions {
   display: flex;
@@ -3943,7 +3948,7 @@ textarea,
   border: 1px solid var(--line);
   background: #0e0f0d;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3979,7 +3984,7 @@ textarea,
   border: 1px solid transparent;
   background: transparent;
   color: var(--muted);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3992,7 +3997,7 @@ textarea,
   place-items: center;
   border: 1px solid #3a3e37;
   color: #8d978f;
-  font-size: calc(8px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .encoder-mode-tabs button.active {
   border-color: rgba(198, 243, 107, 0.25);
@@ -4063,12 +4068,12 @@ textarea,
   white-space: nowrap;
 }
 .encoder-action-picker > summary strong {
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .encoder-action-picker > summary small {
   margin-top: 3px;
   color: var(--muted);
-  font-size: calc(8px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .encoder-action-picker > summary svg {
   width: 15px;
@@ -4124,7 +4129,7 @@ textarea,
   border: 0;
   background: transparent;
   color: #cbd4cf;
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   text-align: left;
 }
 .encoder-action-menu > div > button:hover,
@@ -4140,7 +4145,7 @@ textarea,
   margin: 0;
   padding: 18px 9px;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   text-align: center;
 }
 .encoder-dialog > footer > div {
@@ -4228,11 +4233,11 @@ textarea,
 .profile-default-scope small {
   margin-top: 2px;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .profile-defaults-heading em {
   color: var(--amber);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   font-style: normal;
 }
 .profile-default-scopes {
@@ -4280,7 +4285,7 @@ textarea,
 .profile-mapping-dialog > header p {
   margin: 6px 0 0;
   color: var(--muted);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   line-height: 1.45;
 }
 .profile-mapping-toolbar {
@@ -4330,7 +4335,7 @@ textarea,
   border-right: 1px solid var(--line);
   background: #121211;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .profile-mapping-filters button:last-child {
   border-right: 0;
@@ -4365,7 +4370,7 @@ textarea,
 .profile-mapping-row > span small {
   margin-top: 3px;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .profile-mapping-row > button {
   white-space: nowrap;
@@ -4385,7 +4390,7 @@ textarea,
   border: 1px solid var(--line);
   background: #181817;
   color: #9da9a2;
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .profile-mapping-sources button {
   width: 23px;
@@ -4423,7 +4428,7 @@ textarea,
   border: 1px solid rgba(232, 176, 91, 0.28);
   background: rgba(232, 176, 91, 0.07);
   color: #d7b47f;
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .profile-mapping-empty {
   display: flex;
@@ -4459,7 +4464,7 @@ textarea,
   border-top: 1px solid var(--line);
   background: #171716;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .profile-mapping-dialog > footer button {
   min-height: 36px;
@@ -4499,7 +4504,7 @@ textarea,
   margin-top: 3px;
   overflow: hidden;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4521,7 +4526,7 @@ textarea,
 .profile-devices-head > small {
   max-width: 240px;
   color: #68746d;
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   text-align: right;
 }
 .profile-detail-pane .device-list {
@@ -4563,7 +4568,7 @@ textarea,
 .profile-activation-bar small {
   margin-top: 3px;
   color: #718078;
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .profile-activation-bar > button {
   min-height: 40px;
@@ -4609,7 +4614,7 @@ textarea,
   padding-left: 18px;
   border-left: 1px solid var(--line);
   color: #b8c3bd;
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   line-height: 1.4;
 }
 .virtual-mode-guard svg {
@@ -4642,7 +4647,7 @@ textarea,
   align-items: center;
   gap: 7px;
   color: #75817b;
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   white-space: nowrap;
 }
 .virtual-wizard-header > span i {
@@ -4683,7 +4688,7 @@ textarea,
   place-items: center;
   border: 1px solid #41483d;
   color: var(--teal);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .virtual-wizard-steps strong,
 .virtual-wizard-steps small {
@@ -4695,7 +4700,7 @@ textarea,
 .virtual-wizard-steps small {
   margin-top: 3px;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   line-height: 1.35;
 }
 .virtual-wizard kbd {
@@ -4741,7 +4746,7 @@ textarea,
 .virtual-wizard-status small {
   margin-top: 4px;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   line-height: 1.4;
 }
 .virtual-wizard-console > .virtual-error {
@@ -4770,7 +4775,7 @@ textarea,
 .virtual-capacity-warning small {
   margin-top: 4px;
   color: #c8b994;
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   line-height: 1.5;
 }
 .virtual-next-button {
@@ -4785,7 +4790,7 @@ textarea,
 .virtual-next-button > span,
 .virtual-next-button > small {
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .virtual-next-button > strong {
   color: var(--teal);
@@ -4900,13 +4905,13 @@ textarea,
 .virtual-device-list small {
   margin-top: 4px;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .virtual-device-list em {
   padding: 4px 6px;
   background: rgba(198, 243, 107, 0.1);
   color: var(--teal);
-  font-size: calc(8px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   font-style: normal;
   text-transform: uppercase;
 }
@@ -4967,7 +4972,7 @@ textarea,
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .virtual-import-bar > span svg {
   width: 16px;
@@ -4987,7 +4992,7 @@ textarea,
 .virtual-router p {
   margin: 5px 0 0;
   color: var(--muted);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .active-encoder-modes {
   display: flex;
@@ -5000,7 +5005,7 @@ textarea,
   border: 1px solid rgba(198, 243, 107, 0.2);
   background: rgba(198, 243, 107, 0.06);
   color: var(--muted);
-  font-size: calc(8px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .active-encoder-modes strong {
   margin-left: 4px;
@@ -5038,7 +5043,7 @@ textarea,
   margin-top: 3px;
   overflow: hidden;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -5072,12 +5077,12 @@ textarea,
 .virtual-default-switcher > span small {
   margin-top: 3px;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .virtual-default-switcher label > span {
   margin-bottom: 5px;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .virtual-default-switcher select,
 .virtual-default-switcher button {
@@ -5163,12 +5168,12 @@ textarea,
 .virtual-layout-details > summary small {
   margin-top: 4px;
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
 }
 .virtual-setup-details > summary > span:last-child,
 .virtual-layout-details > summary > span:last-child {
   color: var(--teal);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
 }
 .virtual-setup-details[open] > summary,
 .virtual-layout-details[open] > summary {
