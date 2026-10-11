@@ -1,5 +1,6 @@
 use lmukit_core::storage::{
     CompanionApp, LaunchMode, Profile, Store, VirtualButtonMapping, VirtualButtonModifier,
+    VirtualEncoderControl, VirtualEncoderGroup, VirtualEncoderMode as StoredEncoderMode,
     VirtualProfileMapping, Wheel,
 };
 use lmukit_virtual::{
@@ -110,6 +111,32 @@ struct VirtualProfileDefaultSummary {
     class_tag: Option<String>,
     profile_id: Uuid,
     profile_name: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualEncoderControlSummary {
+    device_id: String,
+    device_name: String,
+    physical_button: u32,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualEncoderModeSummary {
+    name: String,
+    clockwise_action: String,
+    counterclockwise_action: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualEncoderGroupSummary {
+    name: String,
+    clockwise: VirtualEncoderControlSummary,
+    counterclockwise: VirtualEncoderControlSummary,
+    cycle: VirtualEncoderControlSummary,
+    modes: Vec<VirtualEncoderModeSummary>,
 }
 
 #[derive(Clone)]
@@ -529,6 +556,78 @@ fn clear_virtual_profile_default(
 }
 
 #[tauri::command]
+async fn learn_virtual_encoder_control() -> Result<VirtualEncoderControlSummary, String> {
+    match wait_for_direct_input_mapping().await? {
+        LearnedPhysicalMapping::Button(button) => Ok(VirtualEncoderControlSummary {
+            device_id: button.device_id,
+            device_name: button.device_name,
+            physical_button: button.button_id,
+        }),
+        LearnedPhysicalMapping::Modified { .. } => {
+            Err("Move or press only one encoder control at a time.".to_owned())
+        }
+    }
+}
+
+#[tauri::command]
+fn virtual_profile_encoder_groups(
+    profile_id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualEncoderGroupSummary>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    Ok(encoder_group_summaries(
+        profile.virtual_mapping.unwrap_or_default().encoder_groups,
+    ))
+}
+
+#[tauri::command]
+fn save_virtual_profile_encoder_group(
+    profile_id: Uuid,
+    original_name: Option<String>,
+    encoder: VirtualEncoderGroupSummary,
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualEncoderGroupSummary>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    let mut mapping = profile.virtual_mapping.unwrap_or_default();
+    if let Some(original_name) = original_name {
+        mapping
+            .encoder_groups
+            .retain(|entry| !entry.name.eq_ignore_ascii_case(&original_name));
+    }
+    mapping.encoder_groups.push(stored_encoder_group(encoder));
+    store
+        .set_profile_virtual_mapping(profile_id, Some(mapping.clone()))
+        .map_err(|error| error.to_string())?;
+    Ok(encoder_group_summaries(mapping.encoder_groups))
+}
+
+#[tauri::command]
+fn remove_virtual_profile_encoder_group(
+    profile_id: Uuid,
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualEncoderGroupSummary>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    let mut mapping = profile.virtual_mapping.unwrap_or_default();
+    let before = mapping.encoder_groups.len();
+    mapping
+        .encoder_groups
+        .retain(|entry| !entry.name.eq_ignore_ascii_case(&name));
+    if mapping.encoder_groups.len() == before {
+        return Err("That encoder no longer exists.".to_owned());
+    }
+    let saved = (!mapping.buttons.is_empty() || !mapping.encoder_groups.is_empty())
+        .then_some(mapping.clone());
+    store
+        .set_profile_virtual_mapping(profile_id, saved)
+        .map_err(|error| error.to_string())?;
+    Ok(encoder_group_summaries(mapping.encoder_groups))
+}
+
+#[tauri::command]
 async fn learn_virtual_profile_button(
     profile_id: Uuid,
     logical_action: String,
@@ -627,6 +726,61 @@ fn mapping_summaries(mapping: Option<&VirtualProfileMapping>) -> Vec<VirtualProf
             logical_action: entry.logical_action.clone(),
         })
         .collect()
+}
+
+fn encoder_control_summary(control: VirtualEncoderControl) -> VirtualEncoderControlSummary {
+    VirtualEncoderControlSummary {
+        device_id: control.device_id,
+        device_name: control.device_name,
+        physical_button: control.physical_button,
+    }
+}
+
+fn encoder_group_summaries(groups: Vec<VirtualEncoderGroup>) -> Vec<VirtualEncoderGroupSummary> {
+    groups
+        .into_iter()
+        .map(|group| VirtualEncoderGroupSummary {
+            name: group.name,
+            clockwise: encoder_control_summary(group.clockwise),
+            counterclockwise: encoder_control_summary(group.counterclockwise),
+            cycle: encoder_control_summary(group.cycle),
+            modes: group
+                .modes
+                .into_iter()
+                .map(|mode| VirtualEncoderModeSummary {
+                    name: mode.name,
+                    clockwise_action: mode.clockwise_action,
+                    counterclockwise_action: mode.counterclockwise_action,
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+fn stored_encoder_control(control: VirtualEncoderControlSummary) -> VirtualEncoderControl {
+    VirtualEncoderControl {
+        device_id: control.device_id,
+        device_name: control.device_name,
+        physical_button: control.physical_button,
+    }
+}
+
+fn stored_encoder_group(group: VirtualEncoderGroupSummary) -> VirtualEncoderGroup {
+    VirtualEncoderGroup {
+        name: group.name,
+        clockwise: stored_encoder_control(group.clockwise),
+        counterclockwise: stored_encoder_control(group.counterclockwise),
+        cycle: stored_encoder_control(group.cycle),
+        modes: group
+            .modes
+            .into_iter()
+            .map(|mode| StoredEncoderMode {
+                name: mode.name,
+                clockwise_action: mode.clockwise_action,
+                counterclockwise_action: mode.counterclockwise_action,
+            })
+            .collect(),
+    }
 }
 
 fn virtual_profile_default_summaries(
@@ -1888,6 +2042,10 @@ pub fn run() {
             virtual_profile_defaults,
             set_virtual_profile_default,
             clear_virtual_profile_default,
+            learn_virtual_encoder_control,
+            virtual_profile_encoder_groups,
+            save_virtual_profile_encoder_group,
+            remove_virtual_profile_encoder_group,
             learn_virtual_profile_button,
             remove_virtual_profile_button,
             virtual_routing_status,

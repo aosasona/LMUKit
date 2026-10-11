@@ -20,6 +20,7 @@ import type {
   VirtualProfileMapping,
   VirtualRoutingStatus,
 } from "../models";
+import { ProfileEncoderMappings } from "./ProfileEncoderMappings";
 
 function searchTokens(value: string) {
   return value
@@ -318,6 +319,12 @@ export function ProfileVirtualMappings({
         </div>
         <div className="profile-virtual-mapping-actions">
           <span>{mappings.length} assigned</span>
+          <ProfileEncoderMappings
+            profile={profile}
+            busy={busy}
+            routingActive={routingActive}
+            onNotice={onNotice}
+          />
           <button
             type="button"
             className="secondary compact"

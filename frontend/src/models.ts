@@ -93,6 +93,23 @@ export type VirtualProfileDefault = {
   profileId: string;
   profileName: string;
 };
+export type VirtualEncoderControl = {
+  deviceId: string;
+  deviceName: string;
+  physicalButton: number;
+};
+export type VirtualEncoderMode = {
+  name: string;
+  clockwiseAction: string;
+  counterclockwiseAction: string;
+};
+export type VirtualEncoderGroup = {
+  name: string;
+  clockwise: VirtualEncoderControl;
+  counterclockwise: VirtualEncoderControl;
+  cycle: VirtualEncoderControl;
+  modes: VirtualEncoderMode[];
+};
 export type VirtualRoutingStatus = {
   active: boolean;
   profileId: string | null;
