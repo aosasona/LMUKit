@@ -59,7 +59,11 @@ export function QuickProfileSwitcher({
           event.preventDefault();
           setSelected((value) => Math.max(value - 1, 0));
         }
-        if (event.key === "Enter" && matches[selected]) {
+        if (
+          event.key === "Enter" &&
+          matches[selected] &&
+          matches[selected].id !== activeId
+        ) {
           event.preventDefault();
           void activate(matches[selected]);
         }
@@ -75,7 +79,11 @@ export function QuickProfileSwitcher({
         <header>
           <div>
             <span className="eyebrow">Ctrl Alt Space</span>
-            <h2 id="quick-switcher-title">Choose a profile</h2>
+            <h2 id="quick-switcher-title">
+              {inputMode === "virtual"
+                ? "Choose a live profile"
+                : "Prepare an LMU profile"}
+            </h2>
           </div>
           <button className="dialog-close" onClick={onClose} aria-label="Close">
             <X />
@@ -97,7 +105,7 @@ export function QuickProfileSwitcher({
           {matches.map((profile, index) => (
             <button
               className={index === selected ? "selected" : ""}
-              disabled={busy}
+              disabled={busy || profile.id === activeId}
               key={profile.id}
               onMouseEnter={() => setSelected(index)}
               onClick={() => void activate(profile)}
@@ -112,8 +120,10 @@ export function QuickProfileSwitcher({
               <span>
                 <strong>{profile.name}</strong>
                 <small>
-                  {inputMode === "legacy" && profile.id === activeId
-                    ? "Prepared · "
+                  {profile.id === activeId
+                    ? inputMode === "virtual"
+                      ? "Live now · "
+                      : "Prepared · "
                     : ""}
                   {profile.classTags.length
                     ? profile.classTags.join(" · ")
@@ -132,7 +142,10 @@ export function QuickProfileSwitcher({
         <footer>
           <span>↑ ↓ Navigate</span>
           <span>
-            Enter {inputMode === "virtual" ? "Use live" : "Prepare profile"}
+            Enter{" "}
+            {inputMode === "virtual"
+              ? "Start live remapping"
+              : "Prepare LMU file"}
           </span>
           <span>Esc Close</span>
         </footer>

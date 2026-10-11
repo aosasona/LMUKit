@@ -317,28 +317,6 @@ nav {
 .sidebar-foot {
   margin-top: auto;
   display: grid;
-  gap: 13px;
-}
-.game-state {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: #191918;
-}
-.game-state strong,
-.game-state small {
-  display: block;
-}
-.game-state strong {
-  font-size: calc(11px * var(--font-scale));
-}
-.game-state small {
-  color: #65716c;
-  font-size: calc(11px * var(--font-scale));
-  margin-top: 2px;
 }
 .pulse {
   width: 7px;
@@ -349,19 +327,6 @@ nav {
     0 0 0 4px rgba(198, 243, 107, 0.1),
     0 0 12px rgba(198, 243, 107, 0.35);
   display: inline-block;
-}
-.keyboard-hint {
-  border: 0;
-  background: transparent;
-  color: #6e7b75;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 38px;
-  padding: 7px 12px;
-  cursor: pointer;
-  font-size: calc(12px * var(--font-scale));
 }
 .app-exit {
   width: 100%;
@@ -379,9 +344,6 @@ nav {
 .app-exit:hover {
   background: rgba(255, 255, 255, 0.045);
   color: #b7c0bb;
-}
-.keyboard-hint kbd {
-  margin-left: auto;
 }
 kbd {
   font:
@@ -2124,16 +2086,12 @@ img.profile-card-icon {
   font-size: calc(19px * var(--font-scale));
 }
 .brand small,
-.game-state small,
-.game-state strong,
 .nav-item,
 .ghost,
 .primary,
 .secondary {
   font-size: calc(12px * var(--font-scale));
 }
-.game-state small,
-.keyboard-hint,
 .eyebrow,
 .nav-label,
 .chip,
@@ -2592,8 +2550,6 @@ kbd,
   font-size: calc(12px * var(--font-scale));
 }
 .nav-item,
-.game-state strong,
-.keyboard-hint,
 .ghost,
 .primary,
 .secondary,

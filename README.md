@@ -72,7 +72,7 @@ The force-feedback section discovers recognised numeric and boolean fields witho
 
 Open **Settings → Profile keyboard shortcuts** to assign `Ctrl+Alt+1` through `Ctrl+Alt+9`. Assignments are unique, so reusing a number moves it to the newly selected profile.
 
-Press `Ctrl+Alt+Space` anywhere in Windows to open the compact profile switcher. These shortcuts still prepare a profile for LMU's next launch; they do not alter a running LMU session.
+Press `Ctrl+Alt+Space` anywhere in Windows to open the compact profile switcher. In Legacy mode it prepares the selected JSON profile for LMU's next launch. In Virtual Input mode it changes the live remapping profile without replacing LMU's file. When live routing is active, **Disable remapping** is always available in the top bar.
 
 ### Virtual input setup
 

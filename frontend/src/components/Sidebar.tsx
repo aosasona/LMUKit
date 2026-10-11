@@ -1,7 +1,6 @@
 import {
   Gamepad2,
   Disc3,
-  Keyboard,
   LayoutDashboard,
   Power,
   Settings,
@@ -25,13 +24,11 @@ export function Sidebar({
   page,
   profileCount,
   onNavigate,
-  onOpenSwitcher,
   onExit,
 }: {
   page: Page;
   profileCount: number;
   onNavigate: (page: Page) => void;
-  onOpenSwitcher: () => void;
   onExit: () => void;
 }) {
   return (
@@ -60,18 +57,6 @@ export function Sidebar({
         ))}
       </nav>
       <div className="sidebar-foot">
-        <div className="game-state">
-          <span className="pulse" />
-          <div>
-            <strong>Workspace ready</strong>
-            <small>Close LMU before changes</small>
-          </div>
-        </div>
-        <button className="keyboard-hint" onClick={onOpenSwitcher}>
-          <Keyboard size={16} />
-          <span>Quick switcher</span>
-          <kbd>Ctrl Alt Space</kbd>
-        </button>
         <button className="app-exit" onClick={onExit}>
           <Power size={16} />
           <span>Exit LMUKit</span>

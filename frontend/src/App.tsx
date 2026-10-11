@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Search } from "lucide-react";
+import { Search, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { InputModeSwitch, type InputMode } from "./components/InputModeSwitch";
@@ -370,6 +370,11 @@ export default function App() {
       );
     });
   };
+  const stopLiveRouting = () =>
+    withBusy(async () => {
+      setRouting(await invoke<VirtualRoutingStatus>("stop_virtual_routing"));
+      setNotice("Live remapping disabled and all virtual buttons released.");
+    });
   const removeDevice = (profile: Profile, device: Device) =>
     withBusy(async () => {
       const removed = await invoke<number>("remove_profile_device", {
@@ -682,7 +687,6 @@ export default function App() {
           page={page}
           profileCount={snapshot.profiles.length}
           onNavigate={navigate}
-          onOpenSwitcher={() => setSwitcherOpen(true)}
           onExit={exitApp}
         />
         <main>
@@ -699,6 +703,16 @@ export default function App() {
                 busy={busy}
                 onChange={changeInputMode}
               />
+              {snapshot.inputMode === "virtual" && routing.active && (
+                <button
+                  type="button"
+                  className="ghost live-routing-stop"
+                  disabled={busy}
+                  onClick={() => void stopLiveRouting()}
+                >
+                  <Square size={15} /> Disable remapping
+                </button>
+              )}
               <button
                 type="button"
                 className="ghost"
@@ -844,7 +858,11 @@ export default function App() {
       {switcherOpen && (
         <QuickProfileSwitcher
           profiles={snapshot.profiles}
-          activeId={snapshot.activeProfile}
+          activeId={
+            snapshot.inputMode === "virtual"
+              ? routing.profileId
+              : snapshot.activeProfile
+          }
           inputMode={snapshot.inputMode}
           busy={busy}
           imageRevision={wheelImageRevision}
