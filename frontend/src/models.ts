@@ -150,6 +150,10 @@ export type LmuCarContextStatus = {
   status: "confirmed" | "stale" | "unknown";
   message: string;
 };
+export type LmuRuntimeStatus = {
+  running: boolean;
+  processName: string | null;
+};
 export type AutoProfileSelectionStatus = {
   enabled: boolean;
   paused: boolean;

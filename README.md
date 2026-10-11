@@ -64,6 +64,8 @@ Use the global **Input method** switch in the title bar to choose how profile se
 
 LMU does not hot-reload `direct input.json`. LMUKit therefore prepares the selected profile for the next launch; it does not claim to switch bindings inside a running session.
 
+Before activating a Legacy profile or saving a live `Settings.JSON`, LMUKit checks the Windows process list. If LMU is running, the write is cancelled by default and a clear confirmation explains that LMU may overwrite the file when it exits. Read-only profile capture and inspection are unaffected.
+
 If LMU's live file intentionally differs while you are creating or rebinding another preset, dismiss the change notice. This hides the warning and its **Update from LMU** shortcut for the currently prepared profile until the active profile or synchronization state changes.
 
 Existing presets can be dropped anywhere on the Profiles workspace. Imported JSON is validated before LMUKit stores or activates it.
@@ -134,7 +136,7 @@ Overview samples LMU's built-in shared memory every 1.5 seconds on a background 
 
 Open **Game settings** to search and edit LMU's `UserData/player/Settings.JSON`. Boolean, numeric, string, and nested values are supported, while matching `Option#` fields are shown as descriptions rather than duplicate settings.
 
-Saving preserves unknown JSON data and creates a recovery backup first. Close LMU before saving because the game may overwrite its settings while running.
+Saving preserves unknown JSON data and creates a recovery backup first. LMUKit warns and requires explicit confirmation if LMU is running because the game may overwrite its settings when it exits.
 
 ### LMU and companion apps
 

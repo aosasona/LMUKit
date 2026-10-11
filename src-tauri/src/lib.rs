@@ -23,6 +23,7 @@ use tauri::{
 use uuid::Uuid;
 
 mod diagnostics;
+mod lmu_process;
 
 #[cfg(target_os = "windows")]
 use lmukit_virtual::{
@@ -164,6 +165,13 @@ struct AutoProfileSummary {
     confirmed_observations: u8,
     required_observations: u8,
     message: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LmuRuntimeSummary {
+    running: bool,
+    process_name: Option<String>,
 }
 
 impl Default for CarContextSummary {
@@ -663,13 +671,41 @@ fn load_game_settings(state: State<'_, AppState>) -> Result<serde_json::Value, S
 #[tauri::command]
 fn save_game_settings(
     document: serde_json::Value,
+    allow_while_lmu_running: bool,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    ensure_lmu_file_write_allowed(allow_while_lmu_running)?;
     let store = state.0.lock().map_err(|error| error.to_string())?;
     store
         .save_lmu_settings_document(&document)
         .map(|_| ())
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn lmu_runtime_status() -> Result<LmuRuntimeSummary, String> {
+    let process_name = lmu_process::running_process()?;
+    Ok(LmuRuntimeSummary {
+        running: process_name.is_some(),
+        process_name,
+    })
+}
+
+fn ensure_lmu_file_write_allowed(allow_while_lmu_running: bool) -> Result<(), String> {
+    let process = lmu_process::running_process()?;
+    if process.is_some() && !allow_while_lmu_running {
+        return Err(
+            "LMU is running. Close it before writing its live files, or explicitly confirm that you want to continue."
+                .to_owned(),
+        );
+    }
+    if process.is_some() {
+        diagnostics::warn(
+            "lmu.write.while-running",
+            "User confirmed a live-file write while LMU was running",
+        );
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1923,7 +1959,12 @@ fn pick_file_dialog(_kind: &str) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-fn activate_profile(profile_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
+fn activate_profile(
+    profile_id: Uuid,
+    allow_while_lmu_running: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    ensure_lmu_file_write_allowed(allow_while_lmu_running)?;
     let mut store = state.0.lock().map_err(|error| error.to_string())?;
     if store.settings.input_mode != InputMode::Legacy {
         return Err(
@@ -2330,8 +2371,12 @@ fn save_profile_document(
     profile_id: Uuid,
     document: serde_json::Value,
     activate: bool,
+    allow_while_lmu_running: bool,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    if activate {
+        ensure_lmu_file_write_allowed(allow_while_lmu_running)?;
+    }
     let mut store = state.0.lock().map_err(|error| error.to_string())?;
     let profile = find_profile(&store, profile_id)?;
     store
@@ -2850,6 +2895,7 @@ pub fn run() {
             pick_file,
             load_game_settings,
             save_game_settings,
+            lmu_runtime_status,
             virtual_binding_devices,
             preview_virtual_layout,
             import_virtual_layout,
@@ -3140,27 +3186,29 @@ fn poll_hotkeys(
                     .map(|store| store.settings.input_mode)
                     .map_err(|error| error.to_string());
                 let result = mode.and_then(|mode| match mode {
-                    InputMode::Legacy => app_state
-                        .0
-                        .lock()
-                        .map_err(|error| error.to_string())
-                        .and_then(|mut store| {
-                            let profile = store
-                                .profiles()
-                                .map_err(|error| error.to_string())?
-                                .into_iter()
-                                .find(|profile| profile.id == profile_id)
-                                .ok_or_else(|| {
-                                    "That shortcut's profile no longer exists.".to_owned()
-                                })?;
-                            store
-                                .activate(&profile)
-                                .map_err(|error| error.to_string())?;
-                            Ok(format!(
-                                "{} is ready for the next LMU launch.",
-                                profile.name
-                            ))
-                        }),
+                    InputMode::Legacy => ensure_lmu_file_write_allowed(false).and_then(|_| {
+                        app_state
+                            .0
+                            .lock()
+                            .map_err(|error| error.to_string())
+                            .and_then(|mut store| {
+                                let profile = store
+                                    .profiles()
+                                    .map_err(|error| error.to_string())?
+                                    .into_iter()
+                                    .find(|profile| profile.id == profile_id)
+                                    .ok_or_else(|| {
+                                        "That shortcut's profile no longer exists.".to_owned()
+                                    })?;
+                                store
+                                    .activate(&profile)
+                                    .map_err(|error| error.to_string())?;
+                                Ok(format!(
+                                    "{} is ready for the next LMU launch.",
+                                    profile.name
+                                ))
+                            })
+                    }),
                     InputMode::Virtual => {
                         let routing_state = app.state::<VirtualRoutingState>();
                         let auto_state = app.state::<AutoProfileState>();

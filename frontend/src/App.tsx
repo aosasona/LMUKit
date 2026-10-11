@@ -15,6 +15,7 @@ import type {
   Device,
   JsonObject,
   LmuCarContextStatus,
+  LmuRuntimeStatus,
   Page,
   Profile,
   Snapshot,
@@ -372,6 +373,17 @@ export default function App() {
     }
   }
 
+  async function confirmLmuFileWrite(action: string) {
+    const status = await invoke<LmuRuntimeStatus>("lmu_runtime_status");
+    if (!status.running) return false;
+    const process = status.processName ? ` (${status.processName})` : "";
+    return window.confirm(
+      `Le Mans Ultimate is currently running${process}. ${action} LMU may overwrite the change when it exits, and bindings are not hot-reloaded.\n\nClose LMU first for the safest result. Continue anyway?`,
+    )
+      ? true
+      : null;
+  }
+
   const activate = (profile: Profile) =>
     withBusy(async () => {
       setSelectedId(profile.id);
@@ -384,8 +396,18 @@ export default function App() {
         );
         setNotice(`${profile.name} is now remapping live.`);
       } else {
+        const allowWhileLmuRunning = await confirmLmuFileWrite(
+          `Preparing ${profile.name} will replace the live direct input.json file.`,
+        );
+        if (allowWhileLmuRunning === null) {
+          setNotice("Profile activation cancelled. No LMU files were changed.");
+          return;
+        }
         setNotice(`Preparing ${profile.name}…`);
-        await invoke("activate_profile", { profileId: profile.id });
+        await invoke("activate_profile", {
+          profileId: profile.id,
+          allowWhileLmuRunning,
+        });
         await refresh();
         setNotice(`${profile.name} is ready for the next LMU launch.`);
       }
@@ -709,17 +731,37 @@ export default function App() {
   const saveGameSettings = () =>
     withBusy(async () => {
       if (!gameSettings) return;
-      await invoke("save_game_settings", { document: gameSettings });
+      const allowWhileLmuRunning = await confirmLmuFileWrite(
+        "Saving Settings.JSON writes directly to LMU's live settings file.",
+      );
+      if (allowWhileLmuRunning === null) {
+        setNotice("Settings save cancelled. No LMU files were changed.");
+        return;
+      }
+      await invoke("save_game_settings", {
+        document: gameSettings,
+        allowWhileLmuRunning,
+      });
       setGameSettingsBaseline(structuredClone(gameSettings));
       setNotice("Settings.JSON saved. A recovery backup was created.");
     });
   const saveProfileDocument = (activate: boolean) =>
     withBusy(async () => {
       if (!selected || !profileDocument) return;
+      const allowWhileLmuRunning = activate
+        ? await confirmLmuFileWrite(
+            `Saving and preparing ${selected.name} will replace the live direct input.json file.`,
+          )
+        : false;
+      if (allowWhileLmuRunning === null) {
+        setNotice("Profile preparation cancelled. No LMU files were changed.");
+        return;
+      }
       await invoke("save_profile_document", {
         profileId: selected.id,
         document: profileDocument,
         activate,
+        allowWhileLmuRunning,
       });
       setProfileDocumentBaseline(structuredClone(profileDocument));
       await refresh();
