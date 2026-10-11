@@ -17,11 +17,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run-windows.ps1
 
 [tasks.test]
 description = "Run the test suite"
-run = "cargo test -p lmukit-core -p lmukit-virtual"
+run = "cargo test -p lmukit-context -p lmukit-core -p lmukit-virtual"
 
 [tasks.check]
 description = "Check the project"
-run = "cargo check -p lmukit-core -p lmukit-virtual"
+run = "cargo check -p lmukit-context -p lmukit-core -p lmukit-virtual"
 
 [tasks.fmt]
 description = "Check Rust formatting"
@@ -29,7 +29,7 @@ run = "cargo fmt --all --check"
 
 [tasks.lint]
 description = "Run Clippy"
-run = "cargo clippy -p lmukit-core -p lmukit-virtual --all-targets --all-features -- -D warnings"
+run = "cargo clippy -p lmukit-context -p lmukit-core -p lmukit-virtual --all-targets --all-features -- -D warnings"
 
 [tasks.build]
 description = "Build the frontend and optimized Windows executable"
@@ -41,3 +41,7 @@ cargo xwin build -p lmukit --release --target "$WINDOWS_TARGET"
 [tasks.build-virtual-probe]
 description = "Build the experimental Windows virtual-input probe"
 run = "cargo xwin build -p lmukit-virtual --bin lmukit-virtual-probe --target \"$WINDOWS_TARGET\""
+
+[tasks.build-context-probe]
+description = "Build the read-only Windows LMU car-context probe"
+run = "cargo xwin build -p lmukit-context --bin lmukit-context-probe --target \"$WINDOWS_TARGET\""

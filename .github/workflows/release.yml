@@ -48,10 +48,13 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Run Rust tests
-        run: cargo test --locked -p lmukit-core -p lmukit-virtual
+        run: cargo test --locked -p lmukit-context -p lmukit-core -p lmukit-virtual
 
       - name: Run Clippy
-        run: cargo clippy --locked -p lmukit-core -p lmukit-virtual --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked -p lmukit-context -p lmukit-core -p lmukit-virtual --all-targets --all-features -- -D warnings
+
+      - name: Build LMU context probe
+        run: cargo build --locked -p lmukit-context --bin lmukit-context-probe
 
       - name: Build experimental virtual-input probe
         run: cargo build --locked -p lmukit-virtual --bin lmukit-virtual-probe

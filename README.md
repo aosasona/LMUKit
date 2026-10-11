@@ -165,13 +165,15 @@ mise run dev
 | ---------------- | -------------------------------------------------------- |
 | `mise run dev`   | Cross-build and launch the Windows debug app from WSL    |
 | `mise run build` | Build the frontend and Windows x86-64 release executable |
-| `mise run test`  | Run core and virtual-backend tests                       |
-| `mise run check` | Check core and virtual-backend crates                    |
+| `mise run test`  | Run context, core, and virtual-backend tests              |
+| `mise run check` | Check context, core, and virtual-backend crates           |
 | `mise run fmt`   | Check Rust formatting                                    |
 | `mise run lint`  | Run Clippy with warnings denied                          |
 | `pnpm build`     | Type-check and build the React interface                 |
 
 `mise run build-virtual-probe` cross-builds the isolated, experimental Windows vJoy feasibility probe. It is not part of the production app or release packages and does not install a driver. vJoy remains an explicit user-installed dependency required only for Virtual Input Mode. The tested compatibility scope and remaining hardware gates are recorded in the [feasibility report](docs/virtual-input-feasibility.md). The intended one-time LMU setup, stable virtual layout, profile mappings, and daily workflow are documented in the [Virtual Input profile model](docs/virtual-input-mode.md).
+
+`mise run build-context-probe` cross-builds the read-only LMU car-context probe. It opens LMU's built-in `LMU_Data` mapping under the official shared lock and prints the confirmed player vehicle, raw and normalized class, session state, provenance, and observation time. It does not install a legacy rFactor 2 plugin or write to the game.
 
 Use `LMUKIT_DATA_DIR` with an isolated directory for screenshots and manual tests. Never test development builds against personal profiles or live Windows application data.
 
@@ -179,13 +181,17 @@ Before handing off a code change, run:
 
 ```sh
 cargo fmt --all --check
+cargo test -p lmukit-context
+cargo clippy -p lmukit-context --all-targets --all-features -- -D warnings
 cargo test -p lmukit-core
 cargo clippy -p lmukit-core --all-targets --all-features -- -D warnings
 cargo test -p lmukit-virtual
 cargo clippy -p lmukit-virtual --all-targets --all-features -- -D warnings
 pnpm build
 cargo xwin check -p lmukit --target x86_64-pc-windows-msvc
+cargo xwin check -p lmukit-context --target x86_64-pc-windows-msvc
 cargo xwin check -p lmukit-virtual --target x86_64-pc-windows-msvc
+cargo xwin test -p lmukit-context --target x86_64-pc-windows-msvc --no-run
 cargo xwin test -p lmukit-virtual --target x86_64-pc-windows-msvc --no-run
 ```
 

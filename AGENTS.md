@@ -14,6 +14,7 @@ LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate util
 - `src-tauri/` owns the Tauri desktop shell and narrow command adapters. It must not duplicate storage rules. `src-tauri/src/diagnostics.rs` provides the local rotating logger; the Settings diagnostics panel consumes privacy-safe status and report commands from the shell.
 - Closing the main window hides it in the Windows notification area and must not stop live routing. The tray menu exposes **Show LMUKit** and **Exit LMUKit**; tray and sidebar exit actions must show the same frontend confirmation before requesting application exit. The Tauri exit lifecycle releases virtual outputs before shutdown.
 - `crates/lmukit-core/` exposes compatibility-sensitive Rust behavior independently of the UI runtime.
+- `crates/lmukit-context/` owns the read-only LMU car-context snapshot decoder, the Windows `LMU_Data` mapping/lock adapter, synthetic contract tests, and the isolated context probe. It uses explicit little-endian offsets validated against the installed official headers instead of redistributing those proprietary headers or depending on native C++ layout. Keep mapping access off the UI thread, reject incompatible sizes or implausible values, and never guess unknown classes.
 - `crates/lmukit-virtual/` owns the button-only mapping engine, stable logical-action layout, hold-modifier precedence, profile-local digital encoder modes, bounded serialised encoder pulses, replaceable virtual-output boundary, mock backend, continuous DirectInput button monitor, experimental runtime-loaded vJoy adapter, and isolated Windows feasibility probe. The engine selects the most-specific satisfied chord per trigger and uses physical-source ownership so one source cannot release an output still held by another. Ordinary taps remain pressed for at least 32 ms so a buffered press/release pair cannot disappear between LMU polls; modifier-driven remaps still release the replaced output immediately. Encoder detents queue 32 ms virtual presses separated by at least 8 ms released; mode controls cycle once per press and emit no virtual output. The engine must clear queued pulses, reconcile modifier changes, and release outputs on profile changes and shutdown. The crate must not install a driver or alter LMU configuration.
 - vJoy is the selected external dependency for Virtual Input Mode. Users install and configure device 1 with 128 buttons explicitly; LMUKit must report and warn about a smaller capacity, but must not bundle, install, update, or silently configure the driver. Legacy JSON mode must remain usable without vJoy.
 - `src/storage.rs` currently backs `lmukit-core` and owns LMUKit settings, profile persistence, imports, activation, backups, LMU JSON parsing, `Settings.JSON` persistence, wheel/class virtual-profile defaults, and companion-launcher generation.
@@ -83,13 +84,17 @@ Run all of these before handing off a code change:
 
 ```sh
 cargo fmt --all --check
+cargo test -p lmukit-context
+cargo clippy -p lmukit-context --all-targets --all-features -- -D warnings
 cargo test -p lmukit-core
 cargo clippy -p lmukit-core --all-targets --all-features -- -D warnings
 cargo test -p lmukit-virtual
 cargo clippy -p lmukit-virtual --all-targets --all-features -- -D warnings
 pnpm build
 cargo xwin check -p lmukit --target x86_64-pc-windows-msvc
+cargo xwin check -p lmukit-context --target x86_64-pc-windows-msvc
 cargo xwin check -p lmukit-virtual --target x86_64-pc-windows-msvc
+cargo xwin test -p lmukit-context --target x86_64-pc-windows-msvc --no-run
 cargo xwin test -p lmukit-virtual --target x86_64-pc-windows-msvc --no-run
 ```
 
@@ -105,4 +110,4 @@ Use `mise run dev` to cross-build and launch the Windows debug app from WSL, and
 
 ## Future work
 
-The verified route for car/class detection in the installed LMU v1.4200 build is its native `LMU_Data` mapping under the contract shipped in `Support/SharedMemoryInterface`. Player scoring exposes vehicle name, class, and vehicle filename. A Windows reader must follow the shipped hold/data-event and shared-lock protocol and validate the observed layout before consuming it. In Virtual mode a confirmed class can resolve and switch the live mapped profile; in Legacy mode it can only recommend a profile or prepare it for the next LMU launch because LMU does not reload `direct input.json` during a session.
+The verified route for car/class detection in the installed LMU v1.4200 build is its native `LMU_Data` mapping under the contract shipped in `Support/SharedMemoryInterface`. The isolated reader has confirmed the current player vehicle, raw class, normalized existing tag, vehicle identifier, and session state against a running local build. The next phase is a low-frequency desktop worker, freshness/debounce policy, Overview diagnostics, and manual-override-aware profile resolution. In Virtual mode a confirmed class can resolve and switch the live mapped profile; in Legacy mode it can only recommend a profile or prepare it for the next LMU launch because LMU does not reload `direct input.json` during a session.

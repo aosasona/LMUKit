@@ -53,6 +53,7 @@ pub enum LmuSessionState {
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct LmuCarContext {
+    pub game_version: Option<i32>,
     pub vehicle_id: Option<String>,
     pub vehicle_name: Option<String>,
     pub class_raw: Option<String>,

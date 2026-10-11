@@ -1,0 +1,21 @@
+[package]
+name = "lmukit-context"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = "1.0"
+lmukit-core = { path = "../lmukit-core" }
+serde_json = "1.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+] }
+
+[[bin]]
+name = "lmukit-context-probe"
+path = "src/bin/probe.rs"

@@ -1809,6 +1809,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lmukit-context"
+version = "0.4.1"
+dependencies = [
+ "anyhow",
+ "lmukit-core",
+ "serde_json",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "lmukit-core"
 version = "0.4.1"
 dependencies = [
