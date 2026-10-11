@@ -105,4 +105,4 @@ Use `mise run dev` to cross-build and launch the Windows debug app from WSL, and
 
 ## Future work
 
-The likely route for car/class detection is LMU's built-in `Local\\LMUSharedMem` mapping. Player scoring exposes vehicle name, class, and vehicle filename. LMU does not reload `direct input.json` during a running session, so detection should recommend a mapped profile or prepare it before the next launch rather than promising live automatic switching.
+The verified route for car/class detection in the installed LMU v1.4200 build is its native `LMU_Data` mapping under the contract shipped in `Support/SharedMemoryInterface`. Player scoring exposes vehicle name, class, and vehicle filename. A Windows reader must follow the shipped hold/data-event and shared-lock protocol and validate the observed layout before consuming it. In Virtual mode a confirmed class can resolve and switch the live mapped profile; in Legacy mode it can only recommend a profile or prepare it for the next LMU launch because LMU does not reload `direct input.json` during a session.
