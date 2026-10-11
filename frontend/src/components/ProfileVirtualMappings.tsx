@@ -4,7 +4,6 @@ import {
   LoaderCircle,
   Radio,
   Search,
-  SlidersHorizontal,
   Square,
   Trash2,
   WandSparkles,
@@ -32,10 +31,14 @@ export function ProfileVirtualMappings({
   profile,
   busy,
   onNotice,
+  editorOpen,
+  onEditorOpenChange,
 }: {
   profile: Profile;
   busy: boolean;
   onNotice: (message: string) => void;
+  editorOpen: boolean;
+  onEditorOpenChange: (open: boolean) => void;
 }) {
   const [actions, setActions] = useState<VirtualAction[]>([]);
   const [mappings, setMappings] = useState<VirtualProfileMapping[]>([]);
@@ -43,7 +46,6 @@ export function ProfileVirtualMappings({
   const [migrating, setMigrating] = useState(false);
   const [learningAction, setLearningAction] = useState<string | null>(null);
   const [routingBusy, setRoutingBusy] = useState(false);
-  const [editorOpen, setEditorOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "assigned" | "unassigned">(
     "all",
@@ -172,7 +174,7 @@ export function ProfileVirtualMappings({
   const closeEditor = async () => {
     if (learningAction) await invoke("cancel_binding_lookup");
     setLearningAction(null);
-    setEditorOpen(false);
+    onEditorOpenChange(false);
   };
 
   const remove = async (mapping: VirtualProfileMapping) => {
@@ -269,14 +271,7 @@ export function ProfileVirtualMappings({
               : `${mappings.length} physical mapping${mappings.length === 1 ? "" : "s"} across ${assignedActions.size} of ${actions.length} LMU actions.`}
           </p>
         </div>
-        <button
-          type="button"
-          className="secondary compact"
-          disabled={loading || !actions.length}
-          onClick={() => setEditorOpen(true)}
-        >
-          <SlidersHorizontal /> Manage mappings
-        </button>
+        <span>{mappings.length} assigned</span>
       </header>
 
       {error && <div className="virtual-error">{error}</div>}

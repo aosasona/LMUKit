@@ -2177,6 +2177,11 @@ footer {
 .action-menu > div button:hover {
   background: #272720;
 }
+.action-menu > div button.separator-before {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
 .action-menu > div button.danger-item {
   color: #ef9a91;
 }
@@ -3303,8 +3308,10 @@ textarea,
   font-size: calc(10px * var(--font-scale));
   line-height: 1.45;
 }
-.profile-virtual-mappings > header > button {
+.profile-virtual-mappings > header > span {
   flex: 0 0 auto;
+  color: var(--muted);
+  font-size: calc(10px * var(--font-scale));
   white-space: nowrap;
 }
 .profile-mapping-dialog {

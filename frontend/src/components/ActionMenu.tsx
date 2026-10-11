@@ -6,6 +6,7 @@ export type ActionItem = {
   label: string;
   danger?: boolean;
   hidden?: boolean;
+  separatorBefore?: boolean;
   onSelect: () => void;
 };
 
@@ -28,7 +29,12 @@ export function ActionMenu({
       <div>
         {visible.map((item) => (
           <button
-            className={item.danger ? "danger-item" : ""}
+            className={[
+              item.danger ? "danger-item" : "",
+              item.separatorBefore ? "separator-before" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
             key={item.label}
             onClick={(event) => {
               event.stopPropagation();

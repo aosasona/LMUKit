@@ -4,7 +4,6 @@ import {
   Gamepad2,
   Play,
   Search,
-  SlidersHorizontal,
   Upload,
 } from "lucide-react";
 import { useState } from "react";
@@ -91,6 +90,9 @@ export function ProfilesPage(props: Props) {
   const [captureName, setCaptureName] = useState("");
   const [wheelFilter, setWheelFilter] = useState<string | null>(null);
   const [classFilter, setClassFilter] = useState<string | null>(null);
+  const [mappingEditorProfileId, setMappingEditorProfileId] = useState<
+    string | null
+  >(null);
   const wheelOptions = Array.from(
     new Set(
       profiles
@@ -277,17 +279,29 @@ export function ProfilesPage(props: Props) {
                 <small>{wheelLabel(selected) ?? "No wheel assigned"}</small>
               </div>
               <div className="profile-detail-head-controls">
-                <button
-                  className="secondary compact"
-                  onClick={() => onEdit(selected)}
-                >
-                  <SlidersHorizontal /> Edit profile
-                </button>
                 <ActionMenu
                   items={[
                     {
+                      label: "Manage virtual mappings",
+                      onSelect: () => setMappingEditorProfileId(selected.id),
+                    },
+                    {
+                      label: "Edit LMU configuration",
+                      onSelect: () => onEdit(selected),
+                    },
+                    {
+                      label: "Prepare for next LMU launch",
+                      hidden: selected.id === activeId && !activeDirty,
+                      onSelect: () => onActivate(selected),
+                    },
+                    {
+                      label: "Show profiles folder",
+                      onSelect: onReveal,
+                    },
+                    {
                       label: "Update from LMU",
                       hidden: !selected.differsFromLive,
+                      separatorBefore: true,
                       onSelect: () =>
                         setConfirmation({
                           title: `Update ${selected.name} from LMU?`,
@@ -303,6 +317,7 @@ export function ProfilesPage(props: Props) {
                     {
                       label: "Delete profile",
                       danger: true,
+                      separatorBefore: !selected.differsFromLive,
                       onSelect: () =>
                         setConfirmation({
                           title: `Delete ${selected.name}?`,
@@ -353,6 +368,10 @@ export function ProfilesPage(props: Props) {
               profile={selected}
               busy={busy}
               onNotice={onNotice}
+              editorOpen={mappingEditorProfileId === selected.id}
+              onEditorOpenChange={(open) =>
+                setMappingEditorProfileId(open ? selected.id : null)
+              }
             />
             <div className="profile-devices-head">
               <div>
