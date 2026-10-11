@@ -1,6 +1,6 @@
 # Virtual Input Mode: audit and feasibility gate
 
-Status: **vJoy Windows DirectInput gate passed; Le Mans Ultimate validation pending**
+Status: **vJoy Windows DirectInput and initial LMU binding gates passed; physical routing and stability validation pending**
 Audit date: 2026-10-11
 
 This document records the repository audit and the evidence required before LMUKit can describe Virtual Input Mode as compatible with LMU. The first implementation phase is deliberately isolated from the production UI and persistence model. It does not install a driver, alter LMU files, suppress physical controls, or replace the existing JSON profile-switching workflow.
@@ -54,9 +54,15 @@ This is a feasibility choice, not an endorsement or compatibility claim. The mai
 
 The Windows DirectInput gate passed on 2026-10-11. vJoy 2.2.2.0 eventually registered after a prolonged installer flow and reboot. Windows reported the vJoy driver and HID device as healthy, and LMUKit acquired device 1 with eight configured buttons. Early visual tests were unreliable: transient pulses were missed in `joy.cpl`, while vJoy's own Feeder left two buttons held after exit. This was not evidence of multi-second vJoy latency.
 
-LMUKit's automated verifier subsequently drove each button through the vJoy API and read it back through an independent DirectInput consumer. Button 1 press/release appeared after 1.52/1.49 ms and button 2 after 1.52/1.47 ms. The verifier also confirmed both buttons released after disconnect. This establishes working low-latency DirectInput output and cleanup on this machine, but **does not establish that LMU recognises the device**.
+LMUKit's automated verifier subsequently drove each button through the vJoy API and read it back through an independent DirectInput consumer. Button 1 press/release appeared after 1.52/1.49 ms and button 2 after 1.52/1.47 ms. The verifier also confirmed both buttons released after disconnect. This establishes working low-latency DirectInput output and cleanup on this machine.
 
-Windows `RawGameController` does not enumerate this vJoy device. That means the existing WGI-based physical-input reader cannot observe vJoy and that a game using only WGI/GameInput might not see it. LMU compatibility therefore remains a required in-game gate. One additional inactive/unknown vJoy driver node appeared after reboot, and the difficult installer experience remains a product/distribution concern. Do not weaken Windows security settings. The adapter remains isolated and experimental until the LMU gate passes.
+LMU v1.4200 then detected `vJoy Device` and accepted controlled outputs as `B1` and `B2` for two separate bindings. This establishes that the current LMU build enumerates this vJoy configuration and can learn its button outputs. It does not yet establish continuous physical-to-virtual routing, in-session action behaviour, steering/FFB coexistence, identity stability after restarts, or reliable profile remapping.
+
+![LMU controls showing vJoy bindings B1 and B2](lmu-vjoy-bindings.png)
+
+The recorded environment was vJoy 2.2.2.0, vJoy device 1 configured with eight buttons, LMU v1.4200, and Windows build 26300.9550 (26H2). The test actions were Time Acceleration (`B1`) and Place Replay Marker (`B2`). Both outputs were released by the probe after a 1.5-second hold.
+
+Windows `RawGameController` does not enumerate this vJoy device. That means the existing WGI-based physical-input reader cannot observe vJoy; LMU's successful binding test confirms LMU is not limited to that same enumeration path. One additional inactive/unknown vJoy driver node appeared after reboot, and the difficult installer experience remains a product/distribution concern. Do not weaken Windows security settings. The adapter remains isolated and experimental until the remaining physical-routing and restart-stability gates pass.
 
 [ViGEmBus](https://docs.nefarius.at/projects/ViGEm/End-of-Life/) is not the selected backend: it is retired and emulates a small set of console gamepads rather than a generic high-button-count DirectInput joystick. Writing or bundling a custom kernel driver is outside LMUKit's current safety and maintenance boundary.
 
@@ -87,7 +93,7 @@ Windows recognising vJoy does **not** prove that LMU will expose or accept it. B
 
 1. Install the signed vJoy release manually and configure device 1 with at least two buttons.
 2. Run `lmukit-virtual-probe.exe directinput-list`, locate vJoy's index, then run `lmukit-virtual-probe.exe verify 1 <index>`. Require observed press/release pairs and clean disconnect. `pulse 1 1500` plus Windows controller properties (`joy.cpl`) remains an optional visual check.
-3. In LMU, bind virtual buttons 1 and 2 to harmless test actions and confirm both press and release behaviour.
+3. **Passed for binding capture on 2026-10-11:** LMU v1.4200 detected `vJoy Device` and registered buttons 1 and 2 as `B1` and `B2`. In-session action and release behaviour still requires validation.
 4. Run `lmukit-virtual-probe.exe list`, note the temporary index of the Simagic controller, then run `lmukit-virtual-probe.exe mirror 1 <index> 30`. Confirm physical buttons 1 and 2 drive the corresponding LMU actions while steering and FFB remain connected directly to LMU.
 5. Restart LMUKit, then LMU, without recreating or reconfiguring the virtual device. Record the displayed device identity and confirm the bindings remain valid.
 6. Change only the probe mapping/profile and confirm that the same virtual device and LMU bindings continue to work without restarting LMU.
