@@ -3582,6 +3582,29 @@ textarea,
   color: var(--muted);
   font-size: calc(9px * var(--font-scale));
 }
+.encoder-capture-warning,
+.encoder-conflicts {
+  border: 1px solid rgba(244, 211, 94, 0.34);
+  background: rgba(244, 211, 94, 0.07);
+  color: #e7d98e;
+  font-size: calc(9px * var(--font-scale));
+  line-height: 1.45;
+}
+.encoder-capture-warning {
+  margin-top: 9px;
+  padding: 9px 11px;
+}
+.encoder-conflicts {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 11px;
+}
+.encoder-conflicts strong {
+  margin-bottom: 2px;
+  color: var(--amber);
+  font-size: calc(10px * var(--font-scale));
+}
 .encoder-capture-actions {
   display: flex;
   align-items: center;

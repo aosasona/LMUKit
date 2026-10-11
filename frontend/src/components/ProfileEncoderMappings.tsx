@@ -20,6 +20,7 @@ import type {
   VirtualAction,
   VirtualEncoderControl,
   VirtualEncoderGroup,
+  VirtualProfileMapping,
 } from "../models";
 import { ConfirmDialog, type Confirmation } from "./ConfirmDialog";
 
@@ -56,6 +57,88 @@ const searchTokens = (value: string) =>
     .split(/\s+/)
     .filter(Boolean);
 
+const controlKey = (control: VirtualEncoderControl | null) =>
+  control?.physicalButton
+    ? `${control.deviceId}:${control.physicalButton}`
+    : null;
+
+function findEncoderConflicts(
+  draft: VirtualEncoderGroup | null,
+  savedEncoders: VirtualEncoderGroup[],
+  buttonMappings: VirtualProfileMapping[],
+  originalName: string | null,
+) {
+  const byControl: Record<CaptureKind, string[]> = {
+    clockwise: [],
+    counterclockwise: [],
+    cycle: [],
+  };
+  if (!draft) return { byControl, messages: [] as string[] };
+
+  const current: Array<{
+    kind: CaptureKind;
+    label: string;
+    control: VirtualEncoderControl | null;
+  }> = [
+    { kind: "clockwise", label: "Increase", control: draft.clockwise },
+    {
+      kind: "counterclockwise",
+      label: "Decrease",
+      control: draft.counterclockwise,
+    },
+    { kind: "cycle", label: "Mode button", control: draft.cycle },
+  ];
+  const uses = new Map<string, string[]>();
+
+  for (const mapping of buttonMappings) {
+    const key = `${mapping.deviceId}:${mapping.physicalButton}`;
+    const labels = uses.get(key) ?? [];
+    labels.push(`${mapping.logicalAction} binding`);
+    uses.set(key, labels);
+    for (const modifier of mapping.modifiers) {
+      const modifierKey = `${modifier.deviceId}:${modifier.physicalButton}`;
+      const modifierLabels = uses.get(modifierKey) ?? [];
+      modifierLabels.push(`${mapping.logicalAction} modifier`);
+      uses.set(modifierKey, modifierLabels);
+    }
+  }
+  for (const encoder of savedEncoders) {
+    if (encoder.name === originalName) continue;
+    for (const [label, control] of [
+      [`${encoder.name} Increase`, encoder.clockwise],
+      [`${encoder.name} Decrease`, encoder.counterclockwise],
+      [`${encoder.name} mode button`, encoder.cycle],
+    ] as const) {
+      const key = controlKey(control);
+      if (!key) continue;
+      const labels = uses.get(key) ?? [];
+      labels.push(label);
+      uses.set(key, labels);
+    }
+  }
+
+  for (const entry of current) {
+    const key = controlKey(entry.control);
+    if (!key) continue;
+    const duplicate = current.find(
+      (candidate) =>
+        candidate.kind !== entry.kind && controlKey(candidate.control) === key,
+    );
+    if (duplicate) {
+      byControl[entry.kind].push(
+        `${entry.label} cannot use the same control as ${duplicate.label}.`,
+      );
+    }
+    for (const use of uses.get(key) ?? []) {
+      byControl[entry.kind].push(`${entry.label} is already used by ${use}.`);
+    }
+  }
+  return {
+    byControl,
+    messages: [...new Set(Object.values(byControl).flat())],
+  };
+}
+
 export function ProfileEncoderMappings({
   profile,
   busy,
@@ -70,6 +153,9 @@ export function ProfileEncoderMappings({
   const [open, setOpen] = useState(false);
   const [actions, setActions] = useState<VirtualAction[]>([]);
   const [encoders, setEncoders] = useState<VirtualEncoderGroup[]>([]);
+  const [buttonMappings, setButtonMappings] = useState<VirtualProfileMapping[]>(
+    [],
+  );
   const [draft, setDraft] = useState<VirtualEncoderGroup | null>(null);
   const [originalName, setOriginalName] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("details");
@@ -85,10 +171,14 @@ export function ProfileEncoderMappings({
       invoke<VirtualEncoderGroup[]>("virtual_profile_encoder_groups", {
         profileId: profile.id,
       }),
+      invoke<VirtualProfileMapping[]>("virtual_profile_mapping", {
+        profileId: profile.id,
+      }),
     ])
-      .then(([nextActions, nextEncoders]) => {
+      .then(([nextActions, nextEncoders, nextButtonMappings]) => {
         setActions(nextActions);
         setEncoders(nextEncoders);
+        setButtonMappings(nextButtonMappings);
       })
       .catch((reason) => setError(String(reason)));
     return () => {
@@ -211,6 +301,12 @@ export function ProfileEncoderMappings({
       (mode) =>
         mode.name.trim() && mode.clockwiseAction && mode.counterclockwiseAction,
     );
+  const conflicts = findEncoderConflicts(
+    draft,
+    encoders,
+    buttonMappings,
+    originalName,
+  );
 
   return (
     <>
@@ -318,6 +414,7 @@ export function ProfileEncoderMappings({
                       }}
                       onNext={() => beginStep("decrease", "counterclockwise")}
                       nextLabel="Next"
+                      warning={conflicts.byControl.clockwise[0]}
                     />
                   )}
                   {step === "decrease" && (
@@ -331,6 +428,7 @@ export function ProfileEncoderMappings({
                       onBack={() => beginStep("increase", "clockwise")}
                       onNext={() => setStep("actions")}
                       nextLabel="Done"
+                      warning={conflicts.byControl.counterclockwise[0]}
                     />
                   )}
                   {step === "modeButton" && (
@@ -347,6 +445,7 @@ export function ProfileEncoderMappings({
                       }}
                       onNext={() => setStep("actions")}
                       nextLabel="Done"
+                      warning={conflicts.byControl.cycle[0]}
                     />
                   )}
                   {step === "actions" && (
@@ -385,6 +484,14 @@ export function ProfileEncoderMappings({
                           </span>
                         )}
                       </div>
+                      {!!conflicts.messages.length && (
+                        <div className="encoder-conflicts" role="alert">
+                          <strong>Resolve these control conflicts</strong>
+                          {conflicts.messages.map((message) => (
+                            <span key={message}>{message}</span>
+                          ))}
+                        </div>
+                      )}
                       <div className="encoder-simple-modes">
                         <nav
                           className="encoder-mode-tabs"
@@ -519,7 +626,13 @@ export function ProfileEncoderMappings({
                   <button
                     type="button"
                     className="primary"
-                    disabled={busy || saving || routingActive || !canSave}
+                    disabled={
+                      busy ||
+                      saving ||
+                      routingActive ||
+                      !canSave ||
+                      conflicts.messages.length > 0
+                    }
                     onClick={() => void save()}
                   >
                     {saving ? <LoaderCircle className="spin" /> : <Check />}{" "}
@@ -621,6 +734,7 @@ function CaptureStep({
   onBack,
   onNext,
   nextLabel,
+  warning,
 }: {
   title: string;
   description: string;
@@ -631,6 +745,7 @@ function CaptureStep({
   onBack: () => void;
   onNext: () => void;
   nextLabel: "Next" | "Done";
+  warning?: string;
 }) {
   const captured = Boolean(control?.physicalButton);
   return (
@@ -661,6 +776,7 @@ function CaptureStep({
           </small>
         </span>
       </div>
+      {warning && <div className="encoder-capture-warning">{warning}</div>}
       <div className="encoder-capture-actions">
         {!capturing && (
           <button type="button" className="ghost" onClick={onBack}>
@@ -680,7 +796,12 @@ function CaptureStep({
             <button type="button" className="secondary" onClick={onCapture}>
               <RotateCcw /> Try again
             </button>
-            <button type="button" className="primary" onClick={onNext}>
+            <button
+              type="button"
+              className="primary"
+              disabled={Boolean(warning)}
+              onClick={onNext}
+            >
               {nextLabel} {nextLabel === "Next" ? <ArrowRight /> : <Check />}
             </button>
           </>
