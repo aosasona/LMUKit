@@ -76,7 +76,7 @@ pub fn normalize_existing_class(raw: &str) -> Option<&'static str> {
         "GTE" => Some(CLASS_GTE),
         "LMP3" | "LMP 3" => Some(CLASS_LMP3),
         "LMP2" | "LMP 2" => Some(CLASS_LMP2),
-        "HY" | "HYPERCAR" => Some(CLASS_HY),
+        "HY" | "HYPER" | "HYPERCAR" => Some(CLASS_HY),
         _ => None,
     }
 }
@@ -98,6 +98,7 @@ mod tests {
             ("LMP 3", CLASS_LMP3),
             ("lmp2", CLASS_LMP2),
             ("Hypercar", CLASS_HY),
+            ("Hyper", CLASS_HY),
             ("hy", CLASS_HY),
         ];
 
