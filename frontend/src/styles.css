@@ -3795,9 +3795,16 @@ textarea,
   width: 16px;
 }
 .virtual-profile-mappings {
-  margin-top: 20px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
+  padding: 20px;
+}
+.virtual-profile-mappings h2 {
+  margin: 4px 0 0;
+  font-size: calc(18px * var(--font-scale));
+}
+.virtual-profile-mappings .virtual-mapping-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: calc(10px * var(--font-scale));
 }
 .virtual-mapping-heading {
   display: flex;
@@ -3870,6 +3877,56 @@ textarea,
 }
 .virtual-cancel-learning {
   margin-top: 10px;
+}
+.virtual-setup-details,
+.virtual-layout-details {
+  padding: 0;
+  overflow: hidden;
+}
+.virtual-setup-details {
+  order: 4;
+}
+.virtual-layout-details {
+  order: 5;
+}
+.virtual-setup-details > summary,
+.virtual-layout-details > summary {
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 0 20px;
+  cursor: pointer;
+  list-style: none;
+}
+.virtual-setup-details > summary::-webkit-details-marker,
+.virtual-layout-details > summary::-webkit-details-marker {
+  display: none;
+}
+.virtual-setup-details > summary strong,
+.virtual-setup-details > summary small,
+.virtual-layout-details > summary strong,
+.virtual-layout-details > summary small {
+  display: block;
+}
+.virtual-setup-details > summary small,
+.virtual-layout-details > summary small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: calc(9px * var(--font-scale));
+}
+.virtual-setup-details > summary > span:last-child,
+.virtual-layout-details > summary > span:last-child {
+  color: var(--teal);
+  font-size: calc(10px * var(--font-scale));
+}
+.virtual-setup-details[open] > summary,
+.virtual-layout-details[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+.virtual-layout-details .virtual-setup-grid {
+  margin: 18px;
 }
 @media (max-width: 980px) {
   .virtual-mode-banner,
