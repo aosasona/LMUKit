@@ -212,8 +212,8 @@ Pushing a tag matching `v*` runs the Windows release workflow. The tag version m
 - SHA-256 checksum files for both packages.
 
 ```sh
-git tag v0.4.2
-git push origin v0.4.2
+git tag v0.4.3
+git push origin v0.4.3
 ```
 
 ## AI-assisted development
