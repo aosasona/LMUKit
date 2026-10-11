@@ -28,7 +28,9 @@ Because the virtual layout is shared, `B1` continues to mean Pit Limiter when th
 
 ## Initial setup
 
-The user installs and explicitly configures the supported virtual-controller driver, then binds the virtual buttons in LMU once. Only actions that should be managed by LMUKit need virtual bindings. After LMU has saved those bindings, LMUKit reads `direct input.json` and builds the shared layout from the selected virtual device: LMU input ID 32 is vJoy B1, ID 33 is B2, and so on. The LMU action name becomes the stable logical action.
+The user installs and explicitly configures vJoy, then binds its virtual buttons in LMU once. vJoy is an optional external dependency: LMUKit does not bundle, install, update, or silently configure it. Legacy JSON mode remains fully usable without vJoy.
+
+Only actions that should be managed by LMUKit need virtual bindings. After LMU has saved those bindings, LMUKit reads `direct input.json` and builds the shared layout from the selected virtual device: LMU input ID 32 is vJoy B1, ID 33 is B2, and so on. The LMU action name becomes the stable logical action.
 
 The guided setup will let the user leave LMU listening on an action and trigger LMUKit with a configurable global hotkey. LMUKit selects the lowest unused button within the connected virtual device's actual capacity, emits one bounded press/release, and advances only after the user continues. The hotkey itself requires real LMU validation because LMU must capture the virtual press rather than the keyboard trigger; an in-app trigger remains available if that is unreliable. Cancellation, errors, and shutdown always release the output.
 

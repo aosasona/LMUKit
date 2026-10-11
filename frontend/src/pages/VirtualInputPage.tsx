@@ -110,6 +110,10 @@ export function VirtualInputPage({
             LMUKit reads the vJoy bindings LMU has already saved and turns B1,
             B2, and the rest into named actions. This scan never edits LMU.
           </p>
+          <p>
+            Virtual Input Mode requires vJoy to be installed and configured
+            separately. LMUKit does not bundle, install, or update the driver.
+          </p>
         </div>
         <div className="virtual-safety">
           <AlertTriangle />
