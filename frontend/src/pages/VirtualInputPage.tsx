@@ -1,13 +1,23 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   AlertTriangle,
   Check,
   Gamepad2,
   LoaderCircle,
+  Radio,
   RefreshCw,
+  Send,
+  Square,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type { VirtualAction, VirtualBindingDevice } from "../models";
+import type {
+  VirtualAction,
+  VirtualBindingDevice,
+  VirtualButtonPulse,
+  VirtualSetupEvent,
+  VirtualSetupStatus,
+} from "../models";
 
 export function VirtualInputPage({
   busy,
@@ -23,6 +33,30 @@ export function VirtualInputPage({
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [setup, setSetup] = useState<VirtualSetupStatus | null>(null);
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [lastPulse, setLastPulse] = useState<VirtualButtonPulse | null>(null);
+
+  const recordPulse = useCallback(
+    (pulse: VirtualButtonPulse, announce = true) => {
+      setLastPulse(pulse);
+      setSetup((current) =>
+        current
+          ? {
+              ...current,
+              usedButtonCount: current.usedButtonCount + 1,
+              nextVirtualButton: pulse.nextVirtualButton,
+            }
+          : current,
+      );
+      setSetupError(null);
+      if (announce) {
+        onNotice(`Sent vJoy B${pulse.virtualButton} to LMU.`);
+      }
+    },
+    [onNotice],
+  );
 
   const preview = useCallback(async (deviceKey: string) => {
     if (!deviceKey) {
@@ -79,6 +113,74 @@ export function VirtualInputPage({
     void scan();
   }, [scan]);
 
+  useEffect(() => {
+    const result = listen<VirtualSetupEvent>(
+      "virtual-setup-result",
+      (event) => {
+        if (event.payload.pulse) {
+          recordPulse(event.payload.pulse);
+        } else if (event.payload.error) {
+          setSetupError(event.payload.error);
+          onNotice(event.payload.error);
+        }
+      },
+    );
+    return () => {
+      void result.then((unlisten) => unlisten());
+      void invoke("stop_virtual_binding_setup");
+    };
+  }, [onNotice, recordPulse]);
+
+  const startSetup = async () => {
+    setSetupBusy(true);
+    setSetupError(null);
+    setLastPulse(null);
+    try {
+      const status = await invoke<VirtualSetupStatus>(
+        "start_virtual_binding_setup",
+      );
+      setSetup(status);
+      onNotice("Binding setup ready. Ctrl+Alt+V sends the next vJoy button.");
+    } catch (reason) {
+      setSetupError(String(reason));
+      onNotice(String(reason));
+    } finally {
+      setSetupBusy(false);
+    }
+  };
+
+  const stopSetup = async (rescan: boolean) => {
+    setSetupBusy(true);
+    try {
+      await invoke("stop_virtual_binding_setup");
+      setSetup(null);
+      if (rescan) {
+        await scan();
+        onNotice("Binding setup finished. LMU bindings rescanned.");
+      } else {
+        onNotice("Binding setup stopped.");
+      }
+    } catch (reason) {
+      setSetupError(String(reason));
+      onNotice(String(reason));
+    } finally {
+      setSetupBusy(false);
+    }
+  };
+
+  const sendNextButton = async () => {
+    setSetupBusy(true);
+    setSetupError(null);
+    try {
+      recordPulse(await invoke<VirtualButtonPulse>("send_next_virtual_button"));
+    } catch (reason) {
+      setSetupError(String(reason));
+      onNotice(String(reason));
+    } finally {
+      setSetupBusy(false);
+    }
+  };
+
   const importLayout = async () => {
     if (!selectedKey || !actions.length) return;
     setImporting(true);
@@ -120,6 +222,104 @@ export function VirtualInputPage({
           <span>Steering, pedals, and FFB stay directly connected to LMU.</span>
         </div>
       </div>
+
+      <section className="virtual-wizard panel">
+        <div className="virtual-wizard-copy">
+          <span className="eyebrow">Guided LMU binding</span>
+          <h3>Assign the virtual buttons once</h3>
+          <ol>
+            <li>Start setup, then open LMU&apos;s control assignments.</li>
+            <li>Select an LMU action so it is listening for input.</li>
+            <li>
+              Press <kbd>Ctrl Alt V</kbd>; LMUKit sends the next unused vJoy
+              button.
+            </li>
+            <li>Repeat, save in LMU, then finish and rescan here.</li>
+          </ol>
+          <p>
+            If LMU captures the keyboard shortcut instead, use the on-screen
+            send button while its assignment dialog is still listening.
+          </p>
+        </div>
+        <div className="virtual-wizard-control">
+          {setupError && <div className="virtual-error">{setupError}</div>}
+          {setup ? (
+            <>
+              <div className="virtual-wizard-status">
+                <Radio />
+                <span>
+                  <strong>{setup.identity}</strong>
+                  <small>
+                    {setup.buttonCount} configured buttons ·{" "}
+                    {setup.usedButtonCount} reserved or already bound
+                  </small>
+                </span>
+              </div>
+              <div className="virtual-next-button">
+                <span>Next output</span>
+                <strong>
+                  {setup.nextVirtualButton
+                    ? `B${setup.nextVirtualButton}`
+                    : "None available"}
+                </strong>
+                {lastPulse && (
+                  <small>Last sent: B{lastPulse.virtualButton}</small>
+                )}
+              </div>
+              <div className="virtual-wizard-actions">
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={
+                    busy || setupBusy || setup.nextVirtualButton === null
+                  }
+                  onClick={() => void sendNextButton()}
+                >
+                  {setupBusy ? <LoaderCircle className="spin" /> : <Send />}
+                  Send next button
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || setupBusy}
+                  onClick={() => void stopSetup(true)}
+                >
+                  <Check /> Finish &amp; rescan
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={busy || setupBusy}
+                  onClick={() => void stopSetup(false)}
+                >
+                  <Square /> Stop
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="virtual-wizard-status idle">
+                <Gamepad2 />
+                <span>
+                  <strong>vJoy setup is stopped</strong>
+                  <small>
+                    Starting checks device 1 and enables Ctrl+Alt+V only for
+                    this setup session.
+                  </small>
+                </span>
+              </div>
+              <button
+                type="button"
+                className="primary virtual-start-button"
+                disabled={busy || setupBusy}
+                onClick={() => void startSetup()}
+              >
+                {setupBusy && <LoaderCircle className="spin" />}
+                Start binding setup
+              </button>
+            </>
+          )}
+        </div>
+      </section>
 
       <div className="virtual-setup-grid">
         <section className="virtual-device-panel panel">

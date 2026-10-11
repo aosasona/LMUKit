@@ -66,6 +66,21 @@ export type VirtualBindingDevice = {
   likelyVirtual: boolean;
 };
 export type VirtualAction = { action: string; virtualButton: number };
+export type VirtualSetupStatus = {
+  identity: string;
+  buttonCount: number;
+  usedButtonCount: number;
+  nextVirtualButton: number | null;
+};
+export type VirtualButtonPulse = {
+  virtualButton: number;
+  identity: string;
+  nextVirtualButton: number | null;
+};
+export type VirtualSetupEvent = {
+  pulse: VirtualButtonPulse | null;
+  error: string | null;
+};
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };

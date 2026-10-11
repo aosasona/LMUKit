@@ -4,6 +4,7 @@
 //! that Le Mans Ultimate recognises or accepts the virtual device.
 
 use anyhow::Result;
+use std::collections::BTreeSet;
 
 mod engine;
 
@@ -36,6 +37,77 @@ pub fn next_unused_button(button_count: u32, used_buttons: &[u32]) -> Result<u32
     (1..=button_count)
         .find(|button| !used_buttons.contains(button))
         .ok_or_else(|| anyhow::anyhow!("all {button_count} virtual buttons are already used"))
+}
+
+/// Session-local allocator used while teaching LMU the stable virtual layout.
+/// Successful pulses stay reserved even if LMU has not written its JSON yet;
+/// failed pulses return their button to the sequence.
+#[derive(Debug)]
+pub struct SetupButtonAllocator {
+    button_count: u32,
+    reserved_buttons: BTreeSet<u32>,
+    in_flight: Option<u32>,
+}
+
+impl SetupButtonAllocator {
+    pub fn new(button_count: u32, used_buttons: impl IntoIterator<Item = u32>) -> Result<Self> {
+        anyhow::ensure!(button_count > 0, "virtual controller has no buttons");
+        let reserved_buttons = used_buttons.into_iter().collect::<BTreeSet<_>>();
+        if let Some(button) = reserved_buttons
+            .iter()
+            .find(|button| !(1..=button_count).contains(button))
+        {
+            anyhow::bail!(
+                "virtual button B{button} is outside the configured B1..B{button_count} range"
+            );
+        }
+        Ok(Self {
+            button_count,
+            reserved_buttons,
+            in_flight: None,
+        })
+    }
+
+    pub fn button_count(&self) -> u32 {
+        self.button_count
+    }
+
+    pub fn used_button_count(&self) -> usize {
+        self.reserved_buttons.len()
+    }
+
+    pub fn is_sending(&self) -> bool {
+        self.in_flight.is_some()
+    }
+
+    pub fn next_button(&self) -> Option<u32> {
+        (1..=self.button_count).find(|button| !self.reserved_buttons.contains(button))
+    }
+
+    pub fn reserve_next(&mut self) -> Result<u32> {
+        anyhow::ensure!(
+            self.in_flight.is_none(),
+            "a virtual button pulse is already in progress"
+        );
+        let button = self.next_button().ok_or_else(|| {
+            anyhow::anyhow!("all {} virtual buttons are already used", self.button_count)
+        })?;
+        self.reserved_buttons.insert(button);
+        self.in_flight = Some(button);
+        Ok(button)
+    }
+
+    pub fn finish_pulse(&mut self, button: u32, succeeded: bool) -> Result<()> {
+        anyhow::ensure!(
+            self.in_flight == Some(button),
+            "virtual button B{button} is not the active setup pulse"
+        );
+        self.in_flight = None;
+        if !succeeded {
+            self.reserved_buttons.remove(&button);
+        }
+        Ok(())
+    }
 }
 
 /// Small feasibility pipeline that mirrors two physical button states onto
@@ -191,7 +263,10 @@ impl VirtualInputBackend for MockVirtualBackend {
 
 #[cfg(test)]
 mod tests {
-    use super::{MockVirtualBackend, TwoButtonMirror, VirtualInputBackend, next_unused_button};
+    use super::{
+        MockVirtualBackend, SetupButtonAllocator, TwoButtonMirror, VirtualInputBackend,
+        next_unused_button,
+    };
 
     #[test]
     fn allocates_the_lowest_unused_virtual_button_within_capacity() {
@@ -203,6 +278,41 @@ mod tests {
     fn reports_exhausted_or_empty_virtual_devices() {
         assert!(next_unused_button(2, &[1, 2]).is_err());
         assert!(next_unused_button(0, &[]).is_err());
+    }
+
+    #[test]
+    fn setup_allocator_reserves_successful_pulses_without_waiting_for_lmu_json() {
+        let mut allocator = SetupButtonAllocator::new(4, [1, 3]).unwrap();
+
+        assert_eq!(allocator.next_button(), Some(2));
+        let button = allocator.reserve_next().unwrap();
+        assert_eq!(button, 2);
+        assert!(allocator.reserve_next().is_err());
+
+        allocator.finish_pulse(button, true).unwrap();
+        assert_eq!(allocator.next_button(), Some(4));
+        assert_eq!(allocator.used_button_count(), 3);
+    }
+
+    #[test]
+    fn setup_allocator_retries_a_failed_pulse() {
+        let mut allocator = SetupButtonAllocator::new(4, [1, 3]).unwrap();
+        let button = allocator.reserve_next().unwrap();
+
+        allocator.finish_pulse(button, false).unwrap();
+
+        assert_eq!(allocator.next_button(), Some(2));
+        assert_eq!(allocator.used_button_count(), 2);
+    }
+
+    #[test]
+    fn setup_allocator_validates_capacity_and_exhaustion() {
+        assert!(SetupButtonAllocator::new(0, []).is_err());
+        assert!(SetupButtonAllocator::new(2, [3]).is_err());
+
+        let mut allocator = SetupButtonAllocator::new(2, [1, 2]).unwrap();
+        assert_eq!(allocator.next_button(), None);
+        assert!(allocator.reserve_next().is_err());
     }
 
     #[test]

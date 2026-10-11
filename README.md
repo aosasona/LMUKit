@@ -27,6 +27,7 @@ _The screenshot uses isolated synthetic profile data; no personal LMU files are 
 - Configure Desktop or native OpenXR (`+XR`) launching and start LMUKit, LMUFFB, Crew Chief, RaceLab, or custom companion applications through one explicit Steam launch option.
 - Autosave LMU paths, launch mode, and companion-app setup.
 - Scale the entire interface from Settings.
+- Guide one-time vJoy binding setup by sending the next unused virtual button with an active-session-only `Ctrl+Alt+V` shortcut, then rescan LMU's saved actions.
 
 LMUKit stores profiles, managed wheel images, settings, and timestamped recovery backups in the current Windows user's application-data directory. Use the **Folder** button on Profiles to open the exact location.
 
@@ -65,6 +66,12 @@ The force-feedback section discovers recognised numeric and boolean fields witho
 Open **Settings → Profile keyboard shortcuts** to assign `Ctrl+Alt+1` through `Ctrl+Alt+9`. Assignments are unique, so reusing a number moves it to the newly selected profile.
 
 Press `Ctrl+Alt+Space` anywhere in Windows to open the compact profile switcher. These shortcuts still prepare a profile for LMU's next launch; they do not alter a running LMU session.
+
+### Virtual input setup
+
+Virtual Input Mode requires vJoy device 1 to be installed and configured separately. Open **Virtual input**, start the guided binding setup, and leave LMU listening for the action you want to assign. Press `Ctrl+Alt+V` to send the next unused virtual button, or use the on-screen fallback. The shortcut is registered only while that setup session is active.
+
+LMUKit reserves each successfully emitted button for the rest of the session, so it advances safely even before LMU writes `direct input.json`. After assigning and saving the actions in LMU, choose **Finish & rescan** to inspect the resulting action-to-button layout. LMUKit does not claim that a pulse was accepted until it appears in LMU's saved bindings; the global-hotkey capture path still requires validation against the current game build.
 
 ### Game settings
 

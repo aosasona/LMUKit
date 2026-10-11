@@ -5,6 +5,7 @@ use uuid::Uuid;
 pub enum HotkeyAction {
     OpenSwitcher,
     ActivateProfile(Uuid),
+    SendVirtualSetupButton,
 }
 
 #[cfg(windows)]
@@ -25,7 +26,7 @@ mod platform {
     }
 
     impl HotkeyManager {
-        pub fn new(profiles: &[(Uuid, u8)]) -> Result<Self, String> {
+        pub fn new(profiles: &[(Uuid, u8)], virtual_setup_enabled: bool) -> Result<Self, String> {
             let manager = GlobalHotKeyManager::new().map_err(|error| error.to_string())?;
             let mut registrations = Vec::new();
             let switcher = hotkey(Code::Space);
@@ -33,6 +34,14 @@ mod platform {
                 .register(switcher)
                 .map_err(|error| error.to_string())?;
             registrations.push((switcher.id(), HotkeyAction::OpenSwitcher));
+
+            if virtual_setup_enabled {
+                let setup = hotkey(Code::KeyV);
+                manager
+                    .register(setup)
+                    .map_err(|error| format!("could not register Ctrl+Alt+V: {error}"))?;
+                registrations.push((setup.id(), HotkeyAction::SendVirtualSetupButton));
+            }
 
             for &(profile_id, slot) in profiles {
                 let Some(code) = slot_code(slot) else {
@@ -98,7 +107,7 @@ mod platform {
     pub struct HotkeyManager;
 
     impl HotkeyManager {
-        pub fn new(_profiles: &[(Uuid, u8)]) -> Result<Self, String> {
+        pub fn new(_profiles: &[(Uuid, u8)], _virtual_setup_enabled: bool) -> Result<Self, String> {
             Ok(Self)
         }
 

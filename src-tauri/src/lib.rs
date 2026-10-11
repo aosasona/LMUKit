@@ -1,4 +1,5 @@
 use lmukit_core::storage::{CompanionApp, LaunchMode, Profile, Store, Wheel};
+use lmukit_virtual::SetupButtonAllocator;
 use serde::Serialize;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -6,7 +7,7 @@ use tauri::{Emitter, Manager, State};
 use uuid::Uuid;
 
 #[cfg(target_os = "windows")]
-use lmukit_virtual::{VirtualInputBackend, next_unused_button, vjoy::VJoyBackend};
+use lmukit_virtual::{VirtualInputBackend, vjoy::VJoyBackend};
 
 #[path = "../../src/hotkeys.rs"]
 mod hotkeys;
@@ -14,7 +15,31 @@ mod hotkeys;
 mod input;
 
 struct AppState(Mutex<Store>);
-struct HotkeyState(std::sync::mpsc::Sender<Vec<(Uuid, u8)>>);
+struct HotkeyState(std::sync::mpsc::Sender<HotkeyUpdate>);
+struct VirtualSetupState(Mutex<VirtualSetupSession>);
+
+enum HotkeyUpdate {
+    Profiles(Vec<(Uuid, u8)>),
+    VirtualSetup(bool),
+}
+
+struct VirtualSetupSession {
+    active: bool,
+    device_id: u32,
+    identity: String,
+    allocator: Option<SetupButtonAllocator>,
+}
+
+impl Default for VirtualSetupSession {
+    fn default() -> Self {
+        Self {
+            active: false,
+            device_id: 1,
+            identity: String::new(),
+            allocator: None,
+        }
+    }
+}
 
 static LOOKUP_GENERATION: AtomicU64 = AtomicU64::new(0);
 
@@ -127,11 +152,28 @@ struct VirtualActionSummary {
     virtual_button: u32,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VirtualButtonPulse {
     virtual_button: u32,
     identity: String,
+    next_virtual_button: Option<u32>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualSetupStatus {
+    identity: String,
+    button_count: u32,
+    used_button_count: usize,
+    next_virtual_button: Option<u32>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualSetupEvent {
+    pulse: Option<VirtualButtonPulse>,
+    error: Option<String>,
 }
 
 #[tauri::command]
@@ -202,7 +244,7 @@ fn set_profile_hotkey(
     let profiles = store.profiles().map_err(|error| error.to_string())?;
     hotkey_state
         .0
-        .send(profile_shortcuts(&profiles))
+        .send(HotkeyUpdate::Profiles(profile_shortcuts(&profiles)))
         .map_err(|_| "The shortcut worker is not running.".to_owned())?;
     Ok(())
 }
@@ -325,44 +367,200 @@ fn import_virtual_layout(
 }
 
 #[tauri::command]
-async fn send_next_virtual_button(
+async fn start_virtual_binding_setup(
     state: State<'_, AppState>,
-) -> Result<VirtualButtonPulse, String> {
+    setup_state: State<'_, VirtualSetupState>,
+    hotkey_state: State<'_, HotkeyState>,
+) -> Result<VirtualSetupStatus, String> {
     let (device_id, used_buttons) = {
         let store = state.0.lock().map_err(|error| error.to_string())?;
-        let device_key = store
-            .settings
-            .virtual_device_key
-            .as_deref()
-            .ok_or_else(|| "Import a virtual layout before sending setup buttons.".to_owned())?;
-        let document = store
-            .load_live_bindings_document()
-            .map_err(|error| error.to_string())?;
-        let used_buttons = Store::used_virtual_buttons_from_document(&document, device_key)
-            .map_err(|error| error.to_string())?;
+        let used_buttons = existing_vjoy_buttons(&store)?;
         (store.settings.virtual_device_id, used_buttons)
     };
 
-    tauri::async_runtime::spawn_blocking(move || pulse_next_virtual_button(device_id, used_buttons))
-        .await
-        .map_err(|error| format!("Virtual button worker stopped unexpectedly: {error}"))?
+    let capabilities =
+        tauri::async_runtime::spawn_blocking(move || inspect_virtual_device(device_id))
+            .await
+            .map_err(|error| format!("Virtual button worker stopped unexpectedly: {error}"))??;
+
+    let mut session = setup_state.0.lock().map_err(|error| error.to_string())?;
+    if session
+        .allocator
+        .as_ref()
+        .is_some_and(SetupButtonAllocator::is_sending)
+    {
+        return Err("Wait for the current virtual button pulse to finish.".to_owned());
+    }
+    let allocator = SetupButtonAllocator::new(capabilities.button_count, used_buttons)
+        .map_err(|error| error.to_string())?;
+    *session = VirtualSetupSession {
+        active: true,
+        device_id,
+        identity: capabilities.identity.clone(),
+        allocator: Some(allocator),
+    };
+    let next_virtual_button = session
+        .allocator
+        .as_ref()
+        .and_then(SetupButtonAllocator::next_button);
+    drop(session);
+
+    if hotkey_state
+        .0
+        .send(HotkeyUpdate::VirtualSetup(true))
+        .is_err()
+    {
+        setup_state
+            .0
+            .lock()
+            .map_err(|error| error.to_string())?
+            .active = false;
+        return Err("The shortcut worker is not running.".to_owned());
+    }
+
+    let session = setup_state.0.lock().map_err(|error| error.to_string())?;
+    let allocator = session
+        .allocator
+        .as_ref()
+        .ok_or_else(|| "The virtual binding setup is not initialised.".to_owned())?;
+    Ok(VirtualSetupStatus {
+        identity: session.identity.clone(),
+        button_count: allocator.button_count(),
+        used_button_count: allocator.used_button_count(),
+        next_virtual_button,
+    })
+}
+
+#[tauri::command]
+fn stop_virtual_binding_setup(
+    setup_state: State<'_, VirtualSetupState>,
+    hotkey_state: State<'_, HotkeyState>,
+) -> Result<(), String> {
+    setup_state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())?
+        .active = false;
+    hotkey_state
+        .0
+        .send(HotkeyUpdate::VirtualSetup(false))
+        .map_err(|_| "The shortcut worker is not running.".to_owned())
+}
+
+#[tauri::command]
+async fn send_next_virtual_button(
+    setup_state: State<'_, VirtualSetupState>,
+) -> Result<VirtualButtonPulse, String> {
+    let (device_id, virtual_button) = reserve_virtual_setup_button(&setup_state)?;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        pulse_virtual_button(device_id, virtual_button)
+    })
+    .await
+    .map_err(|error| format!("Virtual button worker stopped unexpectedly: {error}"))?;
+    finish_virtual_setup_pulse(&setup_state, virtual_button, result)
+}
+
+fn existing_vjoy_buttons(store: &Store) -> Result<Vec<u32>, String> {
+    let document = store
+        .load_live_bindings_document()
+        .map_err(|error| error.to_string())?;
+    let devices = document
+        .get("Devices")
+        .and_then(serde_json::Value::as_object);
+    let configured = store
+        .settings
+        .virtual_device_key
+        .as_deref()
+        .filter(|key| devices.is_some_and(|entries| entries.contains_key(*key)));
+    let detected = devices.and_then(|entries| {
+        entries.iter().find_map(|(key, value)| {
+            let name = value
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(key);
+            (name.to_ascii_lowercase().contains("vjoy")
+                || key.to_ascii_lowercase().contains("vjoy"))
+            .then_some(key.as_str())
+        })
+    });
+    match configured.or(detected) {
+        Some(device_key) => Store::used_virtual_buttons_from_document(&document, device_key)
+            .map_err(|error| error.to_string()),
+        None => Ok(Vec::new()),
+    }
+}
+
+fn reserve_virtual_setup_button(
+    setup_state: &State<'_, VirtualSetupState>,
+) -> Result<(u32, u32), String> {
+    let mut session = setup_state.0.lock().map_err(|error| error.to_string())?;
+    if !session.active {
+        return Err("Start the virtual binding setup first.".to_owned());
+    }
+    let virtual_button = session
+        .allocator
+        .as_mut()
+        .ok_or_else(|| "The virtual binding setup is not initialised.".to_owned())?
+        .reserve_next()
+        .map_err(|error| error.to_string())?;
+    Ok((session.device_id, virtual_button))
+}
+
+fn finish_virtual_setup_pulse(
+    setup_state: &State<'_, VirtualSetupState>,
+    virtual_button: u32,
+    result: Result<String, String>,
+) -> Result<VirtualButtonPulse, String> {
+    let mut session = setup_state.0.lock().map_err(|error| error.to_string())?;
+    let allocator = session
+        .allocator
+        .as_mut()
+        .ok_or_else(|| "The virtual binding setup is not initialised.".to_owned())?;
+    match result {
+        Ok(identity) => {
+            allocator
+                .finish_pulse(virtual_button, true)
+                .map_err(|error| error.to_string())?;
+            Ok(VirtualButtonPulse {
+                virtual_button,
+                identity,
+                next_virtual_button: allocator.next_button(),
+            })
+        }
+        Err(error) => {
+            allocator
+                .finish_pulse(virtual_button, false)
+                .map_err(|finish_error| finish_error.to_string())?;
+            Err(error)
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
-fn pulse_next_virtual_button(
-    device_id: u32,
-    used_buttons: Vec<u32>,
-) -> Result<VirtualButtonPulse, String> {
+fn inspect_virtual_device(device_id: u32) -> Result<lmukit_virtual::VirtualCapabilities, String> {
     let mut backend = VJoyBackend::new(device_id).map_err(|error| error.to_string())?;
     backend.connect().map_err(|error| error.to_string())?;
     let capabilities = backend.capabilities().map_err(|error| error.to_string())?;
-    let virtual_button =
-        next_unused_button(capabilities.button_count, &used_buttons).map_err(|_| {
-            format!(
-                "All {} configured virtual buttons are already used in LMU.",
-                capabilities.button_count
-            )
-        })?;
+    backend.disconnect().map_err(|error| error.to_string())?;
+    Ok(capabilities)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn inspect_virtual_device(_device_id: u32) -> Result<lmukit_virtual::VirtualCapabilities, String> {
+    Err("Virtual button setup is only available on Windows.".to_owned())
+}
+
+#[cfg(target_os = "windows")]
+fn pulse_virtual_button(device_id: u32, virtual_button: u32) -> Result<String, String> {
+    let mut backend = VJoyBackend::new(device_id).map_err(|error| error.to_string())?;
+    backend.connect().map_err(|error| error.to_string())?;
+    let capabilities = backend.capabilities().map_err(|error| error.to_string())?;
+    if virtual_button > capabilities.button_count {
+        return Err(format!(
+            "vJoy now provides only {} buttons; B{virtual_button} is unavailable.",
+            capabilities.button_count
+        ));
+    }
     backend
         .set_button(virtual_button, true)
         .map_err(|error| error.to_string())?;
@@ -371,17 +569,11 @@ fn pulse_next_virtual_button(
         .set_button(virtual_button, false)
         .map_err(|error| error.to_string())?;
     backend.disconnect().map_err(|error| error.to_string())?;
-    Ok(VirtualButtonPulse {
-        virtual_button,
-        identity: capabilities.identity,
-    })
+    Ok(capabilities.identity)
 }
 
 #[cfg(not(target_os = "windows"))]
-fn pulse_next_virtual_button(
-    _device_id: u32,
-    _used_buttons: Vec<u32>,
-) -> Result<VirtualButtonPulse, String> {
+fn pulse_virtual_button(_device_id: u32, _virtual_button: u32) -> Result<String, String> {
     Err("Virtual button setup is only available on Windows.".to_owned())
 }
 
@@ -974,6 +1166,9 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState(Mutex::new(store)))
         .manage(HotkeyState(hotkey_tx))
+        .manage(VirtualSetupState(
+            Mutex::new(VirtualSetupSession::default()),
+        ))
         .setup(move |app| {
             let handle = app.handle().clone();
             std::thread::spawn(move || poll_hotkeys(handle, hotkey_rx, shortcuts));
@@ -1019,6 +1214,8 @@ pub fn run() {
             virtual_binding_devices,
             preview_virtual_layout,
             import_virtual_layout,
+            start_virtual_binding_setup,
+            stop_virtual_binding_setup,
             send_next_virtual_button
         ])
         .run(tauri::generate_context!())
@@ -1034,14 +1231,19 @@ fn profile_shortcuts(profiles: &[Profile]) -> Vec<(Uuid, u8)> {
 
 fn poll_hotkeys(
     app: tauri::AppHandle,
-    updates: std::sync::mpsc::Receiver<Vec<(Uuid, u8)>>,
-    shortcuts: Vec<(Uuid, u8)>,
+    updates: std::sync::mpsc::Receiver<HotkeyUpdate>,
+    mut shortcuts: Vec<(Uuid, u8)>,
 ) {
-    let mut manager = hotkeys::HotkeyManager::new(&shortcuts).ok();
+    let mut virtual_setup_enabled = false;
+    let mut manager = hotkeys::HotkeyManager::new(&shortcuts, virtual_setup_enabled).ok();
     loop {
         std::thread::sleep(std::time::Duration::from_millis(100));
-        while let Ok(shortcuts) = updates.try_recv() {
-            manager = hotkeys::HotkeyManager::new(&shortcuts).ok();
+        while let Ok(update) = updates.try_recv() {
+            match update {
+                HotkeyUpdate::Profiles(next) => shortcuts = next,
+                HotkeyUpdate::VirtualSetup(enabled) => virtual_setup_enabled = enabled,
+            }
+            manager = hotkeys::HotkeyManager::new(&shortcuts, virtual_setup_enabled).ok();
         }
         let action = manager.as_ref().and_then(hotkeys::HotkeyManager::poll);
         match action {
@@ -1073,6 +1275,26 @@ fn poll_hotkeys(
                         Ok(profile.name)
                     });
                 let _ = app.emit("profile-shortcut-result", result);
+            }
+            Some(hotkeys::HotkeyAction::SendVirtualSetupButton) => {
+                let setup_state = app.state::<VirtualSetupState>();
+                let result = reserve_virtual_setup_button(&setup_state).and_then(
+                    |(device_id, virtual_button)| {
+                        let result = pulse_virtual_button(device_id, virtual_button);
+                        finish_virtual_setup_pulse(&setup_state, virtual_button, result)
+                    },
+                );
+                let event = match result {
+                    Ok(pulse) => VirtualSetupEvent {
+                        pulse: Some(pulse),
+                        error: None,
+                    },
+                    Err(error) => VirtualSetupEvent {
+                        pulse: None,
+                        error: Some(error),
+                    },
+                };
+                let _ = app.emit("virtual-setup-result", event);
             }
             None => {}
         }
