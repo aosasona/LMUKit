@@ -144,39 +144,78 @@ export function VirtualInputPage({
     }
   }, []);
 
-  const scan = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setSaved(false);
-    try {
-      const next = await invoke<VirtualBindingDevice[]>(
-        "virtual_binding_devices",
-      );
-      setDevices(next);
-      const preferred =
-        next.find((device) => device.likelyVirtual)?.key ?? next[0]?.key ?? "";
-      setSelectedKey(preferred);
-      if (preferred) {
-        setActions(
-          await invoke<VirtualAction[]>("preview_virtual_layout", {
-            deviceKey: preferred,
-          }),
+  const scan = useCallback(
+    async (autoSave = false): Promise<"saved" | "review" | "failed"> => {
+      setLoading(true);
+      setError(null);
+      setSaved(false);
+      try {
+        const next = await invoke<VirtualBindingDevice[]>(
+          "virtual_binding_devices",
         );
-      } else {
+        setDevices(next);
+        const candidates = next.filter(
+          (device) => device.likelyVirtual && device.buttonBindingCount > 0,
+        );
+        const preferred =
+          (autoSave && candidates.length === 1
+            ? candidates[0].key
+            : next.find((device) => device.likelyVirtual)?.key) ??
+          next[0]?.key ??
+          "";
+        setSelectedKey(preferred);
+        if (autoSave && candidates.length !== 1) {
+          setActions([]);
+          const reason = candidates.length
+            ? "LMU contains more than one vJoy device with bindings. Select the current 128-button device below and save it once."
+            : "No named vJoy button bindings were found after the rescan.";
+          setError(reason);
+          onNotice(reason);
+          return "review";
+        }
+        if (preferred) {
+          const previewed = await invoke<VirtualAction[]>(
+            "preview_virtual_layout",
+            {
+              deviceKey: preferred,
+            },
+          );
+          setActions(previewed);
+        } else {
+          setActions([]);
+        }
+        if (!autoSave) return "review";
+
+        const deviceKey = candidates[0].key;
+        const imported = await invoke<VirtualAction[]>(
+          "import_virtual_layout",
+          {
+            deviceKey,
+          },
+        );
+        setSelectedKey(deviceKey);
+        setActions(imported);
+        setSaved(true);
+        onNotice(
+          `${imported.length} named LMU actions rescanned and saved automatically.`,
+        );
+        return "saved";
+      } catch (reason) {
+        setDevices([]);
         setActions([]);
+        setSelectedKey("");
+        setError(String(reason));
+        if (autoSave) onNotice(String(reason));
+        return "failed";
+      } finally {
+        setLoading(false);
       }
-    } catch (reason) {
-      setDevices([]);
-      setActions([]);
-      setSelectedKey("");
-      setError(String(reason));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [onNotice],
+  );
 
   useEffect(() => {
-    void scan();
+    void scan(false);
   }, [scan]);
 
   useEffect(() => {
@@ -227,8 +266,7 @@ export function VirtualInputPage({
       await invoke("stop_virtual_binding_setup");
       setSetup(null);
       if (rescan) {
-        await scan();
-        onNotice("Binding setup finished. LMU bindings rescanned.");
+        await scan(true);
       } else {
         onNotice("Binding setup stopped.");
       }
@@ -602,7 +640,7 @@ export function VirtualInputPage({
                 className="icon-button"
                 aria-label="Rescan LMU bindings"
                 disabled={loading || busy}
-                onClick={() => void scan()}
+                onClick={() => void scan(true)}
               >
                 <RefreshCw className={loading ? "spin" : ""} />
               </button>
@@ -672,7 +710,7 @@ export function VirtualInputPage({
                     <Check /> Layout saved
                   </>
                 ) : (
-                  "Review the named actions before importing."
+                  "Rescans save automatically when the vJoy device is unambiguous."
                 )}
               </span>
               <button
@@ -688,7 +726,7 @@ export function VirtualInputPage({
                 onClick={() => void importLayout()}
               >
                 {importing && <LoaderCircle className="spin" />}
-                Save LMU button layout
+                Save selected layout
               </button>
             </div>
           </section>
