@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -34,6 +34,21 @@ pub struct Profile {
     pub custom_tags: Vec<String>,
     #[serde(default)]
     pub wheel_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub virtual_mapping: Option<VirtualProfileMapping>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VirtualProfileMapping {
+    #[serde(default)]
+    pub buttons: Vec<VirtualButtonMapping>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VirtualButtonMapping {
+    pub device_id: String,
+    pub physical_button: u32,
+    pub logical_action: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -75,6 +90,24 @@ pub struct Settings {
     pub ui_font_scale: f32,
     #[serde(default)]
     pub lmu_launch_mode: LaunchMode,
+    #[serde(default)]
+    pub input_mode: InputMode,
+    #[serde(default)]
+    pub virtual_layout: Vec<VirtualLayoutEntry>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum InputMode {
+    #[default]
+    Legacy,
+    Virtual,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VirtualLayoutEntry {
+    pub logical_action: String,
+    pub virtual_button: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -102,6 +135,8 @@ impl Default for Settings {
             companion_apps: default_companion_apps(),
             ui_font_scale: default_ui_font_scale(),
             lmu_launch_mode: LaunchMode::Desktop,
+            input_mode: InputMode::Legacy,
+            virtual_layout: Vec::new(),
         }
     }
 }
@@ -177,7 +212,25 @@ impl Store {
     }
 
     pub fn save_settings(&self) -> Result<()> {
+        validate_virtual_layout(&self.settings.virtual_layout)?;
         write_json(&self.root.join("settings.json"), &self.settings)
+    }
+
+    pub fn set_profile_virtual_mapping(
+        &self,
+        profile_id: Uuid,
+        mapping: Option<VirtualProfileMapping>,
+    ) -> Result<()> {
+        if let Some(mapping) = &mapping {
+            validate_virtual_mapping(mapping, &self.settings.virtual_layout)?;
+        }
+        let mut profile = self
+            .profiles()?
+            .into_iter()
+            .find(|profile| profile.id == profile_id)
+            .context("That profile no longer exists.")?;
+        profile.virtual_mapping = mapping;
+        self.save_profile_metadata(&profile)
     }
 
     pub fn load_lmu_settings_document(&self) -> Result<serde_json::Value> {
@@ -616,6 +669,7 @@ impl Store {
             class_tags: Vec::new(),
             custom_tags: Vec::new(),
             wheel_id: None,
+            virtual_mapping: None,
         };
         let dir = self.profile_dir(profile.id);
         fs::create_dir_all(&dir)?;
@@ -876,6 +930,7 @@ impl Store {
             class_tags: Vec::new(),
             custom_tags: Vec::new(),
             wheel_id: None,
+            virtual_mapping: None,
         };
         let dir = self.profile_dir(profile.id);
         fs::create_dir_all(&dir)?;
@@ -1129,6 +1184,80 @@ fn validate_image_bytes(bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
+fn validate_virtual_layout(layout: &[VirtualLayoutEntry]) -> Result<()> {
+    ensure!(
+        layout.len() <= 128,
+        "Virtual layout cannot contain more than 128 actions."
+    );
+    let mut actions = BTreeSet::new();
+    let mut buttons = BTreeSet::new();
+    for entry in layout {
+        validate_virtual_label(&entry.logical_action, "Logical action")?;
+        ensure!(
+            actions.insert(entry.logical_action.to_lowercase()),
+            "Logical action '{}' appears more than once.",
+            entry.logical_action
+        );
+        ensure!(
+            (1..=128).contains(&entry.virtual_button),
+            "Virtual button {} is outside the supported range 1..=128.",
+            entry.virtual_button
+        );
+        ensure!(
+            buttons.insert(entry.virtual_button),
+            "Virtual button {} is assigned more than once.",
+            entry.virtual_button
+        );
+    }
+    Ok(())
+}
+
+fn validate_virtual_mapping(
+    mapping: &VirtualProfileMapping,
+    layout: &[VirtualLayoutEntry],
+) -> Result<()> {
+    validate_virtual_layout(layout)?;
+    ensure!(
+        mapping.buttons.len() <= 512,
+        "A virtual profile cannot contain more than 512 button mappings."
+    );
+    let actions = layout
+        .iter()
+        .map(|entry| entry.logical_action.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut sources = BTreeSet::new();
+    for entry in &mapping.buttons {
+        validate_virtual_label(&entry.device_id, "Input device ID")?;
+        validate_virtual_label(&entry.logical_action, "Logical action")?;
+        ensure!(
+            entry.physical_button > 0,
+            "Physical button IDs must be greater than zero."
+        );
+        ensure!(
+            sources.insert((entry.device_id.as_str(), entry.physical_button)),
+            "Physical button {} on '{}' is mapped more than once.",
+            entry.physical_button,
+            entry.device_id
+        );
+        ensure!(
+            actions.contains(entry.logical_action.as_str()),
+            "Logical action '{}' is missing from the shared virtual layout.",
+            entry.logical_action
+        );
+    }
+    Ok(())
+}
+
+fn validate_virtual_label(value: &str, label: &str) -> Result<()> {
+    ensure!(!value.trim().is_empty(), "{label} must not be empty.");
+    ensure!(value == value.trim(), "{label} must not have outer spaces.");
+    ensure!(
+        value.chars().count() <= 120,
+        "{label} must be 120 characters or shorter."
+    );
+    Ok(())
+}
+
 fn normalize_tags(tags: Vec<String>) -> Result<Vec<String>> {
     let mut normalized = Vec::new();
     for tag in tags {
@@ -1189,6 +1318,7 @@ mod tests {
         assert_eq!(profile.wheel_name, None);
         assert!(profile.class_tags.is_empty());
         assert!(profile.custom_tags.is_empty());
+        assert_eq!(profile.virtual_mapping, None);
     }
 
     #[test]
@@ -1661,6 +1791,109 @@ mod tests {
             PathBuf::from("D:/LMU/UserData/player/Settings.JSON")
         );
         assert_eq!(store.settings.ui_font_scale, 1.0);
+        assert_eq!(store.settings.input_mode, InputMode::Legacy);
+        assert!(store.settings.virtual_layout.is_empty());
+    }
+
+    #[test]
+    fn persists_virtual_layout_and_profile_button_mappings() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("lmukit");
+        let mut store = Store::open_at(root.clone()).unwrap();
+        let profile = store
+            .import_profile_bytes("GT Neo GT3", br#"{"Input":{}}"#)
+            .unwrap();
+        store.settings.input_mode = InputMode::Virtual;
+        store.settings.virtual_layout = vec![
+            VirtualLayoutEntry {
+                logical_action: "pit_limiter".into(),
+                virtual_button: 1,
+            },
+            VirtualLayoutEntry {
+                logical_action: "headlights".into(),
+                virtual_button: 2,
+            },
+        ];
+        store.save_settings().unwrap();
+        store
+            .set_profile_virtual_mapping(
+                profile.id,
+                Some(VirtualProfileMapping {
+                    buttons: vec![
+                        VirtualButtonMapping {
+                            device_id: "simagic-alpha-evo".into(),
+                            physical_button: 5,
+                            logical_action: "pit_limiter".into(),
+                        },
+                        VirtualButtonMapping {
+                            device_id: "simagic-alpha-evo".into(),
+                            physical_button: 6,
+                            logical_action: "headlights".into(),
+                        },
+                    ],
+                }),
+            )
+            .unwrap();
+        drop(store);
+
+        let reopened = Store::open_at(root).unwrap();
+        let saved_profile = reopened
+            .profiles()
+            .unwrap()
+            .into_iter()
+            .find(|saved| saved.id == profile.id)
+            .unwrap();
+
+        assert_eq!(reopened.settings.input_mode, InputMode::Virtual);
+        assert_eq!(reopened.settings.virtual_layout.len(), 2);
+        assert_eq!(
+            saved_profile.virtual_mapping.unwrap().buttons,
+            vec![
+                VirtualButtonMapping {
+                    device_id: "simagic-alpha-evo".into(),
+                    physical_button: 5,
+                    logical_action: "pit_limiter".into(),
+                },
+                VirtualButtonMapping {
+                    device_id: "simagic-alpha-evo".into(),
+                    physical_button: 6,
+                    logical_action: "headlights".into(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_virtual_layouts_and_profile_mappings() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let profile = store
+            .import_profile_bytes("GT Neo", br#"{"Input":{}}"#)
+            .unwrap();
+        store.settings.virtual_layout = vec![VirtualLayoutEntry {
+            logical_action: "pit_limiter".into(),
+            virtual_button: 1,
+        }];
+        store.save_settings().unwrap();
+
+        let missing_action = VirtualProfileMapping {
+            buttons: vec![VirtualButtonMapping {
+                device_id: "simagic-alpha-evo".into(),
+                physical_button: 5,
+                logical_action: "headlights".into(),
+            }],
+        };
+        assert!(
+            store
+                .set_profile_virtual_mapping(profile.id, Some(missing_action))
+                .is_err()
+        );
+
+        store.settings.virtual_layout.push(VirtualLayoutEntry {
+            logical_action: "headlights".into(),
+            virtual_button: 1,
+        });
+        assert!(store.save_settings().is_err());
     }
 
     #[test]
