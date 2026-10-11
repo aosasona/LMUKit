@@ -19,7 +19,7 @@ The current data model already supports the product concepts that should be reus
 - Legacy wheel metadata is migrated additively by matching brand and wheel name. Settings and profile additions use Serde defaults so older JSON remains readable.
 - Physical input learning uses Windows `RawGameController`. Each capture listener starts on a fresh OS thread to avoid conflicting with the webview's WinRT apartment mode.
 
-The repository now has an experimental continuous DirectInput press/release monitor, virtual-output backend, stable layout, persisted per-profile button and modifier mappings, wheel/class default references with fallbacks, and manual start/stop or default-based routing. It does not yet have layers, encoder modes, a car-context provider, or a reliable automatic rim identity provider. The legacy Windows Gaming Input learner remains separate from the DirectInput routing path.
+The repository now has an experimental continuous DirectInput press/release monitor, virtual-output backend, stable layout, persisted per-profile button, modifier, and encoder-mode mappings, wheel/class default references with fallbacks, and manual start/stop or default-based routing. It does not yet have layers, a car-context provider, or a reliable automatic rim identity provider. The legacy Windows Gaming Input learner remains separate from the DirectInput routing path.
 
 ### Existing class IDs and proposed context aliases
 
@@ -121,7 +121,7 @@ The first context phase will therefore remain manual. Automatic class selection 
 1. **Feasibility:** isolated vJoy adapter, mock backend, two-button pulse/mirror probe, explicit hardware checklist. No persisted or production-UI changes.
 2. **Core routing:** the platform-independent logical-action engine, source-owned outputs, output-range validation, and safe profile-change/shutdown reconciliation are implemented with a mock backend. The profile/settings store preserves optional physical-to-logical mappings and the shared logical-to-virtual layout. The production UI can learn buttons through DirectInput and manually start, stop, or switch a selected profile without changing LMU's JSON. Direct and modifier-combination routing have been confirmed with the tested hardware, but the path remains experimental pending the remaining driving-session and recovery checks.
 3. **Class-aware resolution:** wheel/class default references and wheel fallback using existing class tags, with referential-integrity and migration tests.
-4. **Advanced controls:** hold modifiers and unified learn-input capture are implemented. Layers, serialised encoder pulses, and expanded conflict diagnostics remain.
+4. **Advanced controls:** hold modifiers, unified learn-input capture, and named digital encoder modes are implemented. Layers, serialised minimum-duration encoder pulses, and expanded conflict diagnostics remain.
 5. **Verified car context:** provider backed only by observed LMU data, debounced selection, manual override, Resume Auto, and stale/conflict diagnostics.
 6. **Rim discovery and polish:** inspector, redacted diagnostics, conservative identity providers, setup wizard, latency/recovery diagnostics, and packaging guidance.
 

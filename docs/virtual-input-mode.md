@@ -59,7 +59,7 @@ Profiles continue to use reusable wheel references and the existing class tags. 
 - GT Neo / GT3 / Race;
 - FX Pro / GT3 / Race.
 
-Each profile owns its physical button mappings and modifier combinations. Wheel/class defaults are stored as separate references: at most one default profile for a given wheel and class, plus an optional wheel-level fallback. Changing a profile's wheel or class tags and deleting a profile clean up any references that are no longer valid. Layers and encoder modes remain planned extensions.
+Each profile owns its physical button mappings, modifier combinations, and encoder modes. Wheel/class defaults are stored as separate references: at most one default profile for a given wheel and class, plus an optional wheel-level fallback. Changing a profile's wheel or class tags and deleting a profile clean up any references that are no longer valid. Layers remain a planned extension.
 
 For example, a GT Neo HY profile may map encoder 1 to Front ARB while a GT Neo GT3 profile maps the same encoder to TC2. Both profiles still target the globally stable virtual buttons assigned to those logical actions.
 
@@ -68,6 +68,12 @@ For example, a GT Neo HY profile may map encoder 1 to Front ARB while a GT Neo G
 A profile may map a direct trigger and a modifier-plus-trigger combination independently. **Bind control** handles both: press and release one button for a normal binding, or keep the first button held and press another to use the first as a modifier. For example, button 5 may map to Pit Limiter while button 4 + button 5 maps to Recenter VR.
 
 The mapping engine tracks every currently pressed physical button. For a given trigger, the satisfied mapping with the most held modifiers wins; equal-specificity matches use a stable physical-button ordering. Changing modifier state while a trigger is held reconciles the active virtual output immediately. Output ownership remains reference-counted, and profile changes, disconnects, errors, and shutdown still release all outputs. The current UI captures one modifier per combination; the persisted and engine models allow additional modifiers in a later editor revision.
+
+## Encoder modes
+
+The encoder editor captures clockwise and counter-clockwise detents as digital buttons plus a separate mode-cycle button. Each encoder contains one to eight ordered modes, and each mode assigns a named LMU action to each direction. Pressing the mode control advances once per physical press, emits no virtual button itself, and updates the on-screen active-mode indicator. Encoder controls are reserved for that encoder and cannot also be ordinary mappings or controls for another encoder.
+
+This initial implementation follows the physical button press/release duration reported by DirectInput. A bounded, serialised minimum-duration pulse queue remains required if hardware testing shows that rapid detents can be missed by LMU.
 
 ## Daily use
 
