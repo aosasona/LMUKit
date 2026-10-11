@@ -211,7 +211,7 @@ The human maintainer directs the product, reviews changes, runs the required che
 
 ## Planned work
 
-- Continue hardware acceptance and recovery testing for the experimental [Virtual Input Mode](docs/virtual-input-mode.md). The tested compatibility scope and remaining gates are documented in the [feasibility report](docs/virtual-input-feasibility.md).
+- Extend hardware and disconnect/reconnect acceptance beyond the recorded Simagic/vJoy environment for [Virtual Input Mode](docs/virtual-input-mode.md). The passed driving-session scope and remaining portability limits are documented in the [feasibility report](docs/virtual-input-feasibility.md).
 - Verify LMU's current native shared-memory contract from the header shipped with an installed game build before implementing automatic vehicle/class detection; no REST endpoint or memory layout is assumed.
 
 ## License
