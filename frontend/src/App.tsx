@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Search, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
+import { ConfirmDialog, type Confirmation } from "./components/ConfirmDialog";
 import { InputModeSwitch, type InputMode } from "./components/InputModeSwitch";
 import { TitleBar } from "./components/TitleBar";
 import { QuickProfileSwitcher } from "./components/QuickProfileSwitcher";
@@ -59,6 +60,7 @@ export default function App() {
     useState<JsonObject | null>(null);
   const [profileDocumentLoading, setProfileDocumentLoading] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [exitRequested, setExitRequested] = useState(false);
   const [gameSettings, setGameSettings] = useState<JsonObject | null>(null);
   const [gameSettingsBaseline, setGameSettingsBaseline] =
     useState<JsonObject | null>(null);
@@ -174,10 +176,14 @@ export default function App() {
           .catch(() => undefined);
       },
     );
+    const exitRequest = listen("request-exit-confirmation", () => {
+      setExitRequested(true);
+    });
     return () => {
       void switcher.then((unlisten) => unlisten());
       void activation.then((unlisten) => unlisten());
       void virtualAutoStart.then((unlisten) => unlisten());
+      void exitRequest.then((unlisten) => unlisten());
     };
   }, []);
   useEffect(() => {
@@ -670,14 +676,27 @@ export default function App() {
           : `${selected.name} saved. A recovery backup was created.`,
       );
     });
-  const exitApp = () => {
-    if (
-      (gameSettingsDirty || profileDocumentDirty) &&
-      !window.confirm("Exit LMUKit and discard your unsaved editor changes?")
-    )
-      return;
-    void invoke("exit_app").catch((error) => setNotice(String(error)));
-  };
+  const exitConfirmation: Confirmation | null = exitRequested
+    ? {
+        title: "Exit LMUKit?",
+        description: [
+          routing.active
+            ? "Live remapping will stop and every virtual button will be released."
+            : "LMUKit will stop running in the notification area.",
+          gameSettingsDirty || profileDocumentDirty
+            ? "Your unsaved editor changes will be discarded."
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+        confirmLabel: "Exit LMUKit",
+        danger: true,
+        onConfirm: () => {
+          setExitRequested(false);
+          void invoke("exit_app").catch((error) => setNotice(String(error)));
+        },
+      }
+    : null;
 
   return (
     <div className="window-shell">
@@ -687,7 +706,7 @@ export default function App() {
           page={page}
           profileCount={snapshot.profiles.length}
           onNavigate={navigate}
-          onExit={exitApp}
+          onExit={() => setExitRequested(true)}
         />
         <main>
           <header className="topbar">
@@ -870,6 +889,11 @@ export default function App() {
           onActivate={activate}
         />
       )}
+      <ConfirmDialog
+        confirmation={exitConfirmation}
+        busy={busy}
+        onClose={() => setExitRequested(false)}
+      />
     </div>
   );
 }

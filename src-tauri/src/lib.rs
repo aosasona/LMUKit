@@ -11,7 +11,11 @@ use lmukit_virtual::{
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{Emitter, Manager, State};
+use tauri::{
+    Emitter, Manager, State,
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+};
 use uuid::Uuid;
 
 mod diagnostics;
@@ -2426,6 +2430,51 @@ fn wheel_summary(wheel: Wheel, profiles: &[Profile]) -> WheelSummary {
     }
 }
 
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+fn request_exit_confirmation(app: &tauri::AppHandle) {
+    show_main_window(app);
+    let _ = app.emit("request-exit-confirmation", ());
+}
+
+fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+    let show = MenuItem::with_id(app, "show-lmukit", "Show LMUKit", true, None::<&str>)?;
+    let exit = MenuItem::with_id(app, "exit-lmukit", "Exit LMUKit", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &exit])?;
+    let mut tray = TrayIconBuilder::with_id("lmukit")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .tooltip("LMUKit")
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "show-lmukit" => show_main_window(app),
+            "exit-lmukit" => request_exit_confirmation(app),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if matches!(
+                event,
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                }
+            ) {
+                show_main_window(tray.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon().cloned() {
+        tray = tray.icon(icon);
+    }
+    tray.build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let store = Store::open().expect("LMUKit data store should open");
@@ -2450,6 +2499,7 @@ pub fn run() {
             status: Arc::new(Mutex::new(VirtualRoutingStatus::default())),
         })
         .setup(move |app| {
+            setup_tray(app)?;
             let handle = app.handle().clone();
             std::thread::spawn(move || poll_hotkeys(handle, hotkey_rx, shortcuts));
             let auto_start_profile = {
@@ -2577,7 +2627,7 @@ pub fn run() {
         } => {
             api.prevent_close();
             if let Some(window) = app_handle.get_webview_window(&label) {
-                let _ = window.minimize();
+                let _ = window.hide();
             }
         }
         tauri::RunEvent::ExitRequested { .. } => {
@@ -2633,10 +2683,7 @@ fn poll_hotkeys(
         let action = manager.as_ref().and_then(hotkeys::HotkeyManager::poll);
         match action {
             Some(hotkeys::HotkeyAction::OpenSwitcher) => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                show_main_window(&app);
                 let _ = app.emit("open-profile-switcher", ());
             }
             Some(hotkeys::HotkeyAction::ActivateProfile(profile_id)) => {
