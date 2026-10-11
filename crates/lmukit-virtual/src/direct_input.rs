@@ -15,9 +15,9 @@ use windows::{
     Win32::{
         Devices::HumanInterfaceDevice::{
             DI8DEVCLASS_GAMECTRL, DIDATAFORMAT, DIDEVCAPS, DIDEVICEINSTANCEW, DIDEVICEOBJECTDATA,
-            DIEDFL_ATTACHEDONLY, DIENUM_CONTINUE, DIJOYSTATE2, DIPH_DEVICE, DIPROPDWORD,
-            DIRECTINPUT_VERSION, DISCL_BACKGROUND, DISCL_NONEXCLUSIVE, DirectInput8Create,
-            IDirectInput8W, IDirectInputDevice8W,
+            DIDF_ABSAXIS, DIDFT_BUTTON, DIEDFL_ATTACHEDONLY, DIENUM_CONTINUE, DIOBJECTDATAFORMAT,
+            DIPH_DEVICE, DIPROPDWORD, DIRECTINPUT_VERSION, DISCL_BACKGROUND, DISCL_NONEXCLUSIVE,
+            DirectInput8Create, GUID_Button, IDirectInput8W, IDirectInputDevice8W,
         },
         Foundation::{BOOL, HINSTANCE},
         System::{Console::GetConsoleWindow, LibraryLoader::GetModuleHandleW},
@@ -33,15 +33,6 @@ const DIRECT_INPUT_EVENT_BATCH_SIZE: usize = 64;
 // windows crate exposes a GUID-shaped constant, but passing its address makes
 // DirectInput reject the property.
 const DIPROP_BUFFERSIZE_POINTER: *const GUID = 1usize as *const GUID;
-// DIJOYSTATE2 stores its 128 button bytes immediately after six axes, two
-// sliders, and four POV values. DirectInput buffered events use these offsets.
-const DIJOFS_BUTTON0: u32 = 48;
-
-#[link(name = "dxguid", kind = "static")]
-unsafe extern "system" {
-    static c_dfDIJoystick2: DIDATAFORMAT;
-}
-
 #[derive(Clone, Debug)]
 pub struct DirectInputDeviceSummary {
     pub index: usize,
@@ -69,6 +60,11 @@ struct EnumeratedDevice {
 
 pub struct DirectInputButtonReader {
     device: IDirectInputDevice8W,
+    // DirectInput retains the selected format for the acquired device. Keep
+    // both allocations alive with the reader even though their heap address is
+    // stable when this struct moves.
+    _data_objects: Vec<DIOBJECTDATAFORMAT>,
+    _data_format: DIDATAFORMAT,
     pub summary: DirectInputDeviceSummary,
 }
 
@@ -113,13 +109,14 @@ impl DirectInputButtonReader {
             "DirectInput device has no buttons"
         );
 
-        // SAFETY: c_dfDIJoystick2 is DirectInput's process-lifetime standard
-        // joystick format. The API does not mutate it despite its legacy
-        // non-const pointer signature.
+        let (data_objects, mut data_format) = button_data_format(capabilities.dwButtons);
+        // SAFETY: data_format points into data_objects, which remains allocated
+        // for the lifetime of the reader. It deliberately contains buttons
+        // only, keeping axes and FFB outside LMUKit's input path.
         unsafe {
             device
-                .SetDataFormat(ptr::addr_of!(c_dfDIJoystick2).cast_mut())
-                .context("setting the standard DirectInput joystick format")?;
+                .SetDataFormat(&mut data_format)
+                .context("setting the DirectInput button format")?;
             let console_window = GetConsoleWindow();
             let window = if console_window.0.is_null() {
                 GetDesktopWindow()
@@ -150,6 +147,8 @@ impl DirectInputButtonReader {
 
         Ok(Self {
             device,
+            _data_objects: data_objects,
+            _data_format: data_format,
             summary: DirectInputDeviceSummary {
                 index,
                 device_id: product_id(&selected.product_guid),
@@ -170,17 +169,15 @@ impl DirectInputButtonReader {
     }
 
     pub fn buttons(&self) -> Result<Vec<bool>> {
-        let mut state = DIJOYSTATE2::default();
-        // SAFETY: the device uses c_dfDIJoystick2 and state has the matching
-        // layout and writable size.
+        let button_count = self.summary.button_count.min(128) as usize;
+        let mut state = [0_u8; 128];
+        // SAFETY: the device uses the button-only data format created at open,
+        // and state contains at least its advertised number of bytes.
         unsafe {
             let _ = self.device.Poll();
             if self
                 .device
-                .GetDeviceState(
-                    size_of::<DIJOYSTATE2>() as u32,
-                    (&mut state as *mut DIJOYSTATE2).cast(),
-                )
+                .GetDeviceState(button_count as u32, state.as_mut_ptr().cast())
                 .is_err()
             {
                 self.device
@@ -188,19 +185,14 @@ impl DirectInputButtonReader {
                     .context("reacquiring the DirectInput device")?;
                 let _ = self.device.Poll();
                 self.device
-                    .GetDeviceState(
-                        size_of::<DIJOYSTATE2>() as u32,
-                        (&mut state as *mut DIJOYSTATE2).cast(),
-                    )
+                    .GetDeviceState(button_count as u32, state.as_mut_ptr().cast())
                     .context("reading DirectInput joystick state")?;
             }
         }
-        Ok(
-            state.rgbButtons[..self.summary.button_count.min(128) as usize]
-                .iter()
-                .map(|value| value & 0x80 != 0)
-                .collect(),
-        )
+        Ok(state[..button_count]
+            .iter()
+            .map(|value| value & 0x80 != 0)
+            .collect())
     }
 
     fn buffered_button_events(&self) -> Result<Vec<(usize, bool)>> {
@@ -232,9 +224,7 @@ impl DirectInputButtonReader {
                 break;
             }
             for event in &batch[..count as usize] {
-                let Some(button_index) = event.dwOfs.checked_sub(DIJOFS_BUTTON0) else {
-                    continue;
-                };
+                let button_index = event.dwOfs;
                 if button_index < self.summary.button_count.min(128) {
                     events.push((button_index as usize, event.dwData & 0x80 != 0));
                 }
@@ -444,6 +434,27 @@ fn product_id(guid: &GUID) -> String {
     let vendor_id = guid.data1 as u16;
     let product_id = (guid.data1 >> 16) as u16;
     format!("hid:{vendor_id:04x}:{product_id:04x}")
+}
+
+fn button_data_format(button_count: u32) -> (Vec<DIOBJECTDATAFORMAT>, DIDATAFORMAT) {
+    let button_count = button_count.min(128);
+    let mut objects = (0..button_count)
+        .map(|index| DIOBJECTDATAFORMAT {
+            pguid: &GUID_Button,
+            dwOfs: index,
+            dwType: DIDFT_BUTTON | (index << 8),
+            dwFlags: 0,
+        })
+        .collect::<Vec<_>>();
+    let format = DIDATAFORMAT {
+        dwSize: size_of::<DIDATAFORMAT>() as u32,
+        dwObjSize: size_of::<DIOBJECTDATAFORMAT>() as u32,
+        dwFlags: DIDF_ABSAXIS,
+        dwDataSize: button_count,
+        dwNumObjs: button_count,
+        rgodf: objects.as_mut_ptr(),
+    };
+    (objects, format)
 }
 
 fn create_direct_input() -> Result<IDirectInput8W> {
