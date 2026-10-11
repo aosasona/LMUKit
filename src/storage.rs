@@ -94,6 +94,10 @@ pub struct Settings {
     pub input_mode: InputMode,
     #[serde(default)]
     pub virtual_layout: Vec<VirtualLayoutEntry>,
+    #[serde(default)]
+    pub virtual_device_key: Option<String>,
+    #[serde(default = "default_virtual_device_id")]
+    pub virtual_device_id: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -137,12 +141,18 @@ impl Default for Settings {
             lmu_launch_mode: LaunchMode::Desktop,
             input_mode: InputMode::Legacy,
             virtual_layout: Vec::new(),
+            virtual_device_key: None,
+            virtual_device_id: default_virtual_device_id(),
         }
     }
 }
 
 fn default_ui_font_scale() -> f32 {
     1.0
+}
+
+fn default_virtual_device_id() -> u32 {
+    1
 }
 
 fn default_companion_apps() -> Vec<CompanionApp> {
@@ -213,6 +223,10 @@ impl Store {
 
     pub fn save_settings(&self) -> Result<()> {
         validate_virtual_layout(&self.settings.virtual_layout)?;
+        ensure!(
+            (1..=16).contains(&self.settings.virtual_device_id),
+            "Virtual device ID must be between 1 and 16."
+        );
         write_json(&self.root.join("settings.json"), &self.settings)
     }
 
@@ -698,14 +712,48 @@ impl Store {
         Ok(document)
     }
 
-    pub fn save_virtual_layout(&mut self, layout: Vec<VirtualLayoutEntry>) -> Result<()> {
+    pub fn save_virtual_layout(
+        &mut self,
+        device_key: String,
+        layout: Vec<VirtualLayoutEntry>,
+    ) -> Result<()> {
+        validate_virtual_label(&device_key, "Virtual device key")?;
         validate_virtual_layout(&layout)?;
         ensure!(
             !layout.is_empty(),
             "No virtual button bindings were found for that LMU device."
         );
+        self.settings.virtual_device_key = Some(device_key);
         self.settings.virtual_layout = layout;
         self.save_settings()
+    }
+
+    pub fn used_virtual_buttons_from_document(
+        document: &serde_json::Value,
+        virtual_device: &str,
+    ) -> Result<Vec<u32>> {
+        ensure!(
+            document
+                .get("Devices")
+                .and_then(serde_json::Value::as_object)
+                .is_some_and(|devices| devices.contains_key(virtual_device)),
+            "The selected virtual device is not registered in this LMU binding file."
+        );
+        let mut buttons = BTreeSet::new();
+        for binding in Self::bindings_from_document(document)
+            .into_iter()
+            .filter(|binding| binding.device == virtual_device && binding.input_id >= 32)
+        {
+            let virtual_button = u32::try_from(binding.input_id - 31)
+                .context("LMU virtual button ID is too large")?;
+            ensure!(
+                virtual_button <= 128,
+                "LMU action '{}' uses virtual button B{virtual_button}, outside the supported B1..B128 range.",
+                binding.action
+            );
+            buttons.insert(virtual_button);
+        }
+        Ok(buttons.into_iter().collect())
     }
 
     pub fn bindings_from_document(document: &serde_json::Value) -> Vec<Binding> {
@@ -1521,6 +1569,7 @@ mod tests {
         });
 
         let layout = Store::virtual_layout_from_document(&document, "vJoy-1").unwrap();
+        let used = Store::used_virtual_buttons_from_document(&document, "vJoy-1").unwrap();
 
         assert_eq!(
             layout,
@@ -1539,6 +1588,7 @@ mod tests {
                 },
             ]
         );
+        assert_eq!(used, [1, 2, 4]);
     }
 
     #[test]
@@ -1930,6 +1980,8 @@ mod tests {
         assert_eq!(store.settings.ui_font_scale, 1.0);
         assert_eq!(store.settings.input_mode, InputMode::Legacy);
         assert!(store.settings.virtual_layout.is_empty());
+        assert_eq!(store.settings.virtual_device_key, None);
+        assert_eq!(store.settings.virtual_device_id, 1);
     }
 
     #[test]

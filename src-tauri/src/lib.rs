@@ -5,6 +5,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{Emitter, Manager, State};
 use uuid::Uuid;
 
+#[cfg(target_os = "windows")]
+use lmukit_virtual::{VirtualInputBackend, next_unused_button, vjoy::VJoyBackend};
+
 #[path = "../../src/hotkeys.rs"]
 mod hotkeys;
 #[path = "../../src/input.rs"]
@@ -122,6 +125,13 @@ struct VirtualBindingDevice {
 struct VirtualActionSummary {
     action: String,
     virtual_button: u32,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualButtonPulse {
+    virtual_button: u32,
+    identity: String,
 }
 
 #[tauri::command]
@@ -309,9 +319,70 @@ fn import_virtual_layout(
         })
         .collect();
     store
-        .save_virtual_layout(layout)
+        .save_virtual_layout(device_key, layout)
         .map_err(|error| error.to_string())?;
     Ok(response)
+}
+
+#[tauri::command]
+async fn send_next_virtual_button(
+    state: State<'_, AppState>,
+) -> Result<VirtualButtonPulse, String> {
+    let (device_id, used_buttons) = {
+        let store = state.0.lock().map_err(|error| error.to_string())?;
+        let device_key = store
+            .settings
+            .virtual_device_key
+            .as_deref()
+            .ok_or_else(|| "Import a virtual layout before sending setup buttons.".to_owned())?;
+        let document = store
+            .load_live_bindings_document()
+            .map_err(|error| error.to_string())?;
+        let used_buttons = Store::used_virtual_buttons_from_document(&document, device_key)
+            .map_err(|error| error.to_string())?;
+        (store.settings.virtual_device_id, used_buttons)
+    };
+
+    tauri::async_runtime::spawn_blocking(move || pulse_next_virtual_button(device_id, used_buttons))
+        .await
+        .map_err(|error| format!("Virtual button worker stopped unexpectedly: {error}"))?
+}
+
+#[cfg(target_os = "windows")]
+fn pulse_next_virtual_button(
+    device_id: u32,
+    used_buttons: Vec<u32>,
+) -> Result<VirtualButtonPulse, String> {
+    let mut backend = VJoyBackend::new(device_id).map_err(|error| error.to_string())?;
+    backend.connect().map_err(|error| error.to_string())?;
+    let capabilities = backend.capabilities().map_err(|error| error.to_string())?;
+    let virtual_button =
+        next_unused_button(capabilities.button_count, &used_buttons).map_err(|_| {
+            format!(
+                "All {} configured virtual buttons are already used in LMU.",
+                capabilities.button_count
+            )
+        })?;
+    backend
+        .set_button(virtual_button, true)
+        .map_err(|error| error.to_string())?;
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    backend
+        .set_button(virtual_button, false)
+        .map_err(|error| error.to_string())?;
+    backend.disconnect().map_err(|error| error.to_string())?;
+    Ok(VirtualButtonPulse {
+        virtual_button,
+        identity: capabilities.identity,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn pulse_next_virtual_button(
+    _device_id: u32,
+    _used_buttons: Vec<u32>,
+) -> Result<VirtualButtonPulse, String> {
+    Err("Virtual button setup is only available on Windows.".to_owned())
 }
 
 #[cfg(target_os = "windows")]
@@ -947,7 +1018,8 @@ pub fn run() {
             save_game_settings,
             virtual_binding_devices,
             preview_virtual_layout,
-            import_virtual_layout
+            import_virtual_layout,
+            send_next_virtual_button
         ])
         .run(tauri::generate_context!())
         .expect("error while running LMUKit");

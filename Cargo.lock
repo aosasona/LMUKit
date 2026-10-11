@@ -1799,6 +1799,7 @@ version = "0.3.2"
 dependencies = [
  "global-hotkey",
  "lmukit-core",
+ "lmukit-virtual",
  "serde",
  "serde_json",
  "tauri",

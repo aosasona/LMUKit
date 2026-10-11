@@ -30,6 +30,14 @@ pub trait VirtualInputBackend {
     fn disconnect(&mut self) -> Result<()>;
 }
 
+/// Selects the lowest virtual button not already present in LMU's bindings.
+pub fn next_unused_button(button_count: u32, used_buttons: &[u32]) -> Result<u32> {
+    anyhow::ensure!(button_count > 0, "virtual controller has no buttons");
+    (1..=button_count)
+        .find(|button| !used_buttons.contains(button))
+        .ok_or_else(|| anyhow::anyhow!("all {button_count} virtual buttons are already used"))
+}
+
 /// Small feasibility pipeline that mirrors two physical button states onto
 /// stable virtual buttons 1 and 2.
 ///
@@ -183,7 +191,19 @@ impl VirtualInputBackend for MockVirtualBackend {
 
 #[cfg(test)]
 mod tests {
-    use super::{MockVirtualBackend, TwoButtonMirror, VirtualInputBackend};
+    use super::{MockVirtualBackend, TwoButtonMirror, VirtualInputBackend, next_unused_button};
+
+    #[test]
+    fn allocates_the_lowest_unused_virtual_button_within_capacity() {
+        assert_eq!(next_unused_button(8, &[1, 2, 4]).unwrap(), 3);
+        assert_eq!(next_unused_button(8, &[3, 2, 1]).unwrap(), 4);
+    }
+
+    #[test]
+    fn reports_exhausted_or_empty_virtual_devices() {
+        assert!(next_unused_button(2, &[1, 2]).is_err());
+        assert!(next_unused_button(0, &[]).is_err());
+    }
 
     #[test]
     fn mock_reports_stable_capabilities() {
