@@ -19,19 +19,19 @@ The current data model already supports the product concepts that should be reus
 - Legacy wheel metadata is migrated additively by matching brand and wheel name. Settings and profile additions use Serde defaults so older JSON remains readable.
 - Physical input learning uses Windows `RawGameController`. Each capture listener starts on a fresh OS thread to avoid conflicting with the webview's WinRT apartment mode.
 
-The repository now has an experimental continuous DirectInput press/release monitor, virtual-output backend, stable layout, persisted per-profile button mappings, and manual start/stop routing. It does not yet have wheel/class default references, modifiers, layers, encoder modes, a car-context provider, or a reliable automatic rim identity provider. The legacy Windows Gaming Input learner remains separate from the DirectInput routing path.
+The repository now has an experimental continuous DirectInput press/release monitor, virtual-output backend, stable layout, persisted per-profile button and modifier mappings, wheel/class default references with fallbacks, and manual start/stop or default-based routing. It does not yet have layers, encoder modes, a car-context provider, or a reliable automatic rim identity provider. The legacy Windows Gaming Input learner remains separate from the DirectInput routing path.
 
 ### Existing class IDs and proposed context aliases
 
 The stored IDs remain the existing `GT3`, `GTE`, `LMP3`, `LMP2`, and `HY` values. A future context provider may compare a conservative alias to those IDs, but must not rewrite a profile's stored tags merely because an alias was observed.
 
-| Observed value | Existing class ID | Rule |
-| --- | --- | --- |
-| `GT3`, `LMGT3` | `GT3` | `LMGT3` is the current championship name for the GT3 category. |
-| `GTE` | `GTE` | Kept distinct from GT3 for saved historic/content profiles. |
-| `LMP3`, `LMP 3` | `LMP3` | Whitespace-only spelling alias. |
-| `LMP2`, `LMP 2` | `LMP2` | Whitespace-only spelling alias. |
-| `HY`, `Hypercar` | `HY` | Friendly spelling alias for the existing Hypercar tag. |
+| Observed value   | Existing class ID | Rule                                                           |
+| ---------------- | ----------------- | -------------------------------------------------------------- |
+| `GT3`, `LMGT3`   | `GT3`             | `LMGT3` is the current championship name for the GT3 category. |
+| `GTE`            | `GTE`             | Kept distinct from GT3 for saved historic/content profiles.    |
+| `LMP3`, `LMP 3`  | `LMP3`            | Whitespace-only spelling alias.                                |
+| `LMP2`, `LMP 2`  | `LMP2`            | Whitespace-only spelling alias.                                |
+| `HY`, `Hypercar` | `HY`              | Friendly spelling alias for the existing Hypercar tag.         |
 
 Matching should be case-insensitive and trim surrounding whitespace. Values such as `LMH`, `LMDh`, `GTP`, manufacturer names, and model identifiers remain **unknown** until actual LMU payloads establish their semantics; they must not be guessed into `HY`. Unknown or ambiguous values never cause an automatic profile change.
 
@@ -119,9 +119,9 @@ The first context phase will therefore remain manual. Automatic class selection 
 ## Phased implementation
 
 1. **Feasibility:** isolated vJoy adapter, mock backend, two-button pulse/mirror probe, explicit hardware checklist. No persisted or production-UI changes.
-2. **Core routing:** the platform-independent logical-action engine, source-owned outputs, output-range validation, and safe profile-change/shutdown reconciliation are implemented with a mock backend. The profile/settings store preserves optional physical-to-logical mappings and the shared logical-to-virtual layout. The production UI can learn buttons through DirectInput and manually start or stop one selected profile without changing LMU's JSON. This path is still experimental and requires an in-game hardware acceptance pass; modifiers and in-session profile changes remain subsequent work.
+2. **Core routing:** the platform-independent logical-action engine, source-owned outputs, output-range validation, and safe profile-change/shutdown reconciliation are implemented with a mock backend. The profile/settings store preserves optional physical-to-logical mappings and the shared logical-to-virtual layout. The production UI can learn buttons through DirectInput and manually start, stop, or switch a selected profile without changing LMU's JSON. Direct and modifier-combination routing have been confirmed with the tested hardware, but the path remains experimental pending the remaining driving-session and recovery checks.
 3. **Class-aware resolution:** wheel/class default references and wheel fallback using existing class tags, with referential-integrity and migration tests.
-4. **Advanced controls:** modifiers, layers, serialised encoder pulses, conflict diagnostics, and learn-input editing.
+4. **Advanced controls:** hold modifiers and unified learn-input capture are implemented. Layers, serialised encoder pulses, and expanded conflict diagnostics remain.
 5. **Verified car context:** provider backed only by observed LMU data, debounced selection, manual override, Resume Auto, and stale/conflict diagnostics.
 6. **Rim discovery and polish:** inspector, redacted diagnostics, conservative identity providers, setup wizard, latency/recovery diagnostics, and packaging guidance.
 

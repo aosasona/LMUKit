@@ -59,7 +59,7 @@ Profiles continue to use reusable wheel references and the existing class tags. 
 - GT Neo / GT3 / Race;
 - FX Pro / GT3 / Race.
 
-Each profile owns its physical button, modifier, layer, and encoder-mode mappings. Wheel/class defaults are separate references: at most one default profile for a given wheel and class, plus an optional wheel-level fallback. A manual profile override always takes precedence until the user clears it.
+Each profile owns its physical button mappings and modifier combinations. Wheel/class defaults are stored as separate references: at most one default profile for a given wheel and class, plus an optional wheel-level fallback. Changing a profile's wheel or class tags and deleting a profile clean up any references that are no longer valid. Layers and encoder modes remain planned extensions.
 
 For example, a GT Neo HY profile may map encoder 1 to Front ARB while a GT Neo GT3 profile maps the same encoder to TC2. Both profiles still target the globally stable virtual buttons assigned to those logical actions.
 
@@ -73,11 +73,11 @@ The mapping engine tracks every currently pressed physical button. For a given t
 
 1. Start LMUKit and LMU with the already configured virtual controller available.
 2. LMUKit uses a reliably identified wheel or the user's manual wheel selection.
-3. The user selects a profile manually and starts it live from the Profiles detail pane, or confirmed class context resolves a configured wheel/class default.
+3. The user starts a profile manually from the Profiles detail pane, or chooses a wheel and class on the Virtual Input page to resolve the exact class default and then the wheel fallback.
 4. LMUKit translates physical button events through that profile into the stable virtual layout.
 5. The user may change virtual profiles while LMU is running without rebinding the virtual controller.
 
-If wheel identity or car class is unknown, LMUKit does not guess. Manual wheel, class, and profile selection remains available. Automatic selection must not override an active manual profile override.
+The current wheel and class selection is manual. LMUKit shows whether the active route was selected directly, from a class default, or from a wheel fallback. Future automatic context detection must not override an active manual profile selection.
 
 ## Operating modes
 
