@@ -97,11 +97,13 @@ mise run dev
 | ---------------- | -------------------------------------------------------- |
 | `mise run dev`   | Cross-build and launch the Windows debug app from WSL    |
 | `mise run build` | Build the frontend and Windows x86-64 release executable |
-| `mise run test`  | Run `lmukit-core` tests                                  |
-| `mise run check` | Check `lmukit-core`                                      |
+| `mise run test`  | Run core and virtual-backend tests                        |
+| `mise run check` | Check core and virtual-backend crates                     |
 | `mise run fmt`   | Check Rust formatting                                    |
 | `mise run lint`  | Run Clippy with warnings denied                          |
 | `pnpm build`     | Type-check and build the React interface                 |
+
+`mise run build-virtual-probe` cross-builds the isolated, experimental Windows vJoy feasibility probe. It is not part of the production app or release packages, does not install a driver, and does not establish LMU compatibility. See the [feasibility gate and hardware checklist](docs/virtual-input-feasibility.md) before using it.
 
 Use `LMUKIT_DATA_DIR` with an isolated directory for screenshots and manual tests. Never test development builds against personal profiles or live Windows application data.
 
@@ -111,8 +113,11 @@ Before handing off a code change, run:
 cargo fmt --all --check
 cargo test -p lmukit-core
 cargo clippy -p lmukit-core --all-targets --all-features -- -D warnings
+cargo test -p lmukit-virtual
+cargo clippy -p lmukit-virtual --all-targets --all-features -- -D warnings
 pnpm build
 cargo xwin check -p lmukit --target x86_64-pc-windows-msvc
+cargo xwin check -p lmukit-virtual --target x86_64-pc-windows-msvc
 ```
 
 Repository architecture, data-format invariants, and guidance for human and AI-assisted contributors are maintained in [AGENTS.md](AGENTS.md).

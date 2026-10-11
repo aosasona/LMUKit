@@ -13,6 +13,7 @@ LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate util
 - `frontend/src/styles.css` owns the shared visual system. Format TypeScript, JSX, and CSS with Prettier after UI changes.
 - `src-tauri/` owns the Tauri desktop shell and narrow command adapters. It must not duplicate storage rules.
 - `crates/lmukit-core/` exposes compatibility-sensitive Rust behavior independently of the UI runtime.
+- `crates/lmukit-virtual/` owns the replaceable virtual-output boundary, mock backend, experimental runtime-loaded vJoy adapter, and isolated Windows feasibility probe. It is not proof of LMU compatibility and must not install a driver or alter LMU configuration.
 - `src/storage.rs` currently backs `lmukit-core` and owns LMUKit settings, profile persistence, imports, activation, backups, LMU JSON parsing, `Settings.JSON` persistence, and companion-launcher generation.
 - `src/input.rs` reads Windows raw controller state for Tauri's binding lookup. Initialize each listener on its own fresh OS thread so WinRT apartment mode cannot conflict with the webview thread. `src/hotkeys.rs` owns global shortcuts; its native manager stays on a dedicated thread that pumps Windows messages and accepts live shortcut updates over a channel.
 - `mise.toml` pins tooling and defines the supported developer commands.
@@ -76,8 +77,11 @@ Run all of these before handing off a code change:
 cargo fmt --all --check
 cargo test -p lmukit-core
 cargo clippy -p lmukit-core --all-targets --all-features -- -D warnings
+cargo test -p lmukit-virtual
+cargo clippy -p lmukit-virtual --all-targets --all-features -- -D warnings
 pnpm build
 cargo xwin check -p lmukit --target x86_64-pc-windows-msvc
+cargo xwin check -p lmukit-virtual --target x86_64-pc-windows-msvc
 ```
 
 Use `mise run dev` to cross-build and launch the Windows debug app from WSL, and `mise run build` for a Windows release executable. WSL cross-checks the Windows backend with `cargo xwin`; the tagged native-Windows workflow embeds resources and produces the portable archive and NSIS installer.

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/lmukit-core", "src-tauri"]
+members = ["crates/lmukit-core", "crates/lmukit-virtual", "src-tauri"]
 resolver = "2"
 
 [workspace.package]

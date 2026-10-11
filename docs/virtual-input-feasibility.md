@@ -19,6 +19,20 @@ The current data model already supports the product concepts that should be reus
 
 The repository does not yet have continuous press/release monitoring, a virtual-output backend, virtual mappings, wheel/class default references, a car-context provider, or a reliable automatic rim identity provider. The current one-shot learner is not an input-routing engine.
 
+### Existing class IDs and proposed context aliases
+
+The stored IDs remain the existing `GT3`, `GTE`, `LMP3`, `LMP2`, and `HY` values. A future context provider may compare a conservative alias to those IDs, but must not rewrite a profile's stored tags merely because an alias was observed.
+
+| Observed value | Existing class ID | Rule |
+| --- | --- | --- |
+| `GT3`, `LMGT3` | `GT3` | `LMGT3` is the current championship name for the GT3 category. |
+| `GTE` | `GTE` | Kept distinct from GT3 for saved historic/content profiles. |
+| `LMP3`, `LMP 3` | `LMP3` | Whitespace-only spelling alias. |
+| `LMP2`, `LMP 2` | `LMP2` | Whitespace-only spelling alias. |
+| `HY`, `Hypercar` | `HY` | Friendly spelling alias for the existing Hypercar tag. |
+
+Matching should be case-insensitive and trim surrounding whitespace. Values such as `LMH`, `LMDh`, `GTP`, manufacturer names, and model identifiers remain **unknown** until actual LMU payloads establish their semantics; they must not be guessed into `HY`. Unknown or ambiguous values never cause an automatic profile change.
+
 ### Migration risks and intended boundaries
 
 No persisted schema changes are part of the feasibility spike. Later phases should use additive, defaulted data and keep virtual configuration separate from transient device state:
@@ -40,14 +54,30 @@ This is a feasibility choice, not an endorsement or compatibility claim. The mai
 
 The adapter is intentionally replaceable. Its contract is limited to connecting, reporting capabilities and identity, setting a button, releasing all buttons, and disconnecting. A mock implementation is used for deterministic tests.
 
+Build the isolated Windows probe from WSL with:
+
+```sh
+mise run build-virtual-probe
+```
+
+The executable is written to `target/x86_64-pc-windows-msvc/debug/lmukit-virtual-probe.exe`. Run it from Windows PowerShell using its Windows/UNC path:
+
+```powershell
+lmukit-virtual-probe.exe list
+lmukit-virtual-probe.exe pulse 1
+lmukit-virtual-probe.exe mirror 1 0 30
+```
+
+`list` shows privacy-safe controller metadata and a temporary selection index. `pulse` presses and releases virtual buttons 1 and 2. `mirror` routes physical buttons 1 and 2 from the selected controller to the same stable virtual outputs for a bounded duration; normal completion and Ctrl+C release every output before disconnecting. Device-instance identifiers are used only in memory to survive enumeration-order changes and are not printed. The probe virtualises no axes and never writes LMU configuration.
+
 ## LMU compatibility gate
 
 Windows recognising vJoy does **not** prove that LMU will expose or accept it. Before this integration can leave experimental status, a real Windows/LMU test must establish all of the following:
 
-1. Install the signed vJoy release manually and configure one device with at least two buttons.
-2. Run the LMUKit virtual-input probe in `pulse` mode. Confirm both button pulses in Windows' controller properties (`joy.cpl`).
+1. Install the signed vJoy release manually and configure device 1 with at least two buttons.
+2. Run `lmukit-virtual-probe.exe pulse 1`. Confirm both button pulses in Windows' controller properties (`joy.cpl`).
 3. In LMU, bind virtual buttons 1 and 2 to harmless test actions and confirm both press and release behaviour.
-4. Run the probe in `mirror` mode with the Simagic controller selected. Confirm physical buttons 1 and 2 drive the corresponding LMU actions while steering and FFB remain connected directly to LMU.
+4. Run `lmukit-virtual-probe.exe list`, note the temporary index of the Simagic controller, then run `lmukit-virtual-probe.exe mirror 1 <index> 30`. Confirm physical buttons 1 and 2 drive the corresponding LMU actions while steering and FFB remain connected directly to LMU.
 5. Restart LMUKit, then LMU, without recreating or reconfiguring the virtual device. Record the displayed device identity and confirm the bindings remain valid.
 6. Change only the probe mapping/profile and confirm that the same virtual device and LMU bindings continue to work without restarting LMU.
 7. Confirm that direct physical button bindings can coexist and document how users avoid accidental duplicate bindings. LMUKit does not hide or suppress the physical device.
