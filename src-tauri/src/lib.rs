@@ -72,6 +72,14 @@ struct VirtualRoutingStatus {
     last_event: Option<String>,
     error: Option<String>,
     selection_reason: Option<String>,
+    active_encoder_modes: Vec<ActiveEncoderModeSummary>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ActiveEncoderModeSummary {
+    encoder_name: String,
+    mode_name: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -980,18 +988,19 @@ fn start_virtual_routing_inner(
             worker_selection_reason,
         );
     });
-    let identity = match ready_rx.recv_timeout(std::time::Duration::from_secs(5)) {
-        Ok(Ok(identity)) => identity,
-        Ok(Err(error)) => {
-            let _ = worker.join();
-            return Err(error);
-        }
-        Err(_) => {
-            stop.store(true, Ordering::SeqCst);
-            let _ = worker.join();
-            return Err("Virtual routing did not start within five seconds.".to_owned());
-        }
-    };
+    let (identity, active_encoder_modes) =
+        match ready_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(Ok(ready)) => ready,
+            Ok(Err(error)) => {
+                let _ = worker.join();
+                return Err(error);
+            }
+            Err(_) => {
+                stop.store(true, Ordering::SeqCst);
+                let _ = worker.join();
+                return Err("Virtual routing did not start within five seconds.".to_owned());
+            }
+        };
     *routing_state
         .session
         .lock()
@@ -1002,6 +1011,7 @@ fn start_virtual_routing_inner(
         profile_name: Some(profile_name),
         identity: Some(identity),
         selection_reason: Some(selection_reason),
+        active_encoder_modes,
         ..VirtualRoutingStatus::default()
     };
     *routing_state
@@ -1052,7 +1062,7 @@ fn run_virtual_routing_worker(
     mapping: ProfileMapping,
     stop: Arc<std::sync::atomic::AtomicBool>,
     status: Arc<Mutex<VirtualRoutingStatus>>,
-    ready: std::sync::mpsc::SyncSender<Result<String, String>>,
+    ready: std::sync::mpsc::SyncSender<Result<(String, Vec<ActiveEncoderModeSummary>), String>>,
     selection_reason: String,
 ) {
     let result = (|| -> Result<(), String> {
@@ -1064,7 +1074,15 @@ fn run_virtual_routing_worker(
             .capabilities()
             .map_err(|error| error.to_string())?
             .identity;
-        let _ = ready.send(Ok(identity.clone()));
+        let encoder_modes = engine
+            .active_encoder_modes()
+            .into_iter()
+            .map(|(encoder_name, mode_name)| ActiveEncoderModeSummary {
+                encoder_name: encoder_name.to_owned(),
+                mode_name: mode_name.to_owned(),
+            })
+            .collect::<Vec<_>>();
+        let _ = ready.send(Ok((identity.clone(), encoder_modes.clone())));
         if let Ok(mut current) = status.lock() {
             *current = VirtualRoutingStatus {
                 active: true,
@@ -1072,6 +1090,7 @@ fn run_virtual_routing_worker(
                 profile_name: Some(profile_name),
                 identity: Some(identity),
                 selection_reason: Some(selection_reason),
+                active_encoder_modes: encoder_modes,
                 ..VirtualRoutingStatus::default()
             };
         }
@@ -1089,6 +1108,14 @@ fn run_virtual_routing_worker(
                         event.button_id,
                         if event.pressed { "pressed" } else { "released" }
                     ));
+                    current.active_encoder_modes = engine
+                        .active_encoder_modes()
+                        .into_iter()
+                        .map(|(encoder_name, mode_name)| ActiveEncoderModeSummary {
+                            encoder_name: encoder_name.to_owned(),
+                            mode_name: mode_name.to_owned(),
+                        })
+                        .collect();
                 }
             }
             std::thread::sleep(std::time::Duration::from_millis(4));
@@ -1117,7 +1144,8 @@ fn run_virtual_routing_worker(
     _mapping: ProfileMapping,
     _stop: Arc<std::sync::atomic::AtomicBool>,
     _status: Arc<Mutex<VirtualRoutingStatus>>,
-    ready: std::sync::mpsc::SyncSender<Result<String, String>>,
+    ready: std::sync::mpsc::SyncSender<Result<(String, Vec<ActiveEncoderModeSummary>), String>>,
+    _selection_reason: String,
 ) {
     let _ = ready.send(Err(
         "Virtual routing is only available in the Windows build.".to_owned(),

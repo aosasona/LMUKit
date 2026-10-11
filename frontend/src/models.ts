@@ -119,6 +119,7 @@ export type VirtualRoutingStatus = {
   lastEvent: string | null;
   error: string | null;
   selectionReason: string | null;
+  activeEncoderModes: { encoderName: string; modeName: string }[];
 };
 export type VirtualSetupStatus = {
   identity: string;

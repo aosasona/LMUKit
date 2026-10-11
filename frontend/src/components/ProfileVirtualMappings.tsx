@@ -65,6 +65,7 @@ export function ProfileVirtualMappings({
     lastEvent: null,
     error: null,
     selectionReason: null,
+    activeEncoderModes: [],
   });
   const [error, setError] = useState<string | null>(null);
   const routingActive = routing.active;
@@ -446,6 +447,16 @@ export function ProfileVirtualMappings({
           </button>
         )}
       </div>
+      {routing.profileId === profile.id &&
+        !!routing.activeEncoderModes.length && (
+          <div className="active-encoder-modes profile-active-encoder-modes">
+            {routing.activeEncoderModes.map((mode) => (
+              <span key={mode.encoderName}>
+                {mode.encoderName} <strong>{mode.modeName}</strong>
+              </span>
+            ))}
+          </div>
+        )}
 
       {editorOpen && (
         <div

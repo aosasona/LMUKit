@@ -60,6 +60,7 @@ export function VirtualInputPage({
     lastEvent: null,
     error: null,
     selectionReason: null,
+    activeEncoderModes: [],
   });
   const profilesForWheel = profiles.filter(
     (profile) => profile.wheelId === selectedWheelId,
@@ -310,6 +311,15 @@ export function VirtualInputPage({
             Assign buttons from each profile in Profiles, then enable its live
             remapping here while LMUKit is open.
           </p>
+          {!!routing.activeEncoderModes.length && (
+            <div className="active-encoder-modes">
+              {routing.activeEncoderModes.map((mode) => (
+                <span key={mode.encoderName}>
+                  {mode.encoderName} <strong>{mode.modeName}</strong>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="virtual-mode-guard">
           <AlertTriangle />
