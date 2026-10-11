@@ -9,7 +9,6 @@ import {
   Square,
   Star,
   Trash2,
-  WandSparkles,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -24,6 +23,7 @@ import type {
   VirtualProfileMapping,
   VirtualRoutingStatus,
 } from "../models";
+import { ActionMenu } from "./ActionMenu";
 import { ConfirmDialog, type Confirmation } from "./ConfirmDialog";
 import { ProfileEncoderMappings } from "./ProfileEncoderMappings";
 import type { InputMode } from "./InputModeSwitch";
@@ -646,31 +646,37 @@ export function ProfileVirtualMappings({
                   testing ||
                   savingMapping
                 }
-                onClick={() => void migrate()}
-              >
-                {migrating ? (
-                  <LoaderCircle className="spin" />
-                ) : (
-                  <WandSparkles />
-                )}
-                Reuse existing bindings
-              </button>
-              <button
-                type="button"
-                className="secondary compact"
-                disabled={
-                  busy ||
-                  routingActive ||
-                  migrating ||
-                  learning !== null ||
-                  testing ||
-                  savingMapping
-                }
                 onClick={() => void testControl()}
               >
                 {testing ? <Radio className="spin" /> : <Crosshair />}
                 {testing ? "Press a control…" : "Test a control"}
               </button>
+              <ActionMenu
+                label="Mapping tools"
+                items={[
+                  {
+                    label: "Import controls from LMU bindings…",
+                    hidden:
+                      busy ||
+                      routingActive ||
+                      migrating ||
+                      learning !== null ||
+                      testing ||
+                      savingMapping,
+                    onSelect: () =>
+                      setConfirmation({
+                        title: "Import controls from this LMU profile?",
+                        description:
+                          "LMUKit will add matching physical button controls from the profile's saved direct input configuration. Existing physical control assignments are kept, but you should review any newly added mappings afterward.",
+                        confirmLabel: "Import controls",
+                        onConfirm: () => {
+                          setConfirmation(null);
+                          void migrate();
+                        },
+                      }),
+                  },
+                ]}
+              />
             </div>
 
             {inspection && (
@@ -816,7 +822,7 @@ export function ProfileVirtualMappings({
       )}
       <ConfirmDialog
         confirmation={confirmation}
-        busy={savingMapping}
+        busy={savingMapping || migrating}
         onClose={() => setConfirmation(null)}
       />
     </section>
