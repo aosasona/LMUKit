@@ -75,6 +75,11 @@ mod windows_probe {
                 parse_u32(args.get(2), 0, "controller index")?,
                 parse_u64(args.get(3), 30, "duration seconds")?,
             ),
+            Some("directinput-mirror") => direct_input_mirror(
+                parse_u32(args.get(1), 1, "vJoy device ID")?,
+                parse_u32(args.get(2), 0, "DirectInput controller index")? as usize,
+                parse_u64(args.get(3), 30, "duration seconds")?,
+            ),
             Some("verify") => verify(
                 parse_u32(args.get(1), 1, "vJoy device ID")?,
                 parse_u32(args.get(2), 0, "DirectInput controller index")? as usize,
@@ -105,6 +110,9 @@ mod windows_probe {
         println!("  lmukit-virtual-probe pulse [vjoy-device-id] [hold-ms]");
         println!("  lmukit-virtual-probe button [vjoy-device-id] [button-id] [hold-ms]");
         println!("  lmukit-virtual-probe mirror [vjoy-device-id] [controller-index] [seconds]");
+        println!(
+            "  lmukit-virtual-probe directinput-mirror [vjoy-device-id] [directinput-index] [seconds]"
+        );
         println!("  lmukit-virtual-probe verify [vjoy-device-id] [directinput-index]");
         println!("This tool does not install a driver or modify LMU configuration.");
     }
@@ -298,6 +306,59 @@ mod windows_probe {
             let controller = find_controller(&controller_id)?;
             let buttons = read_buttons(&controller)?;
             let current = [buttons[0], buttons[1]];
+            pipeline.update(current)?;
+            for index in 0..2 {
+                if current[index] != previous[index] {
+                    let button_id = index + 1;
+                    println!(
+                        "Physical button {button_id} -> virtual button {button_id} {}",
+                        if current[index] {
+                            "pressed"
+                        } else {
+                            "released"
+                        }
+                    );
+                }
+            }
+            previous = current;
+            thread::sleep(Duration::from_millis(5));
+        }
+        pipeline.disconnect()?;
+        println!("All virtual buttons released; device disconnected.");
+        Ok(())
+    }
+
+    fn direct_input_mirror(device_id: u32, direct_input_index: usize, seconds: u64) -> Result<()> {
+        ensure!(
+            (1..=300).contains(&seconds),
+            "duration must be 1..=300 seconds"
+        );
+        let reader = DirectInputButtonReader::open(direct_input_index)?;
+        ensure!(
+            !reader
+                .summary
+                .product_name
+                .to_ascii_lowercase()
+                .contains("vjoy"),
+            "refusing to mirror the vJoy output device back into itself"
+        );
+        let backend = VJoyBackend::new(device_id)?;
+        let mut pipeline = TwoButtonMirror::connect(backend)?;
+        let capabilities = pipeline.capabilities()?;
+        let mut previous = [false; 2];
+        let started = Instant::now();
+        println!(
+            "Mirroring the first two buttons from DirectInput [{}] {} (product {}) to {} for {seconds}s. Press Ctrl+C to stop safely.",
+            reader.summary.index,
+            reader.summary.name,
+            reader.summary.product_name,
+            capabilities.identity
+        );
+
+        while started.elapsed() < Duration::from_secs(seconds)
+            && !STOP_REQUESTED.load(Ordering::SeqCst)
+        {
+            let current = reader.first_two_buttons()?;
             pipeline.update(current)?;
             for index in 0..2 {
                 if current[index] != previous[index] {
