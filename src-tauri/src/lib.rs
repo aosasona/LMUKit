@@ -108,6 +108,22 @@ struct BindingConflict {
     alternate: bool,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualBindingDevice {
+    key: String,
+    name: String,
+    button_binding_count: usize,
+    likely_virtual: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualActionSummary {
+    action: String,
+    virtual_button: u32,
+}
+
 #[tauri::command]
 fn snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
@@ -213,6 +229,89 @@ fn save_game_settings(
         .save_lmu_settings_document(&document)
         .map(|_| ())
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn virtual_binding_devices(
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualBindingDevice>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let document = store
+        .load_live_bindings_document()
+        .map_err(|error| error.to_string())?;
+    let bindings = Store::bindings_from_document(&document);
+    let mut devices = document
+        .get("Devices")
+        .and_then(serde_json::Value::as_object)
+        .map(|entries| {
+            entries
+                .iter()
+                .map(|(key, value)| {
+                    let name = value
+                        .get("name")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or(key)
+                        .to_owned();
+                    VirtualBindingDevice {
+                        key: key.clone(),
+                        likely_virtual: name.to_ascii_lowercase().contains("vjoy")
+                            || key.to_ascii_lowercase().contains("vjoy"),
+                        name,
+                        button_binding_count: bindings
+                            .iter()
+                            .filter(|binding| binding.device == *key && binding.input_id >= 32)
+                            .count(),
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    devices.sort_by_key(|device| (!device.likely_virtual, device.name.to_lowercase()));
+    Ok(devices)
+}
+
+#[tauri::command]
+fn preview_virtual_layout(
+    device_key: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualActionSummary>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let document = store
+        .load_live_bindings_document()
+        .map_err(|error| error.to_string())?;
+    let layout = Store::virtual_layout_from_document(&document, &device_key)
+        .map_err(|error| error.to_string())?;
+    Ok(layout
+        .into_iter()
+        .map(|entry| VirtualActionSummary {
+            action: entry.logical_action,
+            virtual_button: entry.virtual_button,
+        })
+        .collect())
+}
+
+#[tauri::command]
+fn import_virtual_layout(
+    device_key: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualActionSummary>, String> {
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    let document = store
+        .load_live_bindings_document()
+        .map_err(|error| error.to_string())?;
+    let layout = Store::virtual_layout_from_document(&document, &device_key)
+        .map_err(|error| error.to_string())?;
+    let response = layout
+        .iter()
+        .map(|entry| VirtualActionSummary {
+            action: entry.logical_action.clone(),
+            virtual_button: entry.virtual_button,
+        })
+        .collect();
+    store
+        .save_virtual_layout(layout)
+        .map_err(|error| error.to_string())?;
+    Ok(response)
 }
 
 #[cfg(target_os = "windows")]
@@ -845,7 +944,10 @@ pub fn run() {
             companion_launch_option,
             pick_file,
             load_game_settings,
-            save_game_settings
+            save_game_settings,
+            virtual_binding_devices,
+            preview_virtual_layout,
+            import_virtual_layout
         ])
         .run(tauri::generate_context!())
         .expect("error while running LMUKit");

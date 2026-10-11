@@ -684,6 +684,30 @@ impl Store {
         Ok(Self::bindings_from_document(&document))
     }
 
+    pub fn load_live_bindings_document(&self) -> Result<serde_json::Value> {
+        let path = &self.settings.lmu_config_path;
+        let document: serde_json::Value = serde_json::from_slice(
+            &fs::read(path).with_context(|| format!("could not read {}", path.display()))?,
+        )
+        .with_context(|| format!("{} is not valid JSON", path.display()))?;
+        ensure!(
+            document.is_object(),
+            "{} does not contain a JSON object",
+            path.display()
+        );
+        Ok(document)
+    }
+
+    pub fn save_virtual_layout(&mut self, layout: Vec<VirtualLayoutEntry>) -> Result<()> {
+        validate_virtual_layout(&layout)?;
+        ensure!(
+            !layout.is_empty(),
+            "No virtual button bindings were found for that LMU device."
+        );
+        self.settings.virtual_layout = layout;
+        self.save_settings()
+    }
+
     pub fn bindings_from_document(document: &serde_json::Value) -> Vec<Binding> {
         let mut bindings = Vec::new();
         collect_bindings(document, "Input", false, &mut bindings);
