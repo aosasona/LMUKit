@@ -1243,7 +1243,25 @@ fn poll_hotkeys(
                 HotkeyUpdate::Profiles(next) => shortcuts = next,
                 HotkeyUpdate::VirtualSetup(enabled) => virtual_setup_enabled = enabled,
             }
-            manager = hotkeys::HotkeyManager::new(&shortcuts, virtual_setup_enabled).ok();
+            // Windows will reject a replacement registration while the old
+            // manager still owns the same shortcut. Drop it before rebuilding.
+            drop(manager.take());
+            match hotkeys::HotkeyManager::new(&shortcuts, virtual_setup_enabled) {
+                Ok(next) => manager = Some(next),
+                Err(error) => {
+                    if virtual_setup_enabled {
+                        let _ = app.emit(
+                            "virtual-setup-result",
+                            VirtualSetupEvent {
+                                pulse: None,
+                                error: Some(format!(
+                                    "The setup hotkey could not be registered: {error}. Use the on-screen button instead."
+                                )),
+                            },
+                        );
+                    }
+                }
+            }
         }
         let action = manager.as_ref().and_then(hotkeys::HotkeyManager::poll);
         match action {
