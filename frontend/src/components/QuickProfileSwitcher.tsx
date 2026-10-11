@@ -1,11 +1,13 @@
 import { Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Profile } from "../models";
+import type { InputMode } from "./InputModeSwitch";
 import { WheelImage } from "./WheelImage";
 
 export function QuickProfileSwitcher({
   profiles,
   activeId,
+  inputMode,
   busy,
   imageRevision,
   onClose,
@@ -13,6 +15,7 @@ export function QuickProfileSwitcher({
 }: {
   profiles: Profile[];
   activeId: string | null;
+  inputMode: InputMode;
   busy: boolean;
   imageRevision: number;
   onClose: () => void;
@@ -109,7 +112,9 @@ export function QuickProfileSwitcher({
               <span>
                 <strong>{profile.name}</strong>
                 <small>
-                  {profile.id === activeId ? "Prepared · " : ""}
+                  {inputMode === "legacy" && profile.id === activeId
+                    ? "Prepared · "
+                    : ""}
                   {profile.classTags.length
                     ? profile.classTags.join(" · ")
                     : "Generic profile"}
@@ -126,7 +131,9 @@ export function QuickProfileSwitcher({
         </div>
         <footer>
           <span>↑ ↓ Navigate</span>
-          <span>Enter Use profile</span>
+          <span>
+            Enter {inputMode === "virtual" ? "Use live" : "Prepare profile"}
+          </span>
           <span>Esc Close</span>
         </footer>
       </section>

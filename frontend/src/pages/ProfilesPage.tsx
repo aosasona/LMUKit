@@ -9,6 +9,7 @@ import {
 import { useState } from "react";
 import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
+import type { InputMode } from "../components/InputModeSwitch";
 import { ProfileTagPicker } from "../components/ProfileTagPicker";
 import { ProfileVirtualMappings } from "../components/ProfileVirtualMappings";
 import { WheelImage } from "../components/WheelImage";
@@ -37,6 +38,7 @@ type Props = {
   selectedId: string | null;
   query: string;
   busy: boolean;
+  inputMode: InputMode;
   loading: boolean;
   setQuery: (value: string) => void;
   setSelectedId: (value: string) => void;
@@ -70,6 +72,7 @@ export function ProfilesPage(props: Props) {
     selectedId,
     query,
     busy,
+    inputMode,
     loading,
     setQuery,
     setSelectedId,
@@ -86,6 +89,7 @@ export function ProfilesPage(props: Props) {
     onAssignWheel,
     onNotice,
   } = props;
+  const legacyMode = inputMode === "legacy";
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [captureName, setCaptureName] = useState("");
   const [wheelFilter, setWheelFilter] = useState<string | null>(null);
@@ -216,7 +220,7 @@ export function ProfilesPage(props: Props) {
               <span className="profile-list-copy">
                 <span className="profile-list-title">
                   <strong>{profile.name}</strong>
-                  {profile.id === activeId && (
+                  {legacyMode && profile.id === activeId && (
                     <em className={activeDirty ? "dirty" : ""}>
                       {activeDirty ? "Changed" : "Prepared"}
                     </em>
@@ -290,8 +294,11 @@ export function ProfilesPage(props: Props) {
                       onSelect: () => onEdit(selected),
                     },
                     {
-                      label: "Prepare for next LMU launch",
-                      hidden: selected.id === activeId && !activeDirty,
+                      label: legacyMode
+                        ? "Prepare for next LMU launch"
+                        : "Use this profile live",
+                      hidden:
+                        legacyMode && selected.id === activeId && !activeDirty,
                       onSelect: () => onActivate(selected),
                     },
                     {
@@ -347,7 +354,7 @@ export function ProfilesPage(props: Props) {
                 {selected.hotkeySlot ? "shortcut slot" : "no shortcut"}
               </span>
             </div>
-            {selected.id === activeId && activeDirty && (
+            {legacyMode && selected.id === activeId && activeDirty && (
               <div className="profile-dirty-notice">
                 LMU's live bindings differ from this profile. Update the saved
                 copy from the actions menu, or use this profile again to restore
@@ -367,6 +374,7 @@ export function ProfilesPage(props: Props) {
               key={`virtual-${selected.id}`}
               profile={selected}
               busy={busy}
+              inputMode={inputMode}
               onNotice={onNotice}
               editorOpen={mappingEditorProfileId === selected.id}
               onEditorOpenChange={(open) =>
@@ -423,30 +431,41 @@ export function ProfilesPage(props: Props) {
             </div>
             <div className="profile-activation-bar">
               <div>
-                {selected.id === activeId && !activeDirty ? (
+                {legacyMode && selected.id === activeId && !activeDirty ? (
                   <CircleCheck />
                 ) : (
                   <Play />
                 )}
                 <span>
                   <strong>
-                    {selected.id === activeId && !activeDirty
-                      ? "Profile ready"
-                      : "Prepare this profile"}
+                    {legacyMode
+                      ? selected.id === activeId && !activeDirty
+                        ? "Profile ready"
+                        : "Prepare this profile"
+                      : "Use this profile live"}
                   </strong>
-                  <small>LMU will load it the next time the game starts.</small>
+                  <small>
+                    {legacyMode
+                      ? "LMU will load it the next time the game starts."
+                      : "LMUKit will route its assigned wheel buttons through vJoy."}
+                  </small>
                 </span>
               </div>
               <button
                 className="primary"
-                disabled={busy || (selected.id === activeId && !activeDirty)}
+                disabled={
+                  busy ||
+                  (legacyMode && selected.id === activeId && !activeDirty)
+                }
                 onClick={() => onActivate(selected)}
               >
-                {selected.id === activeId
-                  ? activeDirty
-                    ? "Restore saved profile"
-                    : "Currently active"
-                  : "Activate for next LMU launch"}
+                {legacyMode
+                  ? selected.id === activeId
+                    ? activeDirty
+                      ? "Restore saved profile"
+                      : "Currently active"
+                    : "Activate for next LMU launch"
+                  : "Start live remapping"}
               </button>
             </div>
           </aside>

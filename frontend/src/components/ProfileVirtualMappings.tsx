@@ -21,6 +21,7 @@ import type {
   VirtualRoutingStatus,
 } from "../models";
 import { ProfileEncoderMappings } from "./ProfileEncoderMappings";
+import type { InputMode } from "./InputModeSwitch";
 
 function searchTokens(value: string) {
   return value
@@ -34,12 +35,14 @@ function searchTokens(value: string) {
 export function ProfileVirtualMappings({
   profile,
   busy,
+  inputMode,
   onNotice,
   editorOpen,
   onEditorOpenChange,
 }: {
   profile: Profile;
   busy: boolean;
+  inputMode: InputMode;
   onNotice: (message: string) => void;
   editorOpen: boolean;
   onEditorOpenChange: (open: boolean) => void;
@@ -437,13 +440,17 @@ export function ProfileVirtualMappings({
           <button
             type="button"
             className="primary compact"
-            disabled={busy || routingBusy || !mappings.length}
+            disabled={
+              busy || routingBusy || !mappings.length || inputMode !== "virtual"
+            }
             onClick={() => void startRouting()}
           >
             {routingBusy ? <LoaderCircle className="spin" /> : <Gamepad2 />}
-            {routing.active
-              ? "Switch to this profile"
-              : "Use this profile live"}
+            {inputMode !== "virtual"
+              ? "Select Virtual Input above"
+              : routing.active
+                ? "Switch to this profile"
+                : "Use this profile live"}
           </button>
         )}
       </div>

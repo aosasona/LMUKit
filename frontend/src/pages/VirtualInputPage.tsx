@@ -21,17 +21,20 @@ import type {
   VirtualSetupStatus,
   Wheel,
 } from "../models";
+import type { InputMode } from "../components/InputModeSwitch";
 
 const WHEEL_FALLBACK = "__wheel_fallback__";
 
 export function VirtualInputPage({
   busy,
+  inputMode,
   profiles,
   wheels,
   onNotice,
   onOpenProfiles,
 }: {
   busy: boolean;
+  inputMode: InputMode;
   profiles: Profile[];
   wheels: Wheel[];
   onNotice: (message: string) => void;
@@ -468,7 +471,9 @@ export function VirtualInputPage({
           <p>
             {routing.active
               ? `${routing.selectionReason ?? "Selected manually"}. Its assigned buttons are being sent to LMU.`
-              : "Select and configure a profile in Profiles, then start it from the same detail pane."}
+              : inputMode === "virtual"
+                ? "Select and configure a profile in Profiles, then start it from the same detail pane."
+                : "Select Virtual Input in the global input-method switch before starting live remapping."}
           </p>
         </div>
         <div className="virtual-router-health">
@@ -541,7 +546,8 @@ export function VirtualInputPage({
               routingBusy ||
               setup !== null ||
               !selectedWheelId ||
-              !selectedClass
+              !selectedClass ||
+              inputMode !== "virtual"
             }
             onClick={() => void startDefaultRouting()}
           >

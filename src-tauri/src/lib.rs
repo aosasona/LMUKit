@@ -1,7 +1,7 @@
 use lmukit_core::storage::{
-    CompanionApp, LaunchMode, Profile, Store, VirtualButtonMapping, VirtualButtonModifier,
-    VirtualEncoderControl, VirtualEncoderGroup, VirtualEncoderMode as StoredEncoderMode,
-    VirtualProfileMapping, Wheel,
+    CompanionApp, InputMode, LaunchMode, Profile, Store, VirtualButtonMapping,
+    VirtualButtonModifier, VirtualEncoderControl, VirtualEncoderGroup,
+    VirtualEncoderMode as StoredEncoderMode, VirtualProfileMapping, Wheel,
 };
 use lmukit_virtual::{
     EncoderGroup, EncoderMode, LogicalAction, PhysicalButton, ProfileBinding, ProfileMapping,
@@ -198,6 +198,7 @@ struct AppSnapshot {
     lmu_settings_path: String,
     active_profile_dirty: Option<bool>,
     ui_font_scale: f32,
+    input_mode: InputMode,
     companion_apps: Vec<CompanionApp>,
     lmu_launch_mode: LaunchMode,
 }
@@ -344,6 +345,7 @@ fn snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, String> {
             .active_profile_has_unsaved_changes()
             .map_err(|error| error.to_string())?,
         ui_font_scale: store.settings.ui_font_scale,
+        input_mode: store.settings.input_mode,
         companion_apps: store.settings.companion_apps.clone(),
         lmu_launch_mode: store.settings.lmu_launch_mode,
     })
@@ -357,6 +359,30 @@ fn set_ui_font_scale(scale: f32, state: State<'_, AppState>) -> Result<(), Strin
     let mut store = state.0.lock().map_err(|error| error.to_string())?;
     store.settings.ui_font_scale = scale;
     store.save_settings().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_input_mode(
+    input_mode: InputMode,
+    app_state: State<'_, AppState>,
+    routing_state: State<'_, VirtualRoutingState>,
+) -> Result<(), String> {
+    {
+        let mut store = app_state.0.lock().map_err(|error| error.to_string())?;
+        store.settings.input_mode = input_mode;
+        store.save_settings().map_err(|error| error.to_string())?;
+    }
+    if input_mode == InputMode::Legacy {
+        stop_virtual_routing_inner(&routing_state)?;
+    }
+    diagnostics::info(
+        "input.mode.changed",
+        match input_mode {
+            InputMode::Legacy => "Input method changed to Legacy JSON",
+            InputMode::Virtual => "Input method changed to Virtual Input",
+        },
+    );
+    Ok(())
 }
 
 #[tauri::command]
@@ -927,6 +953,12 @@ fn start_virtual_routing_inner(
     );
     let (profile_name, device_id, layout, mapping) = {
         let store = app_state.0.lock().map_err(|error| error.to_string())?;
+        if store.settings.input_mode != InputMode::Virtual {
+            return Err(
+                "Switch the global input method to Virtual Input before enabling live remapping."
+                    .to_owned(),
+            );
+        }
         let profile = find_profile(&store, profile_id)?;
         let persisted_mapping = profile
             .virtual_mapping
@@ -1505,6 +1537,12 @@ fn pick_file_dialog(_kind: &str) -> Result<Option<String>, String> {
 #[tauri::command]
 fn activate_profile(profile_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
     let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    if store.settings.input_mode != InputMode::Legacy {
+        return Err(
+            "Switch the global input method to Legacy JSON before preparing LMU's binding file."
+                .to_owned(),
+        );
+    }
     let profile = store
         .profiles()
         .map_err(|error| error.to_string())?
@@ -2305,6 +2343,7 @@ pub fn run() {
             listen_for_profile_binding,
             cancel_binding_lookup,
             set_ui_font_scale,
+            set_input_mode,
             set_log_retention_days,
             save_app_settings,
             set_profile_hotkey,
@@ -2397,25 +2436,53 @@ fn poll_hotkeys(
                 let _ = app.emit("open-profile-switcher", ());
             }
             Some(hotkeys::HotkeyAction::ActivateProfile(profile_id)) => {
-                let result = app
-                    .state::<AppState>()
+                let app_state = app.state::<AppState>();
+                let mode = app_state
                     .0
                     .lock()
-                    .map_err(|error| error.to_string())
-                    .and_then(|mut store| {
-                        let profile = store
-                            .profiles()
-                            .map_err(|error| error.to_string())?
-                            .into_iter()
-                            .find(|profile| profile.id == profile_id)
-                            .ok_or_else(|| {
-                                "That shortcut's profile no longer exists.".to_owned()
-                            })?;
-                        store
-                            .activate(&profile)
-                            .map_err(|error| error.to_string())?;
-                        Ok(profile.name)
-                    });
+                    .map(|store| store.settings.input_mode)
+                    .map_err(|error| error.to_string());
+                let result = mode.and_then(|mode| match mode {
+                    InputMode::Legacy => app_state
+                        .0
+                        .lock()
+                        .map_err(|error| error.to_string())
+                        .and_then(|mut store| {
+                            let profile = store
+                                .profiles()
+                                .map_err(|error| error.to_string())?
+                                .into_iter()
+                                .find(|profile| profile.id == profile_id)
+                                .ok_or_else(|| {
+                                    "That shortcut's profile no longer exists.".to_owned()
+                                })?;
+                            store
+                                .activate(&profile)
+                                .map_err(|error| error.to_string())?;
+                            Ok(format!(
+                                "{} is ready for the next LMU launch.",
+                                profile.name
+                            ))
+                        }),
+                    InputMode::Virtual => {
+                        let routing_state = app.state::<VirtualRoutingState>();
+                        start_virtual_routing_inner(
+                            profile_id,
+                            "Profile shortcut".to_owned(),
+                            &app_state,
+                            &routing_state,
+                        )
+                        .map(|status| {
+                            format!(
+                                "{} is now remapping live.",
+                                status
+                                    .profile_name
+                                    .as_deref()
+                                    .unwrap_or("The selected profile")
+                            )
+                        })
+                    }
+                });
                 let _ = app.emit("profile-shortcut-result", result);
             }
             Some(hotkeys::HotkeyAction::SendVirtualSetupButton) => {

@@ -38,6 +38,8 @@ Virtual Input Mode is optional and requires the user to install and configure [v
 
 ### Profiles
 
+Use the global **Input method** switch in the title bar to choose how profile selection behaves. **Legacy JSON** prepares a profile's `direct input.json` for LMU's next launch. **Virtual Input** makes profile selection start live physical-button-to-vJoy remapping instead. The choice persists; returning to Legacy JSON stops routing and releases every virtual button.
+
 1. Close LMU before replacing its bindings.
 2. Open **Settings** and confirm the paths to `direct input.json` and `Settings.JSON`.
 3. Configure your controls in LMU, enter a profile name on **Profiles**, and choose **Capture LMU**.
@@ -75,6 +77,8 @@ Virtual Input Mode requires vJoy device 1 to be installed and configured separat
 LMUKit reserves each successfully emitted button for the rest of the session, so it advances safely even before LMU writes `direct input.json`. After assigning and saving the actions in LMU, choose **Finish & rescan**, select the vJoy device, and choose **Save LMU button layout**. LMUKit does not claim that a pulse was accepted until it appears in LMU's saved bindings.
 
 Select a profile under **Profiles** and use the visible **Edit button mappings** action in its Virtual Input section. The dedicated mapping workspace can search or filter actions and convert saved LMU button assignments into virtual mappings by matching the LMU action name. Search accepts partial words in any order and also finds physical buttons, vJoy outputs, and device names. LMUKit leaves manual mappings untouched and reports ambiguous controls for review. Choose **Bind control**, then press and release one button for a normal binding, or keep the first button held and press another to create a modifier combination. A normal and modified action may share the same trigger; the modified mapping takes precedence while its modifier is held.
+
+Switch the global input method to **Virtual Input**, then choose **Use this profile live**. Profile keyboard shortcuts and the quick switcher follow the selected method: they prepare LMU's JSON in Legacy mode and switch live routing in Virtual mode. Virtual mode remains selected after restarting LMUKit, but live routing must be started again so input is never captured unexpectedly.
 
 The same profile section can make a profile the default for each of its existing car-class tags or the wheel's fallback for other classes. The **Virtual Input** page provides a quick wheel-and-class switcher, resolves the exact class default before the fallback, and shows why the active profile was chosen. A manual profile started from its detail pane remains active until explicitly changed or stopped. Switching profiles validates the new mapping before releasing the previous route and does not recreate vJoy.
 

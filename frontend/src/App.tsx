@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
+import { InputModeSwitch, type InputMode } from "./components/InputModeSwitch";
 import { TitleBar } from "./components/TitleBar";
 import { QuickProfileSwitcher } from "./components/QuickProfileSwitcher";
 import type {
@@ -55,7 +56,10 @@ export default function App() {
   const active = snapshot.profiles.find(
     (profile) => profile.id === snapshot.activeProfile,
   );
-  const overviewProfile = active ?? selected;
+  const overviewProfile =
+    snapshot.inputMode === "virtual"
+      ? (selected ?? active)
+      : (active ?? selected);
   const gameSettingsDirty = Boolean(
     gameSettings &&
       gameSettingsBaseline &&
@@ -110,7 +114,7 @@ export default function App() {
       "profile-shortcut-result",
       (event) => {
         if (event.payload.Ok) {
-          setNotice(`${event.payload.Ok} is ready for the next LMU launch.`);
+          setNotice(event.payload.Ok);
           void refresh();
         } else if (event.payload.Err) {
           setNotice(event.payload.Err);
@@ -276,11 +280,29 @@ export default function App() {
   const activate = (profile: Profile) =>
     withBusy(async () => {
       setSelectedId(profile.id);
-      setNotice(`Preparing ${profile.name}…`);
-      await invoke("activate_profile", { profileId: profile.id });
-      await refresh();
-      setNotice(`${profile.name} is ready for the next LMU launch.`);
+      if (snapshot.inputMode === "virtual") {
+        setNotice(`Starting live remapping for ${profile.name}…`);
+        await invoke("start_virtual_routing", { profileId: profile.id });
+        setNotice(`${profile.name} is now remapping live.`);
+      } else {
+        setNotice(`Preparing ${profile.name}…`);
+        await invoke("activate_profile", { profileId: profile.id });
+        await refresh();
+        setNotice(`${profile.name} is ready for the next LMU launch.`);
+      }
     });
+  const changeInputMode = (inputMode: InputMode) => {
+    if (inputMode === snapshot.inputMode) return;
+    void withBusy(async () => {
+      await invoke("set_input_mode", { inputMode });
+      setSnapshot((current) => ({ ...current, inputMode }));
+      setNotice(
+        inputMode === "virtual"
+          ? "Virtual Input selected. Choose a mapped profile to start live remapping."
+          : "Legacy JSON selected. Live remapping stopped and all virtual buttons were released.",
+      );
+    });
+  };
   const removeDevice = (profile: Profile, device: Device) =>
     withBusy(async () => {
       const removed = await invoke<number>("remove_profile_device", {
@@ -583,6 +605,11 @@ export default function App() {
               <h1>{pageTitle(page)}</h1>
             </div>
             <div className="top-actions">
+              <InputModeSwitch
+                mode={snapshot.inputMode}
+                busy={busy}
+                onChange={changeInputMode}
+              />
               <button
                 type="button"
                 className="ghost"
@@ -603,6 +630,7 @@ export default function App() {
                 wheelImageRevision={wheelImageRevision}
                 profiles={snapshot.profiles}
                 busy={busy}
+                inputMode={snapshot.inputMode}
                 onNavigate={navigate}
                 onActivate={activate}
                 onUpdate={updateProfile}
@@ -619,6 +647,7 @@ export default function App() {
                 selectedId={selectedId}
                 query={query}
                 busy={busy}
+                inputMode={snapshot.inputMode}
                 loading={loading}
                 setQuery={setQuery}
                 setSelectedId={setSelectedId}
@@ -670,6 +699,7 @@ export default function App() {
             {page === "virtual" && (
               <VirtualInputPage
                 busy={busy}
+                inputMode={snapshot.inputMode}
                 profiles={snapshot.profiles}
                 wheels={snapshot.wheels}
                 onNotice={setNotice}
@@ -716,6 +746,7 @@ export default function App() {
         <QuickProfileSwitcher
           profiles={snapshot.profiles}
           activeId={snapshot.activeProfile}
+          inputMode={snapshot.inputMode}
           busy={busy}
           imageRevision={wheelImageRevision}
           onClose={() => setSwitcherOpen(false)}

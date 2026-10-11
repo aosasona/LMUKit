@@ -397,6 +397,49 @@ main {
   gap: 10px;
   align-items: center;
 }
+.input-mode-switch {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid var(--line);
+  background: #111210;
+}
+.input-mode-switch > span {
+  padding: 0 9px 0 7px;
+  color: #69746f;
+  font-size: calc(9px * var(--font-scale));
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.input-mode-switch button {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 0;
+  background: transparent;
+  color: #727e78;
+  font-size: calc(10px * var(--font-scale));
+  cursor: pointer;
+  white-space: nowrap;
+}
+.input-mode-switch button + button {
+  border-left: 1px solid var(--line);
+}
+.input-mode-switch button.active {
+  background: #292d1a;
+  color: var(--teal);
+}
+.input-mode-switch button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.input-mode-switch svg {
+  width: 14px;
+}
 .ghost {
   background: #181816;
   border: 1px solid var(--line);
@@ -1605,6 +1648,12 @@ img.profile-card-icon {
   color: #cabd7d;
   font-size: calc(12px * var(--font-scale));
   line-height: 1.45;
+}
+@media (max-width: 1180px) {
+  .input-mode-switch > span,
+  .input-mode-switch button svg {
+    display: none;
+  }
 }
 .profile-tools svg,
 .profile-management svg {

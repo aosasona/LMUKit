@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
+import type { InputMode } from "../components/InputModeSwitch";
 import { WheelImage } from "../components/WheelImage";
 import type { Profile } from "../models";
 
@@ -22,6 +23,7 @@ type Props = {
   wheelImageRevision: number;
   profiles: Profile[];
   busy: boolean;
+  inputMode: InputMode;
   onNavigate: (page: "profiles" | "bindings" | "game") => void;
   onActivate: (profile: Profile) => void;
   onUpdate: (profile: Profile) => void;
@@ -35,11 +37,13 @@ export function OverviewPage({
   wheelImageRevision,
   profiles,
   busy,
+  inputMode,
   onNavigate,
   onActivate,
   onUpdate,
 }: Props) {
-  const hero = active ?? selected;
+  const legacyMode = inputMode === "legacy";
+  const hero = legacyMode ? (active ?? selected) : (selected ?? active);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   return (
     <>
@@ -49,24 +53,28 @@ export function OverviewPage({
             <span className="chip">
               <span className="pulse" /> Current setup
             </span>
-            <h2>{active?.name ?? "Choose your race setup"}</h2>
+            <h2>{hero?.name ?? "Choose your race setup"}</h2>
             <p>
-              {active
-                ? `${active.bindingCount} controls across ${Math.max(active.devices.length, 1)} connected device${active.devices.length === 1 ? "" : "s"}.`
+              {hero
+                ? `${hero.bindingCount} controls across ${Math.max(hero.devices.length, 1)} connected device${hero.devices.length === 1 ? "" : "s"}.`
                 : "Select a profile to prepare LMU for your next session."}
             </p>
             <div className="hero-actions">
               {hero && (
                 <button
                   className="primary"
-                  disabled={busy || hero.id === active?.id}
+                  disabled={busy || (legacyMode && hero.id === active?.id)}
                   onClick={() => onActivate(hero)}
                 >
                   <Zap size={17} fill="currentColor" />
-                  {hero.id === active?.id ? "Prepared" : "Use this profile"}
+                  {legacyMode
+                    ? hero.id === active?.id
+                      ? "Prepared"
+                      : "Use this profile"
+                    : "Use this profile live"}
                 </button>
               )}
-              {active?.differsFromLive && (
+              {legacyMode && active?.differsFromLive && (
                 <button
                   className="secondary"
                   onClick={() =>
@@ -137,7 +145,9 @@ export function OverviewPage({
             <small>
               {activeDirty
                 ? "LMU differs from the saved profile"
-                : "No pending changes"}
+                : legacyMode
+                  ? "No pending changes"
+                  : "Legacy file comparison is inactive"}
             </small>
           </div>
         </section>

@@ -54,6 +54,7 @@ export type Snapshot = {
   lmuSettingsPath: string;
   activeProfileDirty: boolean | null;
   uiFontScale: number;
+  inputMode: "legacy" | "virtual";
   companionApps: CompanionApp[];
   lmuLaunchMode: "desktop" | "vr";
 };
@@ -175,6 +176,7 @@ export const emptySnapshot: Snapshot = {
   lmuSettingsPath: "",
   activeProfileDirty: null,
   uiFontScale: 1,
+  inputMode: "legacy",
   companionApps: [],
   lmuLaunchMode: "desktop",
 };
