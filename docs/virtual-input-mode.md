@@ -28,7 +28,11 @@ Because the virtual layout is shared, `B1` continues to mean Pit Limiter when th
 
 ## Initial setup
 
-The user installs and explicitly configures the supported virtual-controller driver, then binds the virtual buttons in LMU once. Only actions that should be managed by LMUKit need virtual bindings.
+The user installs and explicitly configures the supported virtual-controller driver, then binds the virtual buttons in LMU once. Only actions that should be managed by LMUKit need virtual bindings. After LMU has saved those bindings, LMUKit reads `direct input.json` and builds the shared layout from the selected virtual device: LMU input ID 32 is vJoy B1, ID 33 is B2, and so on. The LMU action name becomes the stable logical action.
+
+The mapping editor presents the action first—for example **Pit Limiter**—and keeps **vJoy B1** as secondary diagnostic information. A user chooses the action and presses the desired physical control; LMUKit stores physical control -> Pit Limiter, while the shared layout supplies Pit Limiter -> B1. Users do not manually calculate or memorise button numbers.
+
+Importing the layout is read-only and never rewrites LMU's file. LMUKit rejects ambiguous layouts, including one virtual button bound to several LMU actions or one action bound to several buttons on the virtual device, and asks the user to resolve them in LMU. Axis and POV bindings on the virtual device are ignored because Virtual Input Mode is button-only.
 
 Steering, throttle, brake, clutch, and FFB remain connected directly between the physical hardware and LMU. Virtual Input Mode never reads, emits, transforms, or suppresses those axes and never participates in force-feedback delivery. It manages only programmable buttons, switches, encoder steps, and optional digital paddles.
 

@@ -2,7 +2,7 @@ use anyhow::{Context, Result, bail, ensure};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -700,6 +700,61 @@ impl Store {
             }
         }
         actions.into_iter().collect()
+    }
+
+    pub fn virtual_layout_from_document(
+        document: &serde_json::Value,
+        virtual_device: &str,
+    ) -> Result<Vec<VirtualLayoutEntry>> {
+        ensure!(
+            document
+                .get("Devices")
+                .and_then(serde_json::Value::as_object)
+                .is_some_and(|devices| devices.contains_key(virtual_device)),
+            "The selected virtual device is not registered in this LMU binding file."
+        );
+
+        let mut actions = BTreeMap::<String, u32>::new();
+        let mut buttons = BTreeMap::<u32, String>::new();
+        for binding in Self::bindings_from_document(document)
+            .into_iter()
+            .filter(|binding| binding.device == virtual_device && binding.input_id >= 32)
+        {
+            let virtual_button = u32::try_from(binding.input_id - 31)
+                .context("LMU virtual button ID is too large")?;
+            ensure!(
+                virtual_button <= 128,
+                "LMU action '{}' uses virtual button B{virtual_button}, outside the supported B1..B128 range.",
+                binding.action
+            );
+            if let Some(existing_button) = actions.get(&binding.action) {
+                ensure!(
+                    *existing_button == virtual_button,
+                    "LMU action '{}' is bound to both B{existing_button} and B{virtual_button} on the virtual device.",
+                    binding.action
+                );
+            }
+            if let Some(existing_action) = buttons.get(&virtual_button) {
+                ensure!(
+                    existing_action == &binding.action,
+                    "Virtual button B{virtual_button} is bound to both '{}' and '{}' in LMU.",
+                    existing_action,
+                    binding.action
+                );
+            }
+            actions.insert(binding.action.clone(), virtual_button);
+            buttons.insert(virtual_button, binding.action);
+        }
+
+        let layout = buttons
+            .into_iter()
+            .map(|(virtual_button, logical_action)| VirtualLayoutEntry {
+                logical_action,
+                virtual_button,
+            })
+            .collect::<Vec<_>>();
+        validate_virtual_layout(&layout)?;
+        Ok(layout)
     }
 
     pub fn binding_action_catalogue(&self) -> Result<Vec<String>> {
@@ -1421,6 +1476,64 @@ mod tests {
         assert_eq!(bindings[0].action, "Shift Up");
         assert!(!bindings[0].alternate);
         assert!(bindings[1].alternate);
+    }
+
+    #[test]
+    fn derives_named_virtual_actions_from_lmu_button_bindings() {
+        let document = serde_json::json!({
+            "Devices": {
+                "vJoy-1": {"name": "vJoy Device"},
+                "Wheel-1": {"name": "SIMAGIC Alpha EVO Wheelbase"}
+            },
+            "Input": {
+                "Pit Limiter": {"device": "vJoy-1", "id": 32},
+                "Headlights": {"device": "vJoy-1", "id": 33},
+                "Steer": {"device": "vJoy-1", "id": 0},
+                "Ignition": {"device": "Wheel-1", "id": 34}
+            },
+            "Alternative Input": {
+                "Wipers": {"device": "vJoy-1", "id": 35}
+            }
+        });
+
+        let layout = Store::virtual_layout_from_document(&document, "vJoy-1").unwrap();
+
+        assert_eq!(
+            layout,
+            vec![
+                VirtualLayoutEntry {
+                    logical_action: "Pit Limiter".into(),
+                    virtual_button: 1,
+                },
+                VirtualLayoutEntry {
+                    logical_action: "Headlights".into(),
+                    virtual_button: 2,
+                },
+                VirtualLayoutEntry {
+                    logical_action: "Wipers".into(),
+                    virtual_button: 4,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_ambiguous_virtual_bindings_from_lmu() {
+        let shared_button = serde_json::json!({
+            "Devices": {"vJoy-1": {}},
+            "Input": {
+                "Pit Limiter": {"device": "vJoy-1", "id": 32},
+                "Headlights": {"device": "vJoy-1", "id": 32}
+            }
+        });
+        assert!(Store::virtual_layout_from_document(&shared_button, "vJoy-1").is_err());
+
+        let shared_action = serde_json::json!({
+            "Devices": {"vJoy-1": {}},
+            "Input": {"Pit Limiter": {"device": "vJoy-1", "id": 32}},
+            "Alternative Input": {"Pit Limiter": {"device": "vJoy-1", "id": 33}}
+        });
+        assert!(Store::virtual_layout_from_document(&shared_action, "vJoy-1").is_err());
     }
 
     #[test]
