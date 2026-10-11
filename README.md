@@ -27,7 +27,7 @@ _The screenshot uses isolated synthetic profile data; no personal LMU files are 
 - Configure Desktop or native OpenXR (`+XR`) launching and start LMUKit, LMUFFB, Crew Chief, RaceLab, or custom companion applications through one explicit Steam launch option.
 - Autosave LMU paths, launch mode, and companion-app setup.
 - Scale the entire interface from Settings.
-- Guide one-time vJoy binding setup by sending the next unused virtual button with an active-session-only `Ctrl+Alt+V` shortcut, then rescan LMU's saved actions.
+- Guide one-time vJoy binding setup, save LMU's named button layout, learn physical buttons per profile, and start or stop experimental live DirectInput-to-vJoy routing.
 
 LMUKit stores profiles, managed wheel images, settings, and timestamped recovery backups in the current Windows user's application-data directory. Use the **Folder** button on Profiles to open the exact location.
 
@@ -71,7 +71,9 @@ Press `Ctrl+Alt+Space` anywhere in Windows to open the compact profile switcher.
 
 Virtual Input Mode requires vJoy device 1 to be installed and configured separately. Open **Virtual input**, start the guided binding setup, and leave LMU listening for the action you want to assign. Press `Ctrl+Alt+V` to send the next unused virtual button, or use the on-screen fallback. The shortcut is registered only while that setup session is active.
 
-LMUKit reserves each successfully emitted button for the rest of the session, so it advances safely even before LMU writes `direct input.json`. After assigning and saving the actions in LMU, choose **Finish & rescan** to inspect the resulting action-to-button layout. LMUKit does not claim that a pulse was accepted until it appears in LMU's saved bindings; the global-hotkey capture path still requires validation against the current game build.
+LMUKit reserves each successfully emitted button for the rest of the session, so it advances safely even before LMU writes `direct input.json`. After assigning and saving the actions in LMU, choose **Finish & rescan**, select the vJoy device, and choose **Save LMU button layout**. LMUKit does not claim that a pulse was accepted until it appears in LMU's saved bindings.
+
+Choose the profile you are using under **Wheel remapping**, then choose **Assign button** beside a named LMU action and press the desired physical wheel button. **Enable remapping** listens through DirectInput and translates only that profile's assigned buttons into vJoy outputs while LMUKit remains open. Disabling remapping, controller disconnection, errors, and normal app shutdown release held virtual outputs. Do not directly bind the same physical controls in LMU, because LMUKit does not hide the physical controller. Modifiers, layers, encoder modes, and automatic profile selection are not part of this first remapping slice.
 
 ### Game settings
 

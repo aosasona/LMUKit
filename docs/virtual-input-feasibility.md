@@ -19,7 +19,7 @@ The current data model already supports the product concepts that should be reus
 - Legacy wheel metadata is migrated additively by matching brand and wheel name. Settings and profile additions use Serde defaults so older JSON remains readable.
 - Physical input learning uses Windows `RawGameController`. Each capture listener starts on a fresh OS thread to avoid conflicting with the webview's WinRT apartment mode.
 
-The repository does not yet have continuous press/release monitoring, a virtual-output backend, virtual mappings, wheel/class default references, a car-context provider, or a reliable automatic rim identity provider. The current one-shot learner is not an input-routing engine.
+The repository now has an experimental continuous DirectInput press/release monitor, virtual-output backend, stable layout, persisted per-profile button mappings, and manual start/stop routing. It does not yet have wheel/class default references, modifiers, layers, encoder modes, a car-context provider, or a reliable automatic rim identity provider. The legacy Windows Gaming Input learner remains separate from the DirectInput routing path.
 
 ### Existing class IDs and proposed context aliases
 
@@ -119,7 +119,7 @@ The first context phase will therefore remain manual. Automatic class selection 
 ## Phased implementation
 
 1. **Feasibility:** isolated vJoy adapter, mock backend, two-button pulse/mirror probe, explicit hardware checklist. No persisted or production-UI changes.
-2. **Core routing:** the platform-independent logical-action engine, source-owned outputs, output-range validation, and safe profile-change/shutdown reconciliation are implemented with a mock backend. The existing profile and settings store now preserves optional physical-to-logical profile mappings, a shared logical-to-virtual layout, and a default-Legacy mode through additive fields. Continuous Windows input and manual wheel/profile selection remain to be integrated behind the experimental mode.
+2. **Core routing:** the platform-independent logical-action engine, source-owned outputs, output-range validation, and safe profile-change/shutdown reconciliation are implemented with a mock backend. The profile/settings store preserves optional physical-to-logical mappings and the shared logical-to-virtual layout. The production UI can learn buttons through DirectInput and manually start or stop one selected profile without changing LMU's JSON. This path is still experimental and requires an in-game hardware acceptance pass; modifiers and in-session profile changes remain subsequent work.
 3. **Class-aware resolution:** wheel/class default references and wheel fallback using existing class tags, with referential-integrity and migration tests.
 4. **Advanced controls:** modifiers, layers, serialised encoder pulses, conflict diagnostics, and learn-input editing.
 5. **Verified car context:** provider backed only by observed LMU data, debounced selection, manual override, Resume Auto, and stale/conflict diagnostics.
