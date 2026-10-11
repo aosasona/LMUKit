@@ -18,11 +18,11 @@ physical wheel control
 
 A logical action is a durable semantic name such as `pit_limiter`, `brake_bias_increase`, or `front_arb_decrease`. The global virtual layout assigns each logical action one stable vJoy button. Profiles map their own physical controls to those logical actions; they do not choose arbitrary virtual button numbers independently.
 
-| Active profile mapping | Stable virtual layout | One-time LMU binding |
-| --- | --- | --- |
-| GT Neo button 5 -> Pit Limiter | Pit Limiter -> vJoy B1 | B1 -> Pit Limiter |
-| FX Pro button 12 -> Pit Limiter | Pit Limiter -> vJoy B1 | B1 -> Pit Limiter |
-| GT Neo encoder CW -> Brake Bias + | Brake Bias + -> vJoy B8 | B8 -> Brake Bias + |
+| Active profile mapping            | Stable virtual layout   | One-time LMU binding |
+| --------------------------------- | ----------------------- | -------------------- |
+| GT Neo button 5 -> Pit Limiter    | Pit Limiter -> vJoy B1  | B1 -> Pit Limiter    |
+| FX Pro button 12 -> Pit Limiter   | Pit Limiter -> vJoy B1  | B1 -> Pit Limiter    |
+| GT Neo encoder CW -> Brake Bias + | Brake Bias + -> vJoy B8 | B8 -> Brake Bias +   |
 
 Because the virtual layout is shared, `B1` continues to mean Pit Limiter when the user changes wheel, class, or profile. Profile switching changes only LMUKit's live translation; it does not recreate the virtual controller or rewrite the LMU binding.
 
@@ -65,9 +65,9 @@ For example, a GT Neo HY profile may map encoder 1 to Front ARB while a GT Neo G
 
 ## Hold modifiers
 
-A profile may map a direct trigger and a modifier-plus-trigger chord independently. **Add chord** listens for the modifier press first and captures the next button pressed while it remains held as the trigger. For example, button 5 may map to Pit Limiter while button 4 + button 5 maps to Recenter VR.
+A profile may map a direct trigger and a modifier-plus-trigger combination independently. **Bind control** handles both: press and release one button for a normal binding, or keep the first button held and press another to use the first as a modifier. For example, button 5 may map to Pit Limiter while button 4 + button 5 maps to Recenter VR.
 
-The mapping engine tracks every currently pressed physical button. For a given trigger, the satisfied mapping with the most held modifiers wins; equal-specificity matches use a stable physical-button ordering. Changing modifier state while a trigger is held reconciles the active virtual output immediately. Output ownership remains reference-counted, and profile changes, disconnects, errors, and shutdown still release all outputs. The current UI captures one modifier per chord; the persisted and engine models allow additional modifiers in a later editor revision.
+The mapping engine tracks every currently pressed physical button. For a given trigger, the satisfied mapping with the most held modifiers wins; equal-specificity matches use a stable physical-button ordering. Changing modifier state while a trigger is held reconciles the active virtual output immediately. Output ownership remains reference-counted, and profile changes, disconnects, errors, and shutdown still release all outputs. The current UI captures one modifier per combination; the persisted and engine models allow additional modifiers in a later editor revision.
 
 ## Daily use
 

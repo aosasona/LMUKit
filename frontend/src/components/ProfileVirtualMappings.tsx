@@ -44,10 +44,7 @@ export function ProfileVirtualMappings({
   const [mappings, setMappings] = useState<VirtualProfileMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [migrating, setMigrating] = useState(false);
-  const [learning, setLearning] = useState<{
-    action: string;
-    kind: "button" | "chord";
-  } | null>(null);
+  const [learning, setLearning] = useState<string | null>(null);
   const [routingBusy, setRoutingBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "assigned" | "unassigned">(
@@ -151,26 +148,20 @@ export function ProfileVirtualMappings({
     return () => window.removeEventListener("keydown", closeOnEscape);
   });
 
-  const learn = async (action: string, kind: "button" | "chord") => {
+  const learn = async (action: string) => {
     if (routingActive) return;
-    setLearning({ action, kind });
+    setLearning(action);
     setError(null);
     onNotice(
-      kind === "chord"
-        ? `Hold the modifier, then press the trigger for ${action}.`
-        : `Press the physical button for ${action}.`,
+      `Press and release one button for ${action}, or hold a modifier and press another button.`,
     );
     try {
       const next = await invoke<VirtualProfileMapping[]>(
-        kind === "chord"
-          ? "learn_virtual_profile_chord"
-          : "learn_virtual_profile_button",
+        "learn_virtual_profile_button",
         { profileId: profile.id, logicalAction: action },
       );
       setMappings(next);
-      onNotice(
-        `${action} mapped to the pressed ${kind === "chord" ? "button chord" : "physical button"}.`,
-      );
+      onNotice(`${action} mapped to the control you pressed.`);
     } catch (reason) {
       const message = String(reason);
       if (!message.toLowerCase().includes("cancelled")) {
@@ -479,37 +470,17 @@ export function ProfileVirtualMappings({
                           learning !== null ||
                           migrating
                         }
-                        onClick={() => void learn(action.action, "button")}
+                        onClick={() => void learn(action.action)}
                       >
-                        {learning?.action === action.action &&
-                        learning.kind === "button" ? (
+                        {learning === action.action ? (
                           <>
-                            <Radio className="spin" /> Press a button…
+                            <Radio className="spin" /> Press one, or hold +
+                            press…
                           </>
                         ) : assigned.length ? (
-                          "Add button"
+                          "Add control"
                         ) : (
-                          "Assign button"
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost compact"
-                        disabled={
-                          busy ||
-                          routingActive ||
-                          learning !== null ||
-                          migrating
-                        }
-                        onClick={() => void learn(action.action, "chord")}
-                      >
-                        {learning?.action === action.action &&
-                        learning.kind === "chord" ? (
-                          <>
-                            <Radio className="spin" /> Hold + press…
-                          </>
-                        ) : (
-                          "Add chord"
+                          "Bind control"
                         )}
                       </button>
                     </div>

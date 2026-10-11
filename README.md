@@ -73,7 +73,7 @@ Virtual Input Mode requires vJoy device 1 to be installed and configured separat
 
 LMUKit reserves each successfully emitted button for the rest of the session, so it advances safely even before LMU writes `direct input.json`. After assigning and saving the actions in LMU, choose **Finish & rescan**, select the vJoy device, and choose **Save LMU button layout**. LMUKit does not claim that a pulse was accepted until it appears in LMU's saved bindings.
 
-Select a profile under **Profiles** and choose **Manage virtual mappings** from its actions menu. The dedicated mapping workspace can search or filter actions and convert saved LMU button assignments into virtual mappings by matching the LMU action name. Search accepts partial words in any order and also finds physical buttons, vJoy outputs, and device names. LMUKit leaves manual mappings untouched and reports ambiguous controls for review. Choose **Assign button** for a direct mapping, or **Add chord** and hold a modifier before pressing the trigger. A normal and modified action may share the same trigger; the modified mapping takes precedence while its modifier is held. Choose **Use this profile live** from the profile detail pane to start routing. LMUKit listens through DirectInput and translates only that profile's assigned buttons into vJoy outputs while it remains open. The Virtual Input page is reserved for one-time shared vJoy setup and global routing status. Disabling remapping, controller disconnection, errors, and normal app shutdown release held virtual outputs. Do not directly bind the same physical controls in LMU, because LMUKit does not hide the physical controller. Layers, encoder modes, and automatic profile selection are not part of this slice.
+Select a profile under **Profiles** and choose **Manage virtual mappings** from its actions menu. The dedicated mapping workspace can search or filter actions and convert saved LMU button assignments into virtual mappings by matching the LMU action name. Search accepts partial words in any order and also finds physical buttons, vJoy outputs, and device names. LMUKit leaves manual mappings untouched and reports ambiguous controls for review. Choose **Bind control**, then press and release one button for a normal binding, or keep the first button held and press another to create a modifier combination. A normal and modified action may share the same trigger; the modified mapping takes precedence while its modifier is held. Choose **Use this profile live** from the profile detail pane to start routing. LMUKit listens through DirectInput and translates only that profile's assigned buttons into vJoy outputs while it remains open. The Virtual Input page is reserved for one-time shared vJoy setup and global routing status. Disabling remapping, controller disconnection, errors, and normal app shutdown release held virtual outputs. Do not directly bind the same physical controls in LMU, because LMUKit does not hide the physical controller. Layers, encoder modes, and automatic profile selection are not part of this slice.
 
 ### Game settings
 
@@ -108,8 +108,8 @@ mise run dev
 | ---------------- | -------------------------------------------------------- |
 | `mise run dev`   | Cross-build and launch the Windows debug app from WSL    |
 | `mise run build` | Build the frontend and Windows x86-64 release executable |
-| `mise run test`  | Run core and virtual-backend tests                        |
-| `mise run check` | Check core and virtual-backend crates                     |
+| `mise run test`  | Run core and virtual-backend tests                       |
+| `mise run check` | Check core and virtual-backend crates                    |
 | `mise run fmt`   | Check Rust formatting                                    |
 | `mise run lint`  | Run Clippy with warnings denied                          |
 | `pnpm build`     | Type-check and build the React interface                 |

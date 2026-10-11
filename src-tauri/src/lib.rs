@@ -109,9 +109,12 @@ struct LearnedPhysicalButton {
     button_id: u32,
 }
 
-struct LearnedPhysicalChord {
-    modifier: LearnedPhysicalButton,
-    trigger: LearnedPhysicalButton,
+enum LearnedPhysicalMapping {
+    Button(LearnedPhysicalButton),
+    Modified {
+        modifier: LearnedPhysicalButton,
+        trigger: LearnedPhysicalButton,
+    },
 }
 
 #[derive(Serialize)]
@@ -487,7 +490,7 @@ async fn learn_virtual_profile_button(
     logical_action: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<VirtualProfileMappingSummary>, String> {
-    let pressed = wait_for_direct_input_button().await?;
+    let learned = wait_for_direct_input_mapping().await?;
     let store = state.0.lock().map_err(|error| error.to_string())?;
     if !store
         .settings
@@ -499,57 +502,27 @@ async fn learn_virtual_profile_button(
     }
     let profile = find_profile(&store, profile_id)?;
     let mut mapping = profile.virtual_mapping.unwrap_or_default();
+    let (pressed, modifiers) = match learned {
+        LearnedPhysicalMapping::Button(pressed) => (pressed, Vec::new()),
+        LearnedPhysicalMapping::Modified { modifier, trigger } => (
+            trigger,
+            vec![VirtualButtonModifier {
+                device_id: modifier.device_id,
+                device_name: modifier.device_name,
+                physical_button: modifier.button_id,
+            }],
+        ),
+    };
     mapping.buttons.retain(|entry| {
         !(entry.device_id == pressed.device_id
             && entry.physical_button == pressed.button_id
-            && entry.modifiers.is_empty())
+            && entry.modifiers == modifiers)
     });
     mapping.buttons.push(VirtualButtonMapping {
         device_id: pressed.device_id,
         device_name: pressed.device_name,
         physical_button: pressed.button_id,
-        modifiers: Vec::new(),
-        logical_action,
-    });
-    store
-        .set_profile_virtual_mapping(profile_id, Some(mapping.clone()))
-        .map_err(|error| error.to_string())?;
-    Ok(mapping_summaries(Some(&mapping)))
-}
-
-#[tauri::command]
-async fn learn_virtual_profile_chord(
-    profile_id: Uuid,
-    logical_action: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<VirtualProfileMappingSummary>, String> {
-    let chord = wait_for_direct_input_chord().await?;
-    let store = state.0.lock().map_err(|error| error.to_string())?;
-    if !store
-        .settings
-        .virtual_layout
-        .iter()
-        .any(|entry| entry.logical_action == logical_action)
-    {
-        return Err("That action is not in the saved LMU button layout.".to_owned());
-    }
-    let profile = find_profile(&store, profile_id)?;
-    let mut mapping = profile.virtual_mapping.unwrap_or_default();
-    let modifier = VirtualButtonModifier {
-        device_id: chord.modifier.device_id,
-        device_name: chord.modifier.device_name,
-        physical_button: chord.modifier.button_id,
-    };
-    mapping.buttons.retain(|entry| {
-        !(entry.device_id == chord.trigger.device_id
-            && entry.physical_button == chord.trigger.button_id
-            && entry.modifiers == [modifier.clone()])
-    });
-    mapping.buttons.push(VirtualButtonMapping {
-        device_id: chord.trigger.device_id,
-        device_name: chord.trigger.device_name,
-        physical_button: chord.trigger.button_id,
-        modifiers: vec![modifier],
+        modifiers,
         logical_action,
     });
     store
@@ -1525,21 +1498,10 @@ async fn wait_for_controller_input() -> Result<input::PressedInput, String> {
     .map_err(|error| error.to_string())?
 }
 
-async fn wait_for_direct_input_button() -> Result<LearnedPhysicalButton, String> {
+async fn wait_for_direct_input_mapping() -> Result<LearnedPhysicalMapping, String> {
     let generation = LOOKUP_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     tauri::async_runtime::spawn_blocking(move || {
-        std::thread::spawn(move || detect_direct_input_button(generation))
-            .join()
-            .map_err(|_| "The controller input worker stopped unexpectedly.".to_owned())?
-    })
-    .await
-    .map_err(|error| error.to_string())?
-}
-
-async fn wait_for_direct_input_chord() -> Result<LearnedPhysicalChord, String> {
-    let generation = LOOKUP_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
-    tauri::async_runtime::spawn_blocking(move || {
-        std::thread::spawn(move || detect_direct_input_chord(generation))
+        std::thread::spawn(move || detect_direct_input_mapping(generation))
             .join()
             .map_err(|_| "The controller input worker stopped unexpectedly.".to_owned())?
     })
@@ -1568,48 +1530,22 @@ fn detect_controller_input(generation: u64) -> Result<input::PressedInput, Strin
 }
 
 #[cfg(target_os = "windows")]
-fn detect_direct_input_button(generation: u64) -> Result<LearnedPhysicalButton, String> {
+fn detect_direct_input_mapping(generation: u64) -> Result<LearnedPhysicalMapping, String> {
     let mut listener = DirectInputButtonMonitor::new().map_err(|error| error.to_string())?;
+    let mut first = None::<LearnedPhysicalButton>;
     let started = std::time::Instant::now();
     while started.elapsed() < std::time::Duration::from_secs(30) {
         if LOOKUP_GENERATION.load(Ordering::SeqCst) != generation {
             return Err("Button learning cancelled.".to_owned());
         }
-        if let Some(pressed) = listener
-            .poll()
-            .map_err(|error| error.to_string())?
-            .into_iter()
-            .find(|event| event.pressed && !event.device_name.to_lowercase().contains("vjoy"))
-        {
-            return Ok(LearnedPhysicalButton {
-                device_id: pressed.device_id,
-                device_name: pressed.device_name,
-                button_id: pressed.button_id,
-            });
-        }
-        std::thread::sleep(std::time::Duration::from_millis(16));
-    }
-    Err("No controller button was detected within 30 seconds.".to_owned())
-}
-
-#[cfg(target_os = "windows")]
-fn detect_direct_input_chord(generation: u64) -> Result<LearnedPhysicalChord, String> {
-    let mut listener = DirectInputButtonMonitor::new().map_err(|error| error.to_string())?;
-    let mut held = Vec::<LearnedPhysicalButton>::new();
-    let started = std::time::Instant::now();
-    while started.elapsed() < std::time::Duration::from_secs(30) {
-        if LOOKUP_GENERATION.load(Ordering::SeqCst) != generation {
-            return Err("Chord learning cancelled.".to_owned());
-        }
         for event in listener.poll().map_err(|error| error.to_string())? {
             if event.device_name.to_lowercase().contains("vjoy") {
                 continue;
             }
-            let position = held.iter().position(|button| {
-                button.device_id == event.device_id && button.button_id == event.button_id
-            });
             if event.pressed {
-                if position.is_some() {
+                if first.as_ref().is_some_and(|button| {
+                    button.device_id == event.device_id && button.button_id == event.button_id
+                }) {
                     continue;
                 }
                 let pressed = LearnedPhysicalButton {
@@ -1617,30 +1553,29 @@ fn detect_direct_input_chord(generation: u64) -> Result<LearnedPhysicalChord, St
                     device_name: event.device_name,
                     button_id: event.button_id,
                 };
-                if let Some(modifier) = held.first() {
-                    return Ok(LearnedPhysicalChord {
-                        modifier: modifier.clone(),
+                if let Some(modifier) = first.take() {
+                    return Ok(LearnedPhysicalMapping::Modified {
+                        modifier,
                         trigger: pressed,
                     });
                 }
-                held.push(pressed);
-            } else if let Some(position) = position {
-                held.remove(position);
+                first = Some(pressed);
+            } else if first.as_ref().is_some_and(|button| {
+                button.device_id == event.device_id && button.button_id == event.button_id
+            }) {
+                return Ok(LearnedPhysicalMapping::Button(
+                    first.take().expect("the released first button exists"),
+                ));
             }
         }
         std::thread::sleep(std::time::Duration::from_millis(16));
     }
-    Err("No two-button chord was detected within 30 seconds.".to_owned())
+    Err("No controller button was detected within 30 seconds.".to_owned())
 }
 
 #[cfg(not(target_os = "windows"))]
-fn detect_direct_input_button(_generation: u64) -> Result<LearnedPhysicalButton, String> {
+fn detect_direct_input_mapping(_generation: u64) -> Result<LearnedPhysicalMapping, String> {
     Err("DirectInput button learning is only available in the Windows build.".to_owned())
-}
-
-#[cfg(not(target_os = "windows"))]
-fn detect_direct_input_chord(_generation: u64) -> Result<LearnedPhysicalChord, String> {
-    Err("DirectInput chord learning is only available in the Windows build.".to_owned())
 }
 
 #[cfg(target_os = "windows")]
@@ -1799,7 +1734,6 @@ pub fn run() {
             saved_virtual_layout,
             import_profile_virtual_mapping,
             learn_virtual_profile_button,
-            learn_virtual_profile_chord,
             remove_virtual_profile_button,
             virtual_routing_status,
             start_virtual_routing,
