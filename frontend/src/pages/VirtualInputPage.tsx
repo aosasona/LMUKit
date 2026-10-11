@@ -11,6 +11,7 @@ import {
   Square,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { displayClassTag } from "../lib/classTags";
 import type {
   Profile,
   VirtualAction,
@@ -338,7 +339,7 @@ export function VirtualInputPage({
       );
       setRouting(next);
       onNotice(
-        `${next.profileName} selected from the ${classTag ?? "wheel fallback"}.`,
+        `${next.profileName} selected from the ${classTag ? displayClassTag(classTag) : "wheel fallback"}.`,
       );
     } catch (reason) {
       setError(String(reason));
@@ -596,7 +597,7 @@ export function VirtualInputPage({
               <option value={WHEEL_FALLBACK}>Generic / other</option>
               {availableClasses.map((classTag) => (
                 <option value={classTag} key={classTag}>
-                  {classTag}
+                  {displayClassTag(classTag)}
                 </option>
               ))}
             </select>

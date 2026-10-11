@@ -70,7 +70,7 @@ Existing presets can be dropped anywhere on the Profiles workspace. Imported JSO
 
 Use **Wheels** to create reusable hardware entries, edit their brand and name, and add or replace their image. Profiles linked to that wheel share the same metadata and image throughout the app.
 
-Each profile has one searchable tag picker. Select any combination of `GT3`, `GTE`, `LMP3`, `LMP2`, and `HY`, or type a custom tag. Leaving the class selection empty makes the profile generic.
+Each profile has one searchable tag picker. Select any combination of `LMGT3`, `GTE`, `LMP3`, `LMP2`, and `HY`, or type a custom tag. Leaving the class selection empty makes the profile generic. Existing data continues to store LMGT3 under the original `GT3` identifier so profiles and default references remain compatible.
 
 ### Profile editor
 

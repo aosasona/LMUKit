@@ -1,5 +1,6 @@
 import { Check, ChevronDown, Plus, Search } from "lucide-react";
 import { useRef, useState } from "react";
+import { displayClassTag } from "../lib/classTags";
 import { positionDropdown, useDismissableDetails } from "../lib/dropdown";
 
 type Tags = {
@@ -26,8 +27,10 @@ export function ProfileTagPicker({
   useDismissableDetails(details);
   const normalizedQuery = query.trim().toLowerCase();
   const selected = [...classTags, ...customTags];
-  const visibleClasses = classOptions.filter((tag) =>
-    tag.toLowerCase().includes(normalizedQuery),
+  const visibleClasses = classOptions.filter(
+    (tag) =>
+      tag.toLowerCase().includes(normalizedQuery) ||
+      displayClassTag(tag).toLowerCase().includes(normalizedQuery),
   );
   const visibleCustomTags = availableCustomTags.filter((tag) =>
     tag.toLowerCase().includes(normalizedQuery),
@@ -75,7 +78,7 @@ export function ProfileTagPicker({
             }
           >
             {selected.length
-              ? selected.join(", ")
+              ? [...classTags.map(displayClassTag), ...customTags].join(", ")
               : "Generic — no class restrictions"}
           </span>
           <ChevronDown size={16} />
@@ -106,7 +109,7 @@ export function ProfileTagPicker({
                     key={tag}
                     onClick={() => toggleClass(tag)}
                   >
-                    <span>{tag}</span>
+                    <span>{displayClassTag(tag)}</span>
                     {classTags.includes(tag) && <Check size={15} />}
                   </button>
                 ))}
@@ -146,7 +149,9 @@ export function ProfileTagPicker({
           </div>
         </div>
       </details>
-      <small>Choose any relevant car classes, or type to create your own tag.</small>
+      <small>
+        Choose any relevant car classes, or type to create your own tag.
+      </small>
     </div>
   );
 }

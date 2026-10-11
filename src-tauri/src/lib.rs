@@ -1,3 +1,4 @@
+use lmukit_core::car_context::display_existing_class;
 use lmukit_core::storage::{
     CompanionApp, InputMode, LaunchMode, Profile, Store, VirtualButtonMapping,
     VirtualButtonModifier, VirtualEncoderControl, VirtualEncoderGroup,
@@ -1066,14 +1067,20 @@ fn start_default_virtual_routing(
                     || "No wheel fallback is configured for this wheel.".to_owned(),
                     |class_tag| {
                         format!(
-                            "No {class_tag} default or wheel fallback is configured for this wheel."
+                            "No {} default or wheel fallback is configured for this wheel.",
+                            display_existing_class(class_tag)
                         )
                     },
                 )
             })?;
         let reason = match (exact, &class_tag) {
-            (true, Some(class_tag)) => format!("{class_tag} default"),
-            (false, Some(class_tag)) => format!("Wheel fallback · no {class_tag} default"),
+            (true, Some(class_tag)) => {
+                format!("{} default", display_existing_class(class_tag))
+            }
+            (false, Some(class_tag)) => format!(
+                "Wheel fallback · no {} default",
+                display_existing_class(class_tag)
+            ),
             (_, None) => "Wheel fallback".to_owned(),
         };
         (profile.id, reason)

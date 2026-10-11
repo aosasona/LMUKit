@@ -14,7 +14,7 @@ LMUKit currently has one production operating model: a saved profile owns a vali
 The current data model already supports the product concepts that should be reused:
 
 - Profiles retain their UUID, name, settings, bindings, reusable `wheel_id`, and independent `class_tags` and `custom_tags`.
-- A profile can carry several existing class tags. The built-in UI choices are `GT3`, `GTE`, `LMP3`, `LMP2`, and `HY`; an empty class list means generic.
+- A profile can carry several existing class tags. The built-in UI choices are `LMGT3`, `GTE`, `LMP3`, `LMP2`, and `HY`; an empty class list means generic. LMGT3 retains the original persisted `GT3` identifier for compatibility.
 - Several profiles can already reference the same reusable wheel, including several profiles for the same class.
 - Legacy wheel metadata is migrated additively by matching brand and wheel name. Settings and profile additions use Serde defaults so older JSON remains readable.
 - Physical input learning uses Windows `RawGameController`. Each capture listener starts on a fresh OS thread to avoid conflicting with the webview's WinRT apartment mode.
@@ -23,15 +23,15 @@ The repository now has an experimental continuous DirectInput press/release moni
 
 ### Existing class IDs and proposed context aliases
 
-The stored IDs remain the existing `GT3`, `GTE`, `LMP3`, `LMP2`, and `HY` values. A future context provider may compare a conservative alias to those IDs, but must not rewrite a profile's stored tags merely because an alias was observed.
+The stored IDs remain the existing `GT3`, `GTE`, `LMP3`, `LMP2`, and `HY` values, while the UI presents `GT3` as the technically correct current class name `LMGT3`. A context provider may compare a conservative alias to those IDs, but must not rewrite a profile's stored tags merely because an alias was observed.
 
-| Observed value   | Existing class ID | Rule                                                           |
-| ---------------- | ----------------- | -------------------------------------------------------------- |
-| `GT3`, `LMGT3`   | `GT3`             | `LMGT3` is the current championship name for the GT3 category. |
-| `GTE`            | `GTE`             | Kept distinct from GT3 for saved historic/content profiles.    |
-| `LMP3`, `LMP 3`  | `LMP3`            | Whitespace-only spelling alias.                                |
-| `LMP2`, `LMP 2`  | `LMP2`            | Whitespace-only spelling alias.                                |
-| `HY`, `Hypercar` | `HY`              | Friendly spelling alias for the existing Hypercar tag.         |
+| Observed value   | Existing class ID | Rule                                                        |
+| ---------------- | ----------------- | ----------------------------------------------------------- |
+| `GT3`, `LMGT3`   | `GT3`             | Presented as `LMGT3`; `GT3` remains the stable stored ID.   |
+| `GTE`            | `GTE`             | Kept distinct from GT3 for saved historic/content profiles. |
+| `LMP3`, `LMP 3`  | `LMP3`            | Whitespace-only spelling alias.                             |
+| `LMP2`, `LMP 2`  | `LMP2`            | Whitespace-only spelling alias.                             |
+| `HY`, `Hypercar` | `HY`              | Friendly spelling alias for the existing Hypercar tag.      |
 
 Matching should be case-insensitive and trim surrounding whitespace. Values such as `LMH`, `LMDh`, `GTP`, manufacturer names, and model identifiers remain **unknown** until actual LMU payloads establish their semantics; they must not be guessed into `HY`. Unknown or ambiguous values never cause an automatic profile change.
 
@@ -68,7 +68,7 @@ The recorded environment was vJoy 2.2.2.0, vJoy device 1 configured with eight b
 
 The end-to-end test used a `SIMAGIC Alpha EVO Wheelbase` exposing 116 DirectInput buttons. Windows Gaming Input did not enumerate the wheelbase, so the probe used the DirectInput source adapter. Physical buttons 1 and 2 produced matched vJoy press/release events, and the user confirmed that LMU responded in a replay through the rebound Driving Cameras (`B1`) and Spectator Cameras (`B2`) actions. Rapid repeated button 2 events were delivered, and the probe cleared all virtual outputs when its bounded run ended. This confirmed the smallest physical-button -> virtual-button -> live LMU action pipeline on this machine.
 
-The production routing path was subsequently validated on 2026-10-11 after enabling buffered DirectInput transitions, moving controller discovery off the latency-sensitive polling loop, enforcing a 32 ms minimum observable vJoy press, and reducing the normal polling interval to 1 ms. The user drove many laps in both LMP2 and GT3 with persisted per-profile mappings and reported no missed buttons or shifts. Profile and rim hot-swapping had already been confirmed without rebinding LMU. Steering and force feedback continued through the physical wheelbase during the driving sessions, while LMUKit routed buttons only. This is hardware acceptance for the recorded Simagic/vJoy/LMU environment, not a universal guarantee for every controller or Windows installation.
+The production routing path was subsequently validated on 2026-10-11 after enabling buffered DirectInput transitions, moving controller discovery off the latency-sensitive polling loop, enforcing a 32 ms minimum observable vJoy press, and reducing the normal polling interval to 1 ms. The user drove many laps in both LMP2 and LMGT3 with persisted per-profile mappings and reported no missed buttons or shifts. Profile and rim hot-swapping had already been confirmed without rebinding LMU. Steering and force feedback continued through the physical wheelbase during the driving sessions, while LMUKit routed buttons only. This is hardware acceptance for the recorded Simagic/vJoy/LMU environment, not a universal guarantee for every controller or Windows installation.
 
 Virtual Input Mode is intentionally button-only. Steering, throttle, brake, clutch, and FFB always remain direct between the physical hardware and LMU. LMUKit must not read or emit those axes, transform or suppress them, or participate in force-feedback delivery. Device discovery may report axis capability metadata, and a platform API may require ignored axis buffers while reading buttons, but axes never enter the mapping pipeline. Editing LMU's saved FFB configuration values remains an independent legacy profile/settings feature.
 
@@ -105,9 +105,9 @@ Windows recognising vJoy does **not** prove that LMU will expose or accept it. B
 1. Install the signed vJoy release manually and configure device 1 with at least two buttons.
 2. Run `lmukit-virtual-probe.exe directinput-list`, locate vJoy's index, then run `lmukit-virtual-probe.exe verify 1 <index>`. Require observed press/release pairs and clean disconnect. `pulse 1 1500` plus Windows controller properties (`joy.cpl`) remains an optional visual check.
 3. **Passed on 2026-10-11:** LMU v1.4200 detected `vJoy Device` and registered buttons 1 and 2 as `B1` and `B2`.
-4. **Driving route passed on 2026-10-11:** production DirectInput routing was used for many laps in both LMP2 and GT3 without a missed button or shift; steering and FFB remained direct and operational.
+4. **Driving route passed on 2026-10-11:** production DirectInput routing was used for many laps in both LMP2 and LMGT3 without a missed button or shift; steering and FFB remained direct and operational.
 5. **Restart stability passed on the recorded setup:** LMUKit and LMU were restarted across setup and production iterations without recreating vJoy after its final 128-button configuration; the saved bindings remained usable.
-6. **Live profile switching passed on 2026-10-11:** persisted LMP2 and GT3 mappings and a hot-swapped rim worked through the same virtual device without rebinding or restarting LMU.
+6. **Live profile switching passed on 2026-10-11:** persisted LMP2 and LMGT3 mappings and a hot-swapped rim worked through the same virtual device without rebinding or restarting LMU.
 7. Confirm that direct physical button bindings can coexist and document how users avoid accidental duplicate bindings. LMUKit does not hide or suppress the physical device.
 
 Record the vJoy version, Windows version, LMU version, virtual device ID/button count, and the result of every step. Compatibility may be reported only with the exact tested scope above. Other hardware, driver versions, disconnect/reconnect recovery, and simultaneous identical VID/PID devices still require their own validation.

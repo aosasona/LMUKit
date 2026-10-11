@@ -12,6 +12,14 @@ pub const CLASS_LMP3: &str = "LMP3";
 pub const CLASS_LMP2: &str = "LMP2";
 pub const CLASS_HY: &str = "HY";
 
+pub fn display_existing_class(class_id: &str) -> &str {
+    if class_id.eq_ignore_ascii_case(CLASS_GT3) {
+        "LMGT3"
+    } else {
+        class_id
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LmuCarContextSource {
@@ -102,5 +110,12 @@ mod tests {
         for raw in ["", "LMH", "LMDh", "GTP", "Porsche 963", "LMP"] {
             assert_eq!(normalize_existing_class(raw), None, "{raw}");
         }
+    }
+
+    #[test]
+    fn presents_the_legacy_gt3_identifier_as_lmgt3() {
+        assert_eq!(display_existing_class(CLASS_GT3), "LMGT3");
+        assert_eq!(display_existing_class("gt3"), "LMGT3");
+        assert_eq!(display_existing_class(CLASS_HY), CLASS_HY);
     }
 }

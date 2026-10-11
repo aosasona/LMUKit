@@ -2,6 +2,7 @@ import { AlertTriangle, Code2, Save, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { ForceFeedbackEditor } from "../components/ForceFeedbackEditor";
 import { WheelImage } from "../components/WheelImage";
+import { displayClassTag } from "../lib/classTags";
 import type {
   Binding,
   BindingAssignmentCandidate,
@@ -73,7 +74,7 @@ export function ProfileEditorPage({
               )}
               {profile.classTags.map((tag) => (
                 <span className="class-tag" key={tag}>
-                  {tag}
+                  {displayClassTag(tag)}
                 </span>
               ))}
               {!profile.classTags.length && <span>Generic</span>}

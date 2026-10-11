@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { displayClassTag } from "../lib/classTags";
 import type {
   Profile,
   VirtualAction,
@@ -370,8 +371,8 @@ export function ProfileVirtualMappings({
       setDefaults(next);
       onNotice(
         remove
-          ? `${classTag ?? "Wheel fallback"} default removed.`
-          : `${profile.name} is now the ${classTag ?? "wheel fallback"} default.`,
+          ? `${classTag ? displayClassTag(classTag) : "Wheel fallback"} default removed.`
+          : `${profile.name} is now the ${classTag ? displayClassTag(classTag) : "wheel fallback"} default.`,
       );
     } catch (reason) {
       setError(String(reason));
@@ -484,7 +485,9 @@ export function ProfileVirtualMappings({
               return (
                 <div className="profile-default-scope" key={scope}>
                   <span>
-                    <strong>{classTag ?? "Other classes"}</strong>
+                    <strong>
+                      {classTag ? displayClassTag(classTag) : "Other classes"}
+                    </strong>
                     <small>
                       {assigned
                         ? assigned.profileName

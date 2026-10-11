@@ -58,12 +58,12 @@ Profiles continue to use reusable wheel references and the existing class tags. 
 
 - GT Neo / HY / Race;
 - GT Neo / HY / Alternate;
-- GT Neo / GT3 / Race;
-- FX Pro / GT3 / Race.
+- GT Neo / LMGT3 / Race;
+- FX Pro / LMGT3 / Race.
 
 Each profile owns its physical button mappings, modifier combinations, and encoder modes. Wheel/class defaults are stored as separate references: at most one default profile for a given wheel and class, plus an optional wheel-level fallback. Changing a profile's wheel or class tags and deleting a profile clean up any references that are no longer valid. Layers remain a planned extension.
 
-For example, a GT Neo HY profile may map encoder 1 to Front ARB while a GT Neo GT3 profile maps the same encoder to TC2. Both profiles still target the globally stable virtual buttons assigned to those logical actions.
+For example, a GT Neo HY profile may map encoder 1 to Front ARB while a GT Neo LMGT3 profile maps the same encoder to TC2. Both profiles still target the globally stable virtual buttons assigned to those logical actions.
 
 ## Hold modifiers
 

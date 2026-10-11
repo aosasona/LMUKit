@@ -7,20 +7,26 @@ export function SearchSelect({
   value,
   options,
   allLabel = "All",
+  formatOption = (option) => option,
   onChange,
 }: {
   label: string;
   value: string | null;
   options: string[];
   allLabel?: string;
+  formatOption?: (option: string) => string;
   onChange: (value: string | null) => void;
 }) {
   const [query, setQuery] = useState("");
   const details = useRef<HTMLDetailsElement>(null);
   useDismissableDetails(details);
-  const filtered = options.filter((option) =>
-    option.toLowerCase().includes(query.trim().toLowerCase()),
-  );
+  const filtered = options.filter((option) => {
+    const needle = query.trim().toLowerCase();
+    return (
+      option.toLowerCase().includes(needle) ||
+      formatOption(option).toLowerCase().includes(needle)
+    );
+  });
   const choose = (next: string | null) => {
     onChange(next);
     setQuery("");
@@ -34,7 +40,7 @@ export function SearchSelect({
         onToggle={(event) => positionDropdown(event.currentTarget, 260)}
       >
         <summary>
-          <span>{value ?? allLabel}</span>
+          <span>{value ? formatOption(value) : allLabel}</span>
           <ChevronDown />
         </summary>
         <div>
@@ -61,7 +67,7 @@ export function SearchSelect({
               key={option}
               onClick={() => choose(option)}
             >
-              {option}
+              {formatOption(option)}
               {value === option && <Check />}
             </button>
           ))}

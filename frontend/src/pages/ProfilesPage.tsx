@@ -14,6 +14,7 @@ import { ProfileTagPicker } from "../components/ProfileTagPicker";
 import { ProfileVirtualMappings } from "../components/ProfileVirtualMappings";
 import { WheelImage } from "../components/WheelImage";
 import { SearchSelect } from "../components/SearchSelect";
+import { displayClassTag } from "../lib/classTags";
 import type { Device, Profile, VirtualRoutingStatus, Wheel } from "../models";
 
 const DEFAULT_CLASSES = ["GT3", "GTE", "LMP3", "LMP2", "HY"] as const;
@@ -196,6 +197,7 @@ export function ProfilesPage(props: Props) {
             label="Class"
             value={classFilter}
             options={classTags}
+            formatOption={displayClassTag}
             onChange={setClassFilter}
           />
         </div>
@@ -241,7 +243,7 @@ export function ProfilesPage(props: Props) {
                       className={`class-tag class-${classSlug(tag)}`}
                       key={`class-${tag}`}
                     >
-                      {tag}
+                      {displayClassTag(tag)}
                     </span>
                   ))}
                   {!profile.classTags.length && (

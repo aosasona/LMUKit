@@ -1,5 +1,6 @@
 import { Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { displayClassTag } from "../lib/classTags";
 import type { Profile } from "../models";
 import type { InputMode } from "./InputModeSwitch";
 import { WheelImage } from "./WheelImage";
@@ -27,7 +28,7 @@ export function QuickProfileSwitcher({
   const matches = useMemo(() => {
     const filter = query.trim().toLowerCase();
     return profiles.filter((profile) =>
-      `${profile.name} ${profile.wheelBrand ?? ""} ${profile.wheelName ?? ""} ${profile.classTags.join(" ")} ${profile.customTags.join(" ")}`
+      `${profile.name} ${profile.wheelBrand ?? ""} ${profile.wheelName ?? ""} ${profile.classTags.flatMap((tag) => [tag, displayClassTag(tag)]).join(" ")} ${profile.customTags.join(" ")}`
         .toLowerCase()
         .includes(filter),
     );
@@ -126,7 +127,7 @@ export function QuickProfileSwitcher({
                       : "Prepared · "
                     : ""}
                   {profile.classTags.length
-                    ? profile.classTags.join(" · ")
+                    ? profile.classTags.map(displayClassTag).join(" · ")
                     : "Generic profile"}
                 </small>
               </span>
