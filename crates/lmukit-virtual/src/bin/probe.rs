@@ -21,7 +21,11 @@ mod windows_probe {
     };
 
     use anyhow::{Context, Result, bail, ensure};
-    use lmukit_virtual::{TwoButtonMirror, VirtualInputBackend, vjoy::VJoyBackend};
+    use lmukit_virtual::{
+        TwoButtonMirror, VirtualInputBackend,
+        direct_input::{DirectInputButtonReader, list_devices},
+        vjoy::VJoyBackend,
+    };
     use windows::{
         Gaming::Input::{GameControllerSwitchPosition, RawGameController},
         Win32::{
@@ -56,6 +60,7 @@ mod windows_probe {
 
         match args.first().map(String::as_str) {
             Some("list") => list_controllers(),
+            Some("directinput-list") => list_direct_input_controllers(),
             Some("pulse") => pulse(
                 parse_u32(args.get(1), 1, "vJoy device ID")?,
                 parse_u64(args.get(2), 1_500, "button hold milliseconds")?,
@@ -64,6 +69,10 @@ mod windows_probe {
                 parse_u32(args.get(1), 1, "vJoy device ID")?,
                 parse_u32(args.get(2), 0, "controller index")?,
                 parse_u64(args.get(3), 30, "duration seconds")?,
+            ),
+            Some("verify") => verify(
+                parse_u32(args.get(1), 1, "vJoy device ID")?,
+                parse_u32(args.get(2), 0, "DirectInput controller index")? as usize,
             ),
             _ => {
                 print_help();
@@ -87,8 +96,10 @@ mod windows_probe {
     fn print_help() {
         println!("LMUKit experimental virtual-input probe");
         println!("  lmukit-virtual-probe list");
+        println!("  lmukit-virtual-probe directinput-list");
         println!("  lmukit-virtual-probe pulse [vjoy-device-id] [hold-ms]");
         println!("  lmukit-virtual-probe mirror [vjoy-device-id] [controller-index] [seconds]");
+        println!("  lmukit-virtual-probe verify [vjoy-device-id] [directinput-index]");
         println!("This tool does not install a driver or modify LMU configuration.");
     }
 
@@ -113,6 +124,84 @@ mod windows_probe {
         }
         println!("Device instance identifiers are intentionally omitted from output.");
         Ok(())
+    }
+
+    fn list_direct_input_controllers() -> Result<()> {
+        let devices = list_devices()?;
+        if devices.is_empty() {
+            println!("No attached DirectInput controllers are visible.");
+            return Ok(());
+        }
+        for device in devices {
+            println!(
+                "[{}] {} — product {}, {} buttons",
+                device.index, device.name, device.product_name, device.button_count
+            );
+        }
+        Ok(())
+    }
+
+    fn verify(device_id: u32, direct_input_index: usize) -> Result<()> {
+        let reader = DirectInputButtonReader::open(direct_input_index)?;
+        println!(
+            "Observing DirectInput [{}] {} (product {}, {} buttons)",
+            reader.summary.index,
+            reader.summary.name,
+            reader.summary.product_name,
+            reader.summary.button_count
+        );
+        let mut backend = VJoyBackend::new(device_id)?;
+        backend.connect()?;
+        ensure!(
+            backend.capabilities()?.button_count >= 2,
+            "configure at least two vJoy buttons"
+        );
+        backend.release_all()?;
+        wait_for_buttons(&reader, [false, false], "initial release")?;
+
+        for button in 1..=2_usize {
+            let mut expected = [false, false];
+            expected[button - 1] = true;
+            let started = Instant::now();
+            backend.set_button(button as u32, true)?;
+            wait_for_buttons(&reader, expected, &format!("button {button} press"))?;
+            println!(
+                "Button {button} press observed after {:?}",
+                started.elapsed()
+            );
+
+            let started = Instant::now();
+            backend.set_button(button as u32, false)?;
+            wait_for_buttons(&reader, [false, false], &format!("button {button} release"))?;
+            println!(
+                "Button {button} release observed after {:?}",
+                started.elapsed()
+            );
+        }
+
+        backend.disconnect()?;
+        wait_for_buttons(&reader, [false, false], "disconnect cleanup")?;
+        println!("PASS: DirectInput observed both press/release pairs and clean disconnect.");
+        Ok(())
+    }
+
+    fn wait_for_buttons(
+        reader: &DirectInputButtonReader,
+        expected: [bool; 2],
+        label: &str,
+    ) -> Result<()> {
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_secs(2) {
+            if reader.first_two_buttons()? == expected {
+                return Ok(());
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+        bail!(
+            "DirectInput did not observe {label}; expected {:?}, last state {:?}",
+            expected,
+            reader.first_two_buttons()?
+        )
     }
 
     fn pulse(device_id: u32, hold_milliseconds: u64) -> Result<()> {

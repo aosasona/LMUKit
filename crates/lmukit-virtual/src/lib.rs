@@ -6,6 +6,8 @@
 use anyhow::Result;
 
 #[cfg(target_os = "windows")]
+pub mod direct_input;
+#[cfg(target_os = "windows")]
 pub mod vjoy;
 
 /// Stable information about the virtual device acquired by a backend.

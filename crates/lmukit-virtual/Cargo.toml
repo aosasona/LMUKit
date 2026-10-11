@@ -12,9 +12,12 @@ libloading = "0.8"
 windows = { version = "0.58", features = [
     "Foundation_Collections",
     "Gaming_Input",
+    "Win32_Devices_HumanInterfaceDevice",
     "Win32_Foundation",
     "Win32_System_Console",
+    "Win32_System_LibraryLoader",
     "Win32_System_WinRT",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [[bin]]
