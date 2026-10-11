@@ -74,11 +74,12 @@ The executable is written to `target/x86_64-pc-windows-msvc/debug/lmukit-virtual
 lmukit-virtual-probe.exe list
 lmukit-virtual-probe.exe directinput-list
 lmukit-virtual-probe.exe pulse 1 1500
+lmukit-virtual-probe.exe button 1 1 1500
 lmukit-virtual-probe.exe verify 1 1
 lmukit-virtual-probe.exe mirror 1 0 30
 ```
 
-`list` shows privacy-safe Windows Gaming Input controller metadata and a temporary selection index. `directinput-list` independently enumerates the DirectInput consumer view. `pulse` presses and releases virtual buttons 1 and 2, holding each for 1.5 seconds by default so the state is visible in Windows' controller panel. `verify` drives those buttons through vJoy and reads every press, release, and final cleanup state back through DirectInput, failing if a transition is not observed within two seconds. `mirror` routes physical buttons 1 and 2 from the selected controller to the same stable virtual outputs for a bounded duration; normal completion and Ctrl+C release every output before disconnecting. Device-instance identifiers are used only in memory to survive enumeration-order changes and are not printed. The probe virtualises no axes and never writes LMU configuration.
+`list` shows privacy-safe Windows Gaming Input controller metadata and a temporary selection index. `directinput-list` independently enumerates the DirectInput consumer view. `pulse` presses and releases virtual buttons 1 and 2, holding each for 1.5 seconds by default so the state is visible in Windows' controller panel. `button` emits one chosen button for controlled in-game binding tests. `verify` drives buttons 1 and 2 through vJoy and reads every press, release, and final cleanup state back through DirectInput, failing if a transition is not observed within two seconds. `mirror` routes physical buttons 1 and 2 from the selected controller to the same stable virtual outputs for a bounded duration; normal completion and Ctrl+C release every output before disconnecting. Device-instance identifiers are used only in memory to survive enumeration-order changes and are not printed. The probe virtualises no axes and never writes LMU configuration.
 
 ## LMU compatibility gate
 

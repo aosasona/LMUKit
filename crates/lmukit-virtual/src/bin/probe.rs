@@ -65,6 +65,11 @@ mod windows_probe {
                 parse_u32(args.get(1), 1, "vJoy device ID")?,
                 parse_u64(args.get(2), 1_500, "button hold milliseconds")?,
             ),
+            Some("button") => press_button(
+                parse_u32(args.get(1), 1, "vJoy device ID")?,
+                parse_u32(args.get(2), 1, "button ID")?,
+                parse_u64(args.get(3), 1_500, "button hold milliseconds")?,
+            ),
             Some("mirror") => mirror(
                 parse_u32(args.get(1), 1, "vJoy device ID")?,
                 parse_u32(args.get(2), 0, "controller index")?,
@@ -98,6 +103,7 @@ mod windows_probe {
         println!("  lmukit-virtual-probe list");
         println!("  lmukit-virtual-probe directinput-list");
         println!("  lmukit-virtual-probe pulse [vjoy-device-id] [hold-ms]");
+        println!("  lmukit-virtual-probe button [vjoy-device-id] [button-id] [hold-ms]");
         println!("  lmukit-virtual-probe mirror [vjoy-device-id] [controller-index] [seconds]");
         println!("  lmukit-virtual-probe verify [vjoy-device-id] [directinput-index]");
         println!("This tool does not install a driver or modify LMU configuration.");
@@ -233,6 +239,28 @@ mod windows_probe {
         }
         backend.disconnect()?;
         println!("All virtual buttons released; device disconnected.");
+        Ok(())
+    }
+
+    fn press_button(device_id: u32, button_id: u32, hold_milliseconds: u64) -> Result<()> {
+        ensure!(
+            (100..=5_000).contains(&hold_milliseconds),
+            "button hold duration must be 100..=5000 milliseconds"
+        );
+        let mut backend = VJoyBackend::new(device_id)?;
+        backend.connect()?;
+        let capabilities = backend.capabilities()?;
+        ensure!(
+            (1..=capabilities.button_count).contains(&button_id),
+            "button {button_id} is outside the configured range 1..={}",
+            capabilities.button_count
+        );
+        println!("Pressing virtual button {button_id}");
+        backend.set_button(button_id, true)?;
+        thread::sleep(Duration::from_millis(hold_milliseconds));
+        backend.set_button(button_id, false)?;
+        backend.disconnect()?;
+        println!("Released virtual button {button_id}; all outputs cleared.");
         Ok(())
     }
 
