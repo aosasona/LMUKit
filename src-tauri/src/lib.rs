@@ -1187,7 +1187,7 @@ fn update_wheel(
 
 #[tauri::command]
 fn delete_wheel(wheel_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
-    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
     store
         .delete_wheel(wheel_id)
         .map_err(|error| error.to_string())
@@ -1228,7 +1228,7 @@ fn assign_profile_wheel(
     wheel_id: Option<Uuid>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
     store
         .assign_profile_wheel(profile_id, wheel_id)
         .map_err(|error| error.to_string())
@@ -1396,7 +1396,7 @@ fn set_profile_categories(
     custom_tags: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
     store
         .set_profile_categories(profile_id, class_tags, custom_tags)
         .map_err(|error| error.to_string())
