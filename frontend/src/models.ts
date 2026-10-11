@@ -107,7 +107,7 @@ export type VirtualEncoderGroup = {
   name: string;
   clockwise: VirtualEncoderControl;
   counterclockwise: VirtualEncoderControl;
-  cycle: VirtualEncoderControl;
+  cycle: VirtualEncoderControl | null;
   modes: VirtualEncoderMode[];
 };
 export type VirtualRoutingStatus = {

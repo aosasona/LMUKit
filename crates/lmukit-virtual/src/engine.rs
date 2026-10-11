@@ -140,7 +140,7 @@ pub struct EncoderGroup {
     name: String,
     clockwise: PhysicalButton,
     counterclockwise: PhysicalButton,
-    cycle: PhysicalButton,
+    cycle: Option<PhysicalButton>,
     modes: Vec<EncoderMode>,
 }
 
@@ -149,15 +149,25 @@ impl EncoderGroup {
         name: impl Into<String>,
         clockwise: PhysicalButton,
         counterclockwise: PhysicalButton,
-        cycle: PhysicalButton,
+        cycle: Option<PhysicalButton>,
         modes: Vec<EncoderMode>,
     ) -> Result<Self> {
         let name = name.into();
         ensure!(!name.trim().is_empty(), "encoder name must not be empty");
         ensure!(!modes.is_empty(), "encoder must have at least one mode");
         ensure!(
-            clockwise != counterclockwise && clockwise != cycle && counterclockwise != cycle,
-            "encoder directions and mode control must use different physical buttons"
+            clockwise != counterclockwise,
+            "encoder directions must differ"
+        );
+        if let Some(cycle) = &cycle {
+            ensure!(
+                &clockwise != cycle && &counterclockwise != cycle,
+                "encoder directions and mode control must use different physical buttons"
+            );
+        }
+        ensure!(
+            modes.len() == 1 || cycle.is_some(),
+            "an encoder with multiple modes requires a mode control"
         );
         let mut mode_names = BTreeSet::new();
         for mode in &modes {
@@ -250,7 +260,10 @@ impl ProfileMapping {
                 !self.encoder_groups.contains_key(&key),
                 "encoder names must be unique"
             );
-            for source in [&group.clockwise, &group.counterclockwise, &group.cycle] {
+            for source in [&group.clockwise, &group.counterclockwise]
+                .into_iter()
+                .chain(group.cycle.iter())
+            {
                 ensure!(
                     !self.actions.keys().any(|input| {
                         &input.trigger == source || input.modifiers.contains(source)
@@ -274,7 +287,7 @@ impl ProfileMapping {
             || self.encoder_groups.values().any(|group| {
                 &group.clockwise == source
                     || &group.counterclockwise == source
-                    || &group.cycle == source
+                    || group.cycle.as_ref() == Some(source)
             })
     }
 
@@ -404,7 +417,7 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
         };
         if changed && pressed {
             for (key, group) in &self.profile.encoder_groups {
-                if &group.cycle == source {
+                if group.cycle.as_ref() == Some(source) {
                     let current = self.encoder_modes.entry(key.clone()).or_default();
                     *current = (*current + 1) % group.modes.len();
                 }
@@ -728,7 +741,7 @@ mod tests {
                 "Encoder 1",
                 clockwise.clone(),
                 counterclockwise,
-                cycle.clone(),
+                Some(cycle.clone()),
                 vec![
                     EncoderMode::new(
                         "Front ARB",
@@ -761,6 +774,64 @@ mod tests {
     }
 
     #[test]
+    fn routes_a_single_encoder_mode_without_a_mode_control() {
+        let encoder_layout = VirtualLayout::new([
+            (action("brake_bias_increase"), 1),
+            (action("brake_bias_decrease"), 2),
+        ])
+        .unwrap();
+        let clockwise = button("gt-neo", 10);
+        let counterclockwise = button("gt-neo", 11);
+        let mapping = ProfileMapping::default()
+            .with_encoder_groups([EncoderGroup::new(
+                "Brake bias",
+                clockwise.clone(),
+                counterclockwise.clone(),
+                None,
+                vec![
+                    EncoderMode::new(
+                        "Default",
+                        action("brake_bias_increase"),
+                        action("brake_bias_decrease"),
+                    )
+                    .unwrap(),
+                ],
+            )
+            .unwrap()])
+            .unwrap();
+        let mut engine =
+            MappingEngine::connect(MockVirtualBackend::new(8), encoder_layout, mapping).unwrap();
+
+        engine.handle_button(&clockwise, true).unwrap();
+        engine.handle_button(&clockwise, false).unwrap();
+        engine.handle_button(&counterclockwise, true).unwrap();
+        engine.handle_button(&counterclockwise, false).unwrap();
+
+        assert_eq!(
+            engine.backend().events(),
+            [(1, true), (1, false), (2, true), (2, false)]
+        );
+    }
+
+    #[test]
+    fn requires_a_mode_control_for_multiple_encoder_modes() {
+        assert!(
+            EncoderGroup::new(
+                "Encoder 1",
+                button("gt-neo", 10),
+                button("gt-neo", 11),
+                None,
+                vec![
+                    EncoderMode::new("Front ARB", action("pit_limiter"), action("headlights"))
+                        .unwrap(),
+                    EncoderMode::new("TC2", action("headlights"), action("pit_limiter")).unwrap(),
+                ],
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn rejects_shared_or_regular_encoder_controls() {
         let clockwise = button("gt-neo", 10);
         let mode =
@@ -769,7 +840,7 @@ mod tests {
             "Encoder 1",
             clockwise.clone(),
             button("gt-neo", 11),
-            button("gt-neo", 12),
+            Some(button("gt-neo", 12)),
             vec![mode],
         )
         .unwrap();

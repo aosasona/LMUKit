@@ -51,7 +51,8 @@ pub struct VirtualEncoderGroup {
     pub name: String,
     pub clockwise: VirtualEncoderControl,
     pub counterclockwise: VirtualEncoderControl,
-    pub cycle: VirtualEncoderControl,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cycle: Option<VirtualEncoderControl>,
     pub modes: Vec<VirtualEncoderMode>,
 }
 
@@ -1771,11 +1772,14 @@ fn validate_virtual_mapping(
             !encoder.modes.is_empty() && encoder.modes.len() <= 8,
             "An encoder must contain between one and eight modes."
         );
-        for control in [
-            &encoder.clockwise,
-            &encoder.counterclockwise,
-            &encoder.cycle,
-        ] {
+        ensure!(
+            encoder.modes.len() == 1 || encoder.cycle.is_some(),
+            "An encoder with multiple modes requires a mode control."
+        );
+        for control in [&encoder.clockwise, &encoder.counterclockwise]
+            .into_iter()
+            .chain(encoder.cycle.iter())
+        {
             validate_virtual_label(&control.device_id, "Encoder device ID")?;
             ensure!(
                 control.physical_button > 0,
@@ -2478,11 +2482,7 @@ mod tests {
                             device_name: "Simagic Alpha EVO".into(),
                             physical_button: 11,
                         },
-                        cycle: VirtualEncoderControl {
-                            device_id: "simagic-alpha-evo".into(),
-                            device_name: "Simagic Alpha EVO".into(),
-                            physical_button: 12,
-                        },
+                        cycle: None,
                         modes: vec![VirtualEncoderMode {
                             name: "Race".into(),
                             clockwise_action: "pit_limiter".into(),

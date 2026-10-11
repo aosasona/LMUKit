@@ -143,7 +143,7 @@ struct VirtualEncoderGroupSummary {
     name: String,
     clockwise: VirtualEncoderControlSummary,
     counterclockwise: VirtualEncoderControlSummary,
-    cycle: VirtualEncoderControlSummary,
+    cycle: Option<VirtualEncoderControlSummary>,
     modes: Vec<VirtualEncoderModeSummary>,
 }
 
@@ -751,7 +751,7 @@ fn encoder_group_summaries(groups: Vec<VirtualEncoderGroup>) -> Vec<VirtualEncod
             name: group.name,
             clockwise: encoder_control_summary(group.clockwise),
             counterclockwise: encoder_control_summary(group.counterclockwise),
-            cycle: encoder_control_summary(group.cycle),
+            cycle: group.cycle.map(encoder_control_summary),
             modes: group
                 .modes
                 .into_iter()
@@ -778,7 +778,7 @@ fn stored_encoder_group(group: VirtualEncoderGroupSummary) -> VirtualEncoderGrou
         name: group.name,
         clockwise: stored_encoder_control(group.clockwise),
         counterclockwise: stored_encoder_control(group.counterclockwise),
-        cycle: stored_encoder_control(group.cycle),
+        cycle: group.cycle.map(stored_encoder_control),
         modes: group
             .modes
             .into_iter()
@@ -939,7 +939,7 @@ fn start_virtual_routing_inner(
                         encoder.name.clone(),
                         control(&encoder.clockwise)?,
                         control(&encoder.counterclockwise)?,
-                        control(&encoder.cycle)?,
+                        encoder.cycle.as_ref().map(control).transpose()?,
                         encoder
                             .modes
                             .iter()
