@@ -49,7 +49,7 @@ Keep filesystem and parsing behavior in `lmukit-core`; keep platform input detai
 - VR launch mode must append LMU's native `+XR` argument so it uses OpenXR.
 - LMU does not hot-reload `direct input.json`. Profile activation while LMU is closed prepares the next launch; do not present file replacement as an in-session switch.
 - Check whether LMU is running before every live `direct input.json` or `Settings.JSON` write. A failed check must be visible and cancel the operation. Global Legacy shortcuts have no confirmation surface and therefore must refuse while LMU runs.
-- Diagnostic logs use local-calendar `lmukit-YYYY-MM-DD.log` names, readable ISO-style UTC timestamps for entries, and retain 5 days by default, configurable from 1 to 30. They may record lifecycle failures and local details needed for troubleshooting, but must not record the input-event stream. Cleanup must not remove exported reports. Exported diagnostic reports must omit configured paths, DirectInput device-instance identifiers, and raw error text that may contain either.
+- Diagnostic logs use local-calendar `lmukit-YYYY-MM-DD.log` names with numbered same-day segments, readable ISO-style UTC timestamps for entries, a 2 MB per-file cap, at most 3 files per day, and retain 5 days by default, configurable from 1 to 30. Individual messages are capped at 8,192 characters. They may record lifecycle failures and local details needed for troubleshooting, but must not record the input-event stream. Cleanup must not remove exported reports. Exported diagnostic reports must omit configured paths, DirectInput device-instance identifiers, and raw error text that may contain either.
 
 ## LMU binding format
 

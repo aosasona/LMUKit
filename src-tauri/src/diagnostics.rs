@@ -14,6 +14,9 @@ use std::{
 const RETAINED_ERRORS: usize = 20;
 const MIN_RETENTION_DAYS: usize = 1;
 const MAX_RETENTION_DAYS: usize = 30;
+const MAX_LOG_FILE_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_LOG_FILES_PER_DAY: usize = 3;
+const MAX_LOG_MESSAGE_CHARS: usize = 8 * 1024;
 
 static LOGGER: OnceLock<Logger> = OnceLock::new();
 
@@ -139,8 +142,21 @@ fn write(level: &str, event: &str, message: &str) {
         match open_for_date(&logger.directory, &date) {
             Ok((file, size)) => {
                 writer.file = Some(file);
-                writer.date = date;
+                writer.date = date.clone();
                 writer.size = size;
+            }
+            Err(_) => return,
+        }
+    }
+    if writer.size.saturating_add(line.len() as u64) > MAX_LOG_FILE_BYTES {
+        writer.file.take();
+        if rotate_log_files(&logger.directory, &date).is_err() {
+            return;
+        }
+        match create_for_date(&logger.directory, &date) {
+            Ok(file) => {
+                writer.file = Some(file);
+                writer.size = 0;
             }
             Err(_) => return,
         }
@@ -155,7 +171,15 @@ fn write(level: &str, event: &str, message: &str) {
 }
 
 fn clean(value: &str) -> String {
-    value.replace(['\r', '\n'], " ")
+    let mut clean = value
+        .replace(['\r', '\n'], " ")
+        .chars()
+        .take(MAX_LOG_MESSAGE_CHARS)
+        .collect::<String>();
+    if value.chars().count() > MAX_LOG_MESSAGE_CHARS {
+        clean.push('…');
+    }
+    clean
 }
 
 fn utc_timestamp(time: SystemTime) -> String {
@@ -219,8 +243,42 @@ fn open_for_date(directory: &Path, date: &str) -> std::io::Result<(File, u64)> {
     Ok((file, size))
 }
 
+fn create_for_date(directory: &Path, date: &str) -> std::io::Result<File> {
+    OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(directory.join(format!("lmukit-{date}.log")))
+}
+
+fn rotate_log_files(directory: &Path, date: &str) -> std::io::Result<()> {
+    for segment in (1..MAX_LOG_FILES_PER_DAY).rev() {
+        let source = if segment == 1 {
+            directory.join(format!("lmukit-{date}.log"))
+        } else {
+            directory.join(format!("lmukit-{date}.{}.log", segment - 1))
+        };
+        let destination = directory.join(format!("lmukit-{date}.{segment}.log"));
+        if destination.exists() {
+            fs::remove_file(&destination)?;
+        }
+        if source.exists() {
+            fs::rename(source, destination)?;
+        }
+    }
+    Ok(())
+}
+
 fn log_date_from_filename(name: &str) -> Option<&str> {
-    let date = name.strip_prefix("lmukit-")?.strip_suffix(".log")?;
+    let stem = name.strip_prefix("lmukit-")?.strip_suffix(".log")?;
+    let (date, segment) = stem
+        .split_once('.')
+        .map_or((stem, None), |(date, segment)| (date, Some(segment)));
+    if segment.is_some_and(|segment| {
+        segment.is_empty() || !segment.bytes().all(|byte| byte.is_ascii_digit())
+    }) {
+        return None;
+    }
     (date.len() == 10
         && date.as_bytes()[4] == b'-'
         && date.as_bytes()[7] == b'-'
@@ -278,8 +336,8 @@ fn date_from_days(days: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        clean, cleanup_old_logs, date_from_days, days_from_civil, log_date_from_filename,
-        log_file_count, utc_timestamp,
+        MAX_LOG_MESSAGE_CHARS, clean, cleanup_old_logs, date_from_days, days_from_civil,
+        log_date_from_filename, log_file_count, rotate_log_files, utc_timestamp,
     };
     use std::fs;
     use std::time::{Duration, UNIX_EPOCH};
@@ -287,6 +345,10 @@ mod tests {
     #[test]
     fn sanitises_log_lines() {
         assert_eq!(clean("first\r\nsecond"), "first  second");
+        assert_eq!(
+            clean(&"x".repeat(MAX_LOG_MESSAGE_CHARS + 10)),
+            format!("{}…", "x".repeat(MAX_LOG_MESSAGE_CHARS))
+        );
     }
 
     #[test]
@@ -307,6 +369,11 @@ mod tests {
             log_date_from_filename("lmukit-2026-10-11.log"),
             Some("2026-10-11")
         );
+        assert_eq!(
+            log_date_from_filename("lmukit-2026-10-11.2.log"),
+            Some("2026-10-11")
+        );
+        assert_eq!(log_date_from_filename("lmukit-2026-10-11.old.log"), None);
         assert_eq!(log_date_from_filename("lmukit.log"), None);
         assert_eq!(log_date_from_filename("diagnostic-report-1.json"), None);
     }
@@ -333,6 +400,30 @@ mod tests {
         assert!(!directory.join("lmukit-2026-10-08.log").exists());
         assert!(directory.join("lmukit-2026-10-09.log").exists());
         assert!(directory.join("diagnostic-report-1.json").exists());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn bounds_same_day_log_segments() {
+        let directory =
+            std::env::temp_dir().join(format!("lmukit-log-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("lmukit-2026-10-11.log"), "newest").unwrap();
+        fs::write(directory.join("lmukit-2026-10-11.1.log"), "older").unwrap();
+        fs::write(directory.join("lmukit-2026-10-11.2.log"), "oldest").unwrap();
+
+        rotate_log_files(&directory, "2026-10-11").unwrap();
+
+        assert!(!directory.join("lmukit-2026-10-11.log").exists());
+        assert_eq!(
+            fs::read_to_string(directory.join("lmukit-2026-10-11.1.log")).unwrap(),
+            "newest"
+        );
+        assert_eq!(
+            fs::read_to_string(directory.join("lmukit-2026-10-11.2.log")).unwrap(),
+            "older"
+        );
+        assert_eq!(log_file_count(&directory).unwrap(), 2);
         fs::remove_dir_all(directory).unwrap();
     }
 }
