@@ -1118,6 +1118,7 @@ fn run_virtual_routing_worker(
                         .collect();
                 }
             }
+            engine.tick().map_err(|error| error.to_string())?;
             std::thread::sleep(std::time::Duration::from_millis(4));
         }
         engine.disconnect().map_err(|error| error.to_string())

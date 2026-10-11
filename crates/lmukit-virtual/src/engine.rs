@@ -1,8 +1,15 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    time::{Duration, Instant},
+};
 
 use anyhow::{Result, ensure};
 
 use crate::{VirtualCapabilities, VirtualInputBackend};
+
+const ENCODER_PULSE_DURATION: Duration = Duration::from_millis(32);
+const ENCODER_PULSE_GAP: Duration = Duration::from_millis(8);
+const MAX_QUEUED_ENCODER_PULSES: usize = 128;
 
 /// Stable semantic action shared by every virtual profile and wheel.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -294,7 +301,6 @@ impl ProfileMapping {
     fn active_bindings(
         &self,
         pressed: &BTreeSet<PhysicalButton>,
-        encoder_modes: &BTreeMap<String, usize>,
     ) -> BTreeMap<BindingInput, LogicalAction> {
         let mut selected = BTreeMap::<PhysicalButton, (BindingInput, LogicalAction)>::new();
         for (input, action) in &self.actions {
@@ -314,23 +320,25 @@ impl ProfileMapping {
                 selected.insert(input.trigger.clone(), (input.clone(), action.clone()));
             }
         }
-        for (key, group) in &self.encoder_groups {
+        selected.into_values().collect()
+    }
+
+    fn encoder_action_for(
+        &self,
+        source: &PhysicalButton,
+        encoder_modes: &BTreeMap<String, usize>,
+    ) -> Option<LogicalAction> {
+        self.encoder_groups.iter().find_map(|(key, group)| {
             let mode_index = encoder_modes.get(key).copied().unwrap_or(0);
             let mode = &group.modes[mode_index % group.modes.len()];
-            for (trigger, action) in [
-                (&group.clockwise, &mode.clockwise_action),
-                (&group.counterclockwise, &mode.counterclockwise_action),
-            ] {
-                if pressed.contains(trigger) {
-                    let input = BindingInput {
-                        trigger: trigger.clone(),
-                        modifiers: BTreeSet::new(),
-                    };
-                    selected.insert(trigger.clone(), (input, action.clone()));
-                }
+            if &group.clockwise == source {
+                Some(mode.clockwise_action.clone())
+            } else if &group.counterclockwise == source {
+                Some(mode.counterclockwise_action.clone())
+            } else {
+                None
             }
-        }
-        selected.into_values().collect()
+        })
     }
 
     fn validate_layout(&self, layout: &VirtualLayout) -> Result<()> {
@@ -372,6 +380,9 @@ pub struct MappingEngine<B: VirtualInputBackend> {
     active_bindings: BTreeMap<BindingInput, u32>,
     output_owners: BTreeMap<u32, BTreeSet<BindingInput>>,
     encoder_modes: BTreeMap<String, usize>,
+    queued_encoder_pulses: VecDeque<u32>,
+    active_encoder_pulse: Option<(u32, Instant)>,
+    next_encoder_pulse_at: Option<Instant>,
     connected: bool,
 }
 
@@ -398,6 +409,9 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
             active_bindings: BTreeMap::new(),
             output_owners: BTreeMap::new(),
             encoder_modes: BTreeMap::new(),
+            queued_encoder_pulses: VecDeque::new(),
+            active_encoder_pulse: None,
+            next_encoder_pulse_at: None,
             connected: true,
         })
     }
@@ -408,7 +422,17 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
 
     /// Returns true when the physical event belongs to the active profile.
     pub fn handle_button(&mut self, source: &PhysicalButton, pressed: bool) -> Result<bool> {
+        self.handle_button_at(source, pressed, Instant::now())
+    }
+
+    fn handle_button_at(
+        &mut self,
+        source: &PhysicalButton,
+        pressed: bool,
+        now: Instant,
+    ) -> Result<bool> {
         ensure!(self.connected, "mapping engine is disconnected");
+        self.advance_encoder_pulses(now)?;
         let mapped = self.profile.references(source);
         let changed = if pressed {
             self.pressed_sources.insert(source.clone())
@@ -422,11 +446,28 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
                     *current = (*current + 1) % group.modes.len();
                 }
             }
+            if let Some(action) = self.profile.encoder_action_for(source, &self.encoder_modes) {
+                let button = self
+                    .layout
+                    .button_for(&action)
+                    .expect("encoder mappings are validated against the layout");
+                self.queue_encoder_pulse(button, now)?;
+            }
         }
         if changed {
             self.reconcile()?;
         }
         Ok(mapped)
+    }
+
+    /// Advances queued encoder outputs even when no physical input changes.
+    pub fn tick(&mut self) -> Result<()> {
+        self.tick_at(Instant::now())
+    }
+
+    fn tick_at(&mut self, now: Instant) -> Result<()> {
+        ensure!(self.connected, "mapping engine is disconnected");
+        self.advance_encoder_pulses(now)
     }
 
     pub fn set_profile(&mut self, profile: ProfileMapping) -> Result<()> {
@@ -437,6 +478,7 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
         self.active_bindings.clear();
         self.output_owners.clear();
         self.encoder_modes.clear();
+        self.clear_encoder_pulses();
         self.profile = profile;
         Ok(())
     }
@@ -448,6 +490,7 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
         self.active_bindings.clear();
         self.output_owners.clear();
         self.encoder_modes.clear();
+        self.clear_encoder_pulses();
         self.connected = false;
         Ok(())
     }
@@ -470,7 +513,7 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
     fn reconcile(&mut self) -> Result<()> {
         let desired_bindings = self
             .profile
-            .active_bindings(&self.pressed_sources, &self.encoder_modes)
+            .active_bindings(&self.pressed_sources)
             .into_iter()
             .map(|(input, action)| {
                 let button = self
@@ -488,18 +531,64 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
                 .insert(input.clone());
         }
         for button in self.output_owners.keys() {
-            if !desired_owners.contains_key(button) {
+            if !desired_owners.contains_key(button) && !self.encoder_pulse_holds(*button) {
                 self.backend.set_button(*button, false)?;
             }
         }
         for button in desired_owners.keys() {
-            if !self.output_owners.contains_key(button) {
+            if !self.output_owners.contains_key(button) && !self.encoder_pulse_holds(*button) {
                 self.backend.set_button(*button, true)?;
             }
         }
         self.active_bindings = desired_bindings;
         self.output_owners = desired_owners;
         Ok(())
+    }
+
+    fn queue_encoder_pulse(&mut self, button: u32, now: Instant) -> Result<()> {
+        ensure!(
+            self.queued_encoder_pulses.len() < MAX_QUEUED_ENCODER_PULSES,
+            "encoder pulse queue is full; turn the encoder more slowly"
+        );
+        self.queued_encoder_pulses.push_back(button);
+        self.advance_encoder_pulses(now)
+    }
+
+    fn advance_encoder_pulses(&mut self, now: Instant) -> Result<()> {
+        if let Some((button, release_at)) = self.active_encoder_pulse
+            && now >= release_at
+        {
+            if !self.output_owners.contains_key(&button) {
+                self.backend.set_button(button, false)?;
+            }
+            self.active_encoder_pulse = None;
+            self.next_encoder_pulse_at = Some(now + ENCODER_PULSE_GAP);
+        }
+
+        if self.active_encoder_pulse.is_none()
+            && self
+                .next_encoder_pulse_at
+                .is_none_or(|next_at| now >= next_at)
+            && let Some(button) = self.queued_encoder_pulses.pop_front()
+        {
+            if !self.output_owners.contains_key(&button) {
+                self.backend.set_button(button, true)?;
+            }
+            self.active_encoder_pulse = Some((button, now + ENCODER_PULSE_DURATION));
+            self.next_encoder_pulse_at = None;
+        }
+        Ok(())
+    }
+
+    fn encoder_pulse_holds(&self, button: u32) -> bool {
+        self.active_encoder_pulse
+            .is_some_and(|(active, _)| active == button)
+    }
+
+    fn clear_encoder_pulses(&mut self) {
+        self.queued_encoder_pulses.clear();
+        self.active_encoder_pulse = None;
+        self.next_encoder_pulse_at = None;
     }
 }
 
@@ -514,10 +603,11 @@ impl<B: VirtualInputBackend> Drop for MappingEngine<B> {
 #[cfg(test)]
 mod tests {
     use super::{
-        EncoderGroup, EncoderMode, LogicalAction, MappingEngine, PhysicalButton, ProfileBinding,
-        ProfileMapping, VirtualLayout,
+        ENCODER_PULSE_DURATION, ENCODER_PULSE_GAP, EncoderGroup, EncoderMode, LogicalAction,
+        MappingEngine, PhysicalButton, ProfileBinding, ProfileMapping, VirtualLayout,
     };
     use crate::MockVirtualBackend;
+    use std::time::Instant;
 
     fn action(name: &str) -> LogicalAction {
         LogicalAction::new(name).unwrap()
@@ -757,14 +847,22 @@ mod tests {
             .unwrap();
         let mut engine =
             MappingEngine::connect(MockVirtualBackend::new(8), encoder_layout, mapping).unwrap();
+        let now = Instant::now();
 
-        engine.handle_button(&clockwise, true).unwrap();
-        engine.handle_button(&clockwise, false).unwrap();
-        engine.handle_button(&cycle, true).unwrap();
-        engine.handle_button(&cycle, true).unwrap();
-        engine.handle_button(&cycle, false).unwrap();
-        engine.handle_button(&clockwise, true).unwrap();
-        engine.handle_button(&clockwise, false).unwrap();
+        engine.handle_button_at(&clockwise, true, now).unwrap();
+        engine.handle_button_at(&clockwise, false, now).unwrap();
+        engine.handle_button_at(&cycle, true, now).unwrap();
+        engine.handle_button_at(&cycle, true, now).unwrap();
+        engine.handle_button_at(&cycle, false, now).unwrap();
+        engine.handle_button_at(&clockwise, true, now).unwrap();
+        engine.handle_button_at(&clockwise, false, now).unwrap();
+        engine.tick_at(now + ENCODER_PULSE_DURATION).unwrap();
+        engine
+            .tick_at(now + ENCODER_PULSE_DURATION + ENCODER_PULSE_GAP)
+            .unwrap();
+        engine
+            .tick_at(now + ENCODER_PULSE_DURATION * 2 + ENCODER_PULSE_GAP)
+            .unwrap();
 
         assert_eq!(
             engine.backend().events(),
@@ -774,7 +872,7 @@ mod tests {
     }
 
     #[test]
-    fn routes_a_single_encoder_mode_without_a_mode_control() {
+    fn serializes_rapid_single_mode_encoder_detents() {
         let encoder_layout = VirtualLayout::new([
             (action("brake_bias_increase"), 1),
             (action("brake_bias_decrease"), 2),
@@ -801,16 +899,112 @@ mod tests {
             .unwrap();
         let mut engine =
             MappingEngine::connect(MockVirtualBackend::new(8), encoder_layout, mapping).unwrap();
+        let now = Instant::now();
 
-        engine.handle_button(&clockwise, true).unwrap();
-        engine.handle_button(&clockwise, false).unwrap();
-        engine.handle_button(&counterclockwise, true).unwrap();
-        engine.handle_button(&counterclockwise, false).unwrap();
+        engine.handle_button_at(&clockwise, true, now).unwrap();
+        engine.handle_button_at(&clockwise, false, now).unwrap();
+        engine
+            .handle_button_at(&counterclockwise, true, now)
+            .unwrap();
+        engine
+            .handle_button_at(&counterclockwise, false, now)
+            .unwrap();
+        assert_eq!(engine.backend().events(), [(1, true)]);
+        engine.tick_at(now + ENCODER_PULSE_DURATION).unwrap();
+        engine
+            .tick_at(now + ENCODER_PULSE_DURATION + ENCODER_PULSE_GAP)
+            .unwrap();
+        engine
+            .tick_at(now + ENCODER_PULSE_DURATION * 2 + ENCODER_PULSE_GAP)
+            .unwrap();
 
         assert_eq!(
             engine.backend().events(),
             [(1, true), (1, false), (2, true), (2, false)]
         );
+    }
+
+    #[test]
+    fn profile_change_clears_active_and_queued_encoder_pulses() {
+        let encoder_layout = VirtualLayout::new([
+            (action("brake_bias_increase"), 1),
+            (action("brake_bias_decrease"), 2),
+        ])
+        .unwrap();
+        let increase = button("gt-neo", 10);
+        let decrease = button("gt-neo", 11);
+        let mapping = ProfileMapping::default()
+            .with_encoder_groups([EncoderGroup::new(
+                "Brake bias",
+                increase.clone(),
+                decrease.clone(),
+                None,
+                vec![
+                    EncoderMode::new(
+                        "Default",
+                        action("brake_bias_increase"),
+                        action("brake_bias_decrease"),
+                    )
+                    .unwrap(),
+                ],
+            )
+            .unwrap()])
+            .unwrap();
+        let mut engine =
+            MappingEngine::connect(MockVirtualBackend::new(8), encoder_layout, mapping).unwrap();
+        let now = Instant::now();
+
+        engine.handle_button_at(&increase, true, now).unwrap();
+        engine.handle_button_at(&increase, false, now).unwrap();
+        engine.handle_button_at(&decrease, true, now).unwrap();
+        engine.handle_button_at(&decrease, false, now).unwrap();
+        engine.set_profile(ProfileMapping::default()).unwrap();
+        engine.tick_at(now + ENCODER_PULSE_DURATION * 3).unwrap();
+
+        assert_eq!(engine.backend().events(), [(1, true), (1, false)]);
+    }
+
+    #[test]
+    fn encoder_pulse_does_not_release_a_regular_owner_of_the_same_output() {
+        let encoder_layout = VirtualLayout::new([
+            (action("brake_bias_increase"), 1),
+            (action("brake_bias_decrease"), 2),
+        ])
+        .unwrap();
+        let increase = button("gt-neo", 10);
+        let regular = button("gt-neo", 5);
+        let mapping = ProfileMapping::new([(regular.clone(), action("brake_bias_increase"))])
+            .unwrap()
+            .with_encoder_groups([EncoderGroup::new(
+                "Brake bias",
+                increase.clone(),
+                button("gt-neo", 11),
+                None,
+                vec![
+                    EncoderMode::new(
+                        "Default",
+                        action("brake_bias_increase"),
+                        action("brake_bias_decrease"),
+                    )
+                    .unwrap(),
+                ],
+            )
+            .unwrap()])
+            .unwrap();
+        let mut engine =
+            MappingEngine::connect(MockVirtualBackend::new(8), encoder_layout, mapping).unwrap();
+        let now = Instant::now();
+
+        engine.handle_button_at(&increase, true, now).unwrap();
+        engine.handle_button_at(&increase, false, now).unwrap();
+        engine.handle_button_at(&regular, true, now).unwrap();
+        engine.tick_at(now + ENCODER_PULSE_DURATION).unwrap();
+        assert_eq!(engine.backend().events(), [(1, true)]);
+        engine
+            .handle_button_at(&regular, false, now + ENCODER_PULSE_DURATION)
+            .unwrap();
+
+        assert_eq!(engine.backend().events(), [(1, true), (1, false)]);
     }
 
     #[test]
