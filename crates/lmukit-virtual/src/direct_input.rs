@@ -15,9 +15,9 @@ use windows::{
     Win32::{
         Devices::HumanInterfaceDevice::{
             DI8DEVCLASS_GAMECTRL, DIDATAFORMAT, DIDEVCAPS, DIDEVICEINSTANCEW, DIDEVICEOBJECTDATA,
-            DIEDFL_ATTACHEDONLY, DIENUM_CONTINUE, DIJOYSTATE2, DIPH_DEVICE, DIPROP_BUFFERSIZE,
-            DIPROPDWORD, DIRECTINPUT_VERSION, DISCL_BACKGROUND, DISCL_NONEXCLUSIVE,
-            DirectInput8Create, IDirectInput8W, IDirectInputDevice8W,
+            DIEDFL_ATTACHEDONLY, DIENUM_CONTINUE, DIJOYSTATE2, DIPH_DEVICE, DIPROPDWORD,
+            DIRECTINPUT_VERSION, DISCL_BACKGROUND, DISCL_NONEXCLUSIVE, DirectInput8Create,
+            IDirectInput8W, IDirectInputDevice8W,
         },
         Foundation::{BOOL, HINSTANCE},
         System::{Console::GetConsoleWindow, LibraryLoader::GetModuleHandleW},
@@ -28,6 +28,11 @@ use windows::{
 
 const DIRECT_INPUT_BUFFER_SIZE: u32 = 256;
 const DIRECT_INPUT_EVENT_BATCH_SIZE: usize = 64;
+// dinput.h defines DIPROP_BUFFERSIZE as MAKEDIPROP(1): a sentinel pointer
+// whose address is the property ID, rather than a normal GUID value. The
+// windows crate exposes a GUID-shaped constant, but passing its address makes
+// DirectInput reject the property.
+const DIPROP_BUFFERSIZE_POINTER: *const GUID = 1usize as *const GUID;
 // DIJOYSTATE2 stores its 128 button bytes immediately after six axes, two
 // sliders, and four POV values. DirectInput buffered events use these offsets.
 const DIJOFS_BUTTON0: u32 = 48;
@@ -139,7 +144,7 @@ impl DirectInputButtonReader {
                 dwData: DIRECT_INPUT_BUFFER_SIZE,
             };
             device
-                .SetProperty(&DIPROP_BUFFERSIZE, &mut buffer_size.diph)
+                .SetProperty(DIPROP_BUFFERSIZE_POINTER, &mut buffer_size.diph)
                 .context("enabling the DirectInput event buffer")?;
             device
                 .Acquire()
