@@ -3,16 +3,18 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ChevronDown,
   CirclePlus,
   Gauge,
   LoaderCircle,
   Plus,
   Radio,
   RotateCcw,
+  Search,
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   Profile,
   VirtualAction,
@@ -46,6 +48,14 @@ const controlLabel = (control: VirtualEncoderControl | null) =>
     ? `${control.deviceName || "Controller"} · Button ${control.physicalButton}`
     : "Waiting for a control";
 
+const searchTokens = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
 export function ProfileEncoderMappings({
   profile,
   busy,
@@ -63,6 +73,7 @@ export function ProfileEncoderMappings({
   const [draft, setDraft] = useState<VirtualEncoderGroup | null>(null);
   const [originalName, setOriginalName] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("details");
+  const [activeModeIndex, setActiveModeIndex] = useState(0);
   const [capturing, setCapturing] = useState<CaptureKind | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +121,14 @@ export function ProfileEncoderMappings({
       setCapturing(null);
     }
   };
+  const cancelCapture = async () => {
+    await invoke("cancel_binding_lookup");
+    setCapturing(null);
+  };
+  const beginStep = (nextStep: Step, kind: CaptureKind) => {
+    setStep(nextStep);
+    void capture(kind);
+  };
   const save = async () => {
     if (!draft) return;
     setSaving(true);
@@ -156,6 +175,7 @@ export function ProfileEncoderMappings({
   };
   const addMode = () => {
     if (!draft || draft.modes.length >= 8) return;
+    const nextModeIndex = draft.modes.length;
     setDraft({
       ...draft,
       modes: [
@@ -168,7 +188,8 @@ export function ProfileEncoderMappings({
         },
       ],
     });
-    if (!draft.cycle) setStep("modeButton");
+    setActiveModeIndex(nextModeIndex);
+    if (!draft.cycle) beginStep("modeButton", "cycle");
   };
   const removeMode = (index: number) => {
     if (!draft || draft.modes.length === 1) return;
@@ -178,6 +199,7 @@ export function ProfileEncoderMappings({
       modes,
       cycle: modes.length === 1 ? null : draft.cycle,
     });
+    setActiveModeIndex((current) => Math.min(current, modes.length - 1));
   };
   const canSave =
     draft &&
@@ -219,7 +241,7 @@ export function ProfileEncoderMappings({
               <div>
                 <span className="eyebrow">{profile.name}</span>
                 <h2 id="encoder-dialog-title">Set up encoders</h2>
-                <p>Capture each direction, then choose what it controls.</p>
+                <p>Capture Increase and Decrease, then choose their actions.</p>
               </div>
               <button
                 type="button"
@@ -237,12 +259,14 @@ export function ProfileEncoderMappings({
                   setDraft(newEncoder(actions));
                   setOriginalName(null);
                   setStep("details");
+                  setActiveModeIndex(0);
                   setError(null);
                 }}
                 onEdit={(encoder) => {
                   setDraft(structuredClone(encoder));
                   setOriginalName(encoder.name);
                   setStep("actions");
+                  setActiveModeIndex(0);
                   setError(null);
                 }}
               />
@@ -274,40 +298,39 @@ export function ProfileEncoderMappings({
                         type="button"
                         className="primary encoder-next"
                         disabled={!draft.name.trim()}
-                        onClick={() => setStep("increase")}
+                        onClick={() => beginStep("increase", "clockwise")}
                       >
-                        Capture directions <ArrowRight />
+                        Start capture <ArrowRight />
                       </button>
                     </section>
                   )}
                   {step === "increase" && (
                     <CaptureStep
-                      title="Turn it clockwise"
-                      description="Turn the encoder one click in the direction you use to increase a value."
+                      title="Capture Increase"
+                      description="Turn the encoder once in the direction that should increase the selected action. LMUKit is already listening."
                       control={draft.clockwise}
                       capturing={capturing === "clockwise"}
                       onCapture={() => void capture("clockwise")}
-                      onCancel={() => {
-                        void invoke("cancel_binding_lookup");
-                        setCapturing(null);
+                      onCancel={() => void cancelCapture()}
+                      onBack={() => {
+                        void cancelCapture();
+                        setStep("details");
                       }}
-                      onBack={() => setStep("details")}
-                      onNext={() => setStep("decrease")}
+                      onNext={() => beginStep("decrease", "counterclockwise")}
+                      nextLabel="Next"
                     />
                   )}
                   {step === "decrease" && (
                     <CaptureStep
-                      title="Turn it counter-clockwise"
-                      description="Now turn the same encoder one click in the direction you use to decrease a value."
+                      title="Capture Decrease"
+                      description="Turn the encoder once in the direction that should decrease the selected action. LMUKit is already listening."
                       control={draft.counterclockwise}
                       capturing={capturing === "counterclockwise"}
                       onCapture={() => void capture("counterclockwise")}
-                      onCancel={() => {
-                        void invoke("cancel_binding_lookup");
-                        setCapturing(null);
-                      }}
-                      onBack={() => setStep("increase")}
+                      onCancel={() => void cancelCapture()}
+                      onBack={() => beginStep("increase", "clockwise")}
                       onNext={() => setStep("actions")}
+                      nextLabel="Done"
                     />
                   )}
                   {step === "modeButton" && (
@@ -317,15 +340,13 @@ export function ProfileEncoderMappings({
                       control={draft.cycle}
                       capturing={capturing === "cycle"}
                       onCapture={() => void capture("cycle")}
-                      onCancel={() => {
-                        void invoke("cancel_binding_lookup");
-                        setCapturing(null);
-                      }}
+                      onCancel={() => void cancelCapture()}
                       onBack={() => {
                         setDraft({ ...draft, modes: draft.modes.slice(0, -1) });
                         setStep("actions");
                       }}
                       onNext={() => setStep("actions")}
+                      nextLabel="Done"
                     />
                   )}
                   {step === "actions" && (
@@ -335,14 +356,15 @@ export function ProfileEncoderMappings({
                           <span className="encoder-step-number">3</span>
                           <h3>What should it control?</h3>
                           <p>
-                            Choose an action for each direction. Most encoders
-                            need only this one pair.
+                            Search for the action to use for Increase and
+                            Decrease. Add modes only when this encoder needs
+                            more than one pair.
                           </p>
                         </div>
                         <button
                           type="button"
                           className="ghost compact"
-                          onClick={() => setStep("increase")}
+                          onClick={() => beginStep("increase", "clockwise")}
                         >
                           <RotateCcw /> Recapture
                         </button>
@@ -364,58 +386,87 @@ export function ProfileEncoderMappings({
                         )}
                       </div>
                       <div className="encoder-simple-modes">
-                        {draft.modes.map((mode, index) => (
-                          <section key={index}>
+                        <nav
+                          className="encoder-mode-tabs"
+                          aria-label="Encoder modes"
+                        >
+                          {draft.modes.map((mode, index) => (
+                            <button
+                              type="button"
+                              className={
+                                index === activeModeIndex ? "active" : ""
+                              }
+                              key={`${index}-${mode.name}`}
+                              onClick={() => setActiveModeIndex(index)}
+                            >
+                              <span>{index + 1}</span>
+                              {mode.name || `Mode ${index + 1}`}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            className="encoder-mode-tab-add"
+                            disabled={draft.modes.length >= 8}
+                            onClick={addMode}
+                          >
+                            <Plus /> Add mode
+                          </button>
+                        </nav>
+                        {draft.modes[activeModeIndex] && (
+                          <section className="encoder-mode-card">
                             <header>
-                              {draft.modes.length > 1 ? (
+                              <label>
+                                <span>Mode name</span>
                                 <input
-                                  aria-label={`Mode ${index + 1} name`}
-                                  value={mode.name}
+                                  aria-label={`Mode ${activeModeIndex + 1} name`}
+                                  value={draft.modes[activeModeIndex].name}
                                   onChange={(event) => {
                                     const modes = [...draft.modes];
-                                    modes[index] = {
-                                      ...mode,
+                                    modes[activeModeIndex] = {
+                                      ...modes[activeModeIndex],
                                       name: event.target.value,
                                     };
                                     setDraft({ ...draft, modes });
                                   }}
                                 />
-                              ) : (
-                                <strong>Actions</strong>
-                              )}
+                              </label>
                               {draft.modes.length > 1 && (
                                 <button
                                   type="button"
-                                  className="icon-button"
-                                  aria-label={`Remove ${mode.name}`}
-                                  onClick={() => removeMode(index)}
+                                  className="danger ghost compact"
+                                  onClick={() => removeMode(activeModeIndex)}
                                 >
-                                  <Trash2 />
+                                  <Trash2 /> Remove mode
                                 </button>
                               )}
                             </header>
-                            <div>
-                              <ActionSelect
+                            <div className="encoder-mode-actions">
+                              <ActionPicker
                                 label="Increase"
-                                value={mode.clockwiseAction}
+                                value={
+                                  draft.modes[activeModeIndex].clockwiseAction
+                                }
                                 actions={actions}
                                 onChange={(value) => {
                                   const modes = [...draft.modes];
-                                  modes[index] = {
-                                    ...mode,
+                                  modes[activeModeIndex] = {
+                                    ...modes[activeModeIndex],
                                     clockwiseAction: value,
                                   };
                                   setDraft({ ...draft, modes });
                                 }}
                               />
-                              <ActionSelect
+                              <ActionPicker
                                 label="Decrease"
-                                value={mode.counterclockwiseAction}
+                                value={
+                                  draft.modes[activeModeIndex]
+                                    .counterclockwiseAction
+                                }
                                 actions={actions}
                                 onChange={(value) => {
                                   const modes = [...draft.modes];
-                                  modes[index] = {
-                                    ...mode,
+                                  modes[activeModeIndex] = {
+                                    ...modes[activeModeIndex],
                                     counterclockwiseAction: value,
                                   };
                                   setDraft({ ...draft, modes });
@@ -423,16 +474,8 @@ export function ProfileEncoderMappings({
                               />
                             </div>
                           </section>
-                        ))}
+                        )}
                       </div>
-                      <button
-                        type="button"
-                        className="secondary encoder-add-mode"
-                        disabled={draft.modes.length >= 8}
-                        onClick={addMode}
-                      >
-                        <Plus /> Add another mode
-                      </button>
                     </section>
                   )}
                 </div>
@@ -577,6 +620,7 @@ function CaptureStep({
   onCancel,
   onBack,
   onNext,
+  nextLabel,
 }: {
   title: string;
   description: string;
@@ -586,6 +630,7 @@ function CaptureStep({
   onCancel: () => void;
   onBack: () => void;
   onNext: () => void;
+  nextLabel: "Next" | "Done";
 }) {
   const captured = Boolean(control?.physicalButton);
   return (
@@ -617,16 +662,18 @@ function CaptureStep({
         </span>
       </div>
       <div className="encoder-capture-actions">
-        <button type="button" className="ghost" onClick={onBack}>
-          <ArrowLeft /> Back
-        </button>
+        {!capturing && (
+          <button type="button" className="ghost" onClick={onBack}>
+            <ArrowLeft /> Back
+          </button>
+        )}
         {capturing ? (
           <button type="button" className="secondary" onClick={onCancel}>
             Cancel capture
           </button>
         ) : !captured ? (
           <button type="button" className="primary" onClick={onCapture}>
-            <Radio /> Start capture
+            <Radio /> Listen again
           </button>
         ) : (
           <>
@@ -634,7 +681,7 @@ function CaptureStep({
               <RotateCcw /> Try again
             </button>
             <button type="button" className="primary" onClick={onNext}>
-              Confirm &amp; continue <ArrowRight />
+              {nextLabel} {nextLabel === "Next" ? <ArrowRight /> : <Check />}
             </button>
           </>
         )}
@@ -642,7 +689,7 @@ function CaptureStep({
     </section>
   );
 }
-function ActionSelect({
+function ActionPicker({
   label,
   value,
   actions,
@@ -653,14 +700,79 @@ function ActionSelect({
   actions: VirtualAction[];
   onChange: (value: string) => void;
 }) {
+  const [query, setQuery] = useState("");
+  const pickerRef = useRef<HTMLDetailsElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const queryTokens = searchTokens(query);
+  const visibleActions = actions.filter((action) => {
+    const candidateTokens = searchTokens(action.action);
+    return queryTokens.every((queryToken) =>
+      candidateTokens.some((candidate) => candidate.includes(queryToken)),
+    );
+  });
+  const selected = actions.find((action) => action.action === value);
+
+  useEffect(() => {
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!pickerRef.current?.contains(event.target as Node)) {
+        pickerRef.current?.removeAttribute("open");
+      }
+    };
+    window.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => window.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, []);
+
   return (
-    <label>
+    <div className="encoder-action-field">
       <span>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
-        {actions.map((action) => (
-          <option key={action.action}>{action.action}</option>
-        ))}
-      </select>
-    </label>
+      <details
+        className="encoder-action-picker"
+        ref={pickerRef}
+        onToggle={(event) => {
+          if (event.currentTarget.open)
+            window.setTimeout(() => searchRef.current?.focus(), 0);
+        }}
+      >
+        <summary>
+          <span>
+            <strong>{selected?.action || "Choose an action"}</strong>
+            {selected && <small>vJoy B{selected.virtualButton}</small>}
+          </span>
+          <ChevronDown />
+        </summary>
+        <div className="encoder-action-menu">
+          <label>
+            <Search />
+            <input
+              ref={searchRef}
+              value={query}
+              placeholder="Search actions"
+              onChange={(event) => setQuery(event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+            />
+          </label>
+          <div>
+            {visibleActions.map((action) => (
+              <button
+                type="button"
+                className={action.action === value ? "active" : ""}
+                key={action.action}
+                onClick={(event) => {
+                  onChange(action.action);
+                  setQuery("");
+                  event.currentTarget
+                    .closest("details")
+                    ?.removeAttribute("open");
+                }}
+              >
+                <span>{action.action}</span>
+                <small>B{action.virtualButton}</small>
+              </button>
+            ))}
+            {!visibleActions.length && <p>No matching actions.</p>}
+          </div>
+        </div>
+      </details>
+    </div>
   );
 }
