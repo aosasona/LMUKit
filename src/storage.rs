@@ -138,6 +138,8 @@ pub struct Settings {
     pub companion_apps: Vec<CompanionApp>,
     #[serde(default = "default_ui_font_scale")]
     pub ui_font_scale: f32,
+    #[serde(default = "default_log_retention_days")]
+    pub log_retention_days: usize,
     #[serde(default)]
     pub lmu_launch_mode: LaunchMode,
     #[serde(default)]
@@ -198,6 +200,7 @@ impl Default for Settings {
             lmuffb_path: PathBuf::new(),
             companion_apps: default_companion_apps(),
             ui_font_scale: default_ui_font_scale(),
+            log_retention_days: default_log_retention_days(),
             lmu_launch_mode: LaunchMode::Desktop,
             input_mode: InputMode::Legacy,
             virtual_layout: Vec::new(),
@@ -210,6 +213,10 @@ impl Default for Settings {
 
 fn default_ui_font_scale() -> f32 {
     1.0
+}
+
+fn default_log_retention_days() -> usize {
+    5
 }
 
 fn default_virtual_device_id() -> u32 {
@@ -268,6 +275,9 @@ impl Store {
         if !(0.85..=1.4).contains(&settings.ui_font_scale) {
             settings.ui_font_scale = default_ui_font_scale();
         }
+        if !(1..=30).contains(&settings.log_retention_days) {
+            settings.log_retention_days = default_log_retention_days();
+        }
         if !settings.lmuffb_path.as_os_str().is_empty()
             && let Some(lmuffb) = settings
                 .companion_apps
@@ -288,6 +298,10 @@ impl Store {
         ensure!(
             (1..=16).contains(&self.settings.virtual_device_id),
             "Virtual device ID must be between 1 and 16."
+        );
+        ensure!(
+            (1..=30).contains(&self.settings.log_retention_days),
+            "Log retention must be between 1 and 30 days."
         );
         write_json(&self.root.join("settings.json"), &self.settings)
     }
@@ -2424,6 +2438,7 @@ mod tests {
             PathBuf::from("D:/LMU/UserData/player/Settings.JSON")
         );
         assert_eq!(store.settings.ui_font_scale, 1.0);
+        assert_eq!(store.settings.log_retention_days, 5);
         assert_eq!(store.settings.input_mode, InputMode::Legacy);
         assert!(store.settings.virtual_layout.is_empty());
         assert_eq!(store.settings.virtual_device_key, None);

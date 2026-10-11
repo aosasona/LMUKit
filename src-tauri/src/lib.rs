@@ -99,6 +99,7 @@ struct DiagnosticStatus {
     log_directory: String,
     current_log_size: u64,
     retained_log_files: usize,
+    log_retention_days: usize,
     recent_errors: Vec<String>,
     active_profile: Option<String>,
     input_mode: &'static str,
@@ -356,6 +357,25 @@ fn set_ui_font_scale(scale: f32, state: State<'_, AppState>) -> Result<(), Strin
     let mut store = state.0.lock().map_err(|error| error.to_string())?;
     store.settings.ui_font_scale = scale;
     store.save_settings().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_log_retention_days(retention_days: usize, state: State<'_, AppState>) -> Result<(), String> {
+    if !(1..=30).contains(&retention_days) {
+        return Err("Log retention must be between 1 and 30 days.".to_owned());
+    }
+    {
+        let mut store = state.0.lock().map_err(|error| error.to_string())?;
+        store.settings.log_retention_days = retention_days;
+        store.save_settings().map_err(|error| error.to_string())?;
+    }
+    diagnostics::set_retention_days(retention_days)
+        .map_err(|error| format!("Could not remove expired logs: {error}"))?;
+    diagnostics::info(
+        "diagnostics.retention",
+        format!("Log retention changed to {retention_days} days"),
+    );
+    Ok(())
 }
 
 #[tauri::command]
@@ -1803,6 +1823,7 @@ fn build_diagnostic_status(
         log_directory: log.directory,
         current_log_size: log.current_size,
         retained_log_files: log.retained_files,
+        log_retention_days: log.retention_days,
         recent_errors: log.recent_errors,
         active_profile,
         input_mode,
@@ -2225,7 +2246,9 @@ fn wheel_summary(wheel: Wheel, profiles: &[Profile]) -> WheelSummary {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let store = Store::open().expect("LMUKit data store should open");
-    if let Err(error) = diagnostics::initialise(&store.data_dir()) {
+    if let Err(error) =
+        diagnostics::initialise(&store.data_dir(), store.settings.log_retention_days)
+    {
         eprintln!("LMUKit logging could not start: {error}");
     }
     let shortcuts = store
@@ -2282,6 +2305,7 @@ pub fn run() {
             listen_for_profile_binding,
             cancel_binding_lookup,
             set_ui_font_scale,
+            set_log_retention_days,
             save_app_settings,
             set_profile_hotkey,
             companion_launch_option,

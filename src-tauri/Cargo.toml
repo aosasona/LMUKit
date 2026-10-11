@@ -30,6 +30,7 @@ global-hotkey = "0.7"
 windows = { version = "0.58", features = [
     "Foundation_Collections",
     "Gaming_Input",
+    "Win32_System_SystemInformation",
     "Win32_System_WinRT",
     "Win32_UI_WindowsAndMessaging",
 ] }
