@@ -60,6 +60,8 @@ LMUKit's automated verifier subsequently drove each button through the vJoy API 
 
 LMU v1.4200 then detected `vJoy Device` and accepted controlled outputs as `B1` and `B2` for two separate bindings. This establishes that the current LMU build enumerates this vJoy configuration and can learn its button outputs.
 
+The same device was subsequently reconfigured from eight to 128 buttons. DirectInput reported all 128 buttons and LMU's binding listener accepted a controlled 1.5-second button 128 output as `B128`. The capacity change caused Windows/LMU to re-enumerate the changed HID descriptor, leaving the previous eight-button incarnation shown as disconnected and requiring its LMU-side assignments to be registered again. This validates the full vJoy button range in the recorded environment and establishes that the configured capacity should remain fixed after initial setup.
+
 ![LMU controls showing vJoy bindings B1 and B2](lmu-vjoy-bindings.png)
 
 The recorded environment was vJoy 2.2.2.0, vJoy device 1 configured with eight buttons, LMU v1.4200, and Windows build 26300.9550 (26H2). The initial binding-capture actions shown above were Time Acceleration (`B1`) and Place Replay Marker (`B2`). Both outputs were released by the probe after a 1.5-second hold.

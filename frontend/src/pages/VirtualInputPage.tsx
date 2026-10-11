@@ -395,11 +395,12 @@ export function VirtualInputPage({
                         Device 1 has only {setup.buttonCount} virtual buttons
                       </strong>
                       <small>
-                        Close LMU and LMUKit, open Configure vJoy, set Buttons to
+                        Close LMU and LMUKit, open Configure vJoy, set Buttons
+                        to
                         {` ${RECOMMENDED_VJOY_BUTTON_COUNT}`}, apply the change,
-                        then reopen both apps. Existing B1–B
-                        {setup.buttonCount} assignments should be checked after
-                        the restart.
+                        then reopen both apps. Windows may re-enumerate the
+                        controller after its capacity changes, so existing LMU
+                        vJoy assignments may need to be registered again once.
                       </small>
                     </span>
                   </div>

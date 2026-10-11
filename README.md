@@ -74,7 +74,7 @@ Press `Ctrl+Alt+Space` anywhere in Windows to open the compact profile switcher.
 
 ### Virtual input setup
 
-Virtual Input Mode requires vJoy device 1 to be installed and configured separately. Open **Configure vJoy**, select device 1, set **Buttons** to **128**, and apply the change before opening LMU and LMUKit. The common eight-button configuration is not enough for a useful LMU action layout; LMUKit reports the device's actual capacity and warns when it is below 128. After changing the capacity, restart both apps and check any existing assignments.
+Virtual Input Mode requires vJoy device 1 to be installed and configured separately. Open **Configure vJoy**, select device 1, set **Buttons** to **128**, and apply the change before opening LMU and LMUKit. The common eight-button configuration is not enough for a useful LMU action layout; LMUKit reports the device's actual capacity and warns when it is below 128. Changing the capacity alters the HID descriptor and may cause Windows to re-enumerate the controller, requiring existing LMU vJoy assignments to be registered again once. Restart both apps after applying the change and then leave the device at 128 buttons.
 
 Open **Virtual input**, start the guided binding setup, and leave LMU listening for the action you want to assign. Press `Ctrl+Alt+V` to send the next unused virtual button, or use the on-screen fallback. The shortcut is registered only while that setup session is active.
 
