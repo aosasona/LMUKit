@@ -846,7 +846,6 @@ export default function App() {
                 busy={busy}
                 inputMode={snapshot.inputMode}
                 profiles={snapshot.profiles}
-                wheels={snapshot.wheels}
                 onNotice={setNotice}
                 onOpenProfiles={() => navigate("profiles")}
               />

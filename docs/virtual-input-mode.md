@@ -54,14 +54,14 @@ LMU continues to see the physical controller. A physical control managed through
 
 Virtual mappings are an optional extension to an existing profile, not a silent reinterpretation of its saved `direct input.json`. The user can explicitly import matching button bindings and review or adjust the result. A profile retains its Legacy JSON configuration while also carrying a separate Virtual Input mapping.
 
-Profiles continue to use reusable wheel references and the existing class tags. Several profiles may exist for the same wheel and class, for example:
+Profiles continue to use reusable wheel references and the existing class tags. Several profiles may exist for the same class, for example:
 
 - GT Neo / HY / Race;
 - GT Neo / HY / Alternate;
 - GT Neo / LMGT3 / Race;
 - FX Pro / LMGT3 / Race.
 
-Each profile owns its physical button mappings, modifier combinations, and encoder modes. Wheel/class defaults are stored as separate references: at most one default profile for a given wheel and class, plus an optional wheel-level fallback. Changing a profile's wheel or class tags and deleting a profile clean up any references that are no longer valid. Layers remain a planned extension.
+Each profile owns its physical button mappings, modifier combinations, and encoder modes. Automatic defaults are stored as separate global class-to-profile references: at most one default profile for a given class. A wheel association remains useful identity and presentation metadata but does not participate in automatic resolution. Removing a referenced class tag or deleting its profile cleans up the default. Layers remain a planned extension.
 
 For example, a GT Neo HY profile may map encoder 1 to Front ARB while a GT Neo LMGT3 profile maps the same encoder to TC2. Both profiles still target the globally stable virtual buttons assigned to those logical actions.
 
@@ -83,11 +83,11 @@ Each captured detent queues a 32 ms virtual-button pulse followed by at least 8 
 
 1. Start LMUKit and LMU with the already configured virtual controller available.
 2. LMUKit uses a reliably identified wheel or the user's manual wheel selection.
-3. The user starts a profile manually from the Profiles detail pane, chooses a wheel and class on the Virtual Input page to resolve the exact class default and then the wheel fallback, or explicitly enables automatic startup for the most recently used live profile.
+3. The user starts a profile manually from the Profiles detail pane, chooses a class on the Virtual Input page to use its global default, or explicitly enables automatic startup for the most recently used live profile.
 4. LMUKit translates physical button events through that profile into the stable virtual layout.
 5. The user may change virtual profiles while LMU is running without rebinding the virtual controller.
 
-The current wheel and class selection is manual. LMUKit shows whether the active route was selected directly, from a class default, or from a wheel fallback. Future automatic context detection must not override an active manual profile selection.
+The current class selection is manual. LMUKit shows whether the active route was selected directly or from a class default. Future automatic context detection must not override an active manual profile selection. Exact Simagic rim detection is not assumed: when a different rim needs another profile for the same class, the user selects that profile manually.
 
 ## Operating modes
 

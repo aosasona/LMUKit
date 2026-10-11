@@ -5185,9 +5185,7 @@ textarea,
 .virtual-default-switcher {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns:
-    minmax(210px, 1fr) minmax(150px, 0.7fr) minmax(110px, 0.45fr)
-    auto;
+  grid-template-columns: minmax(210px, 1fr) minmax(150px, 0.7fr) auto;
   align-items: end;
   gap: 12px;
   padding-top: 15px;

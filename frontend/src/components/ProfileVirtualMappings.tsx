@@ -162,7 +162,7 @@ export function ProfileVirtualMappings({
       cancelled = true;
       void invoke("cancel_binding_lookup");
     };
-  }, [profile.id, profile.wheelId, profile.classTags.join(",")]);
+  }, [profile.id, profile.classTags.join(",")]);
 
   useEffect(() => {
     const refresh = () => {
@@ -354,25 +354,21 @@ export function ProfileVirtualMappings({
     }
   };
 
-  const changeDefault = async (classTag: string | null, remove: boolean) => {
-    if (!profile.wheelId) return;
-    const scope = classTag ?? "fallback";
-    setDefaultsBusy(scope);
+  const changeDefault = async (classTag: string, remove: boolean) => {
+    setDefaultsBusy(classTag);
     setError(null);
     try {
       const next = await invoke<VirtualProfileDefault[]>(
         remove
           ? "clear_virtual_profile_default"
           : "set_virtual_profile_default",
-        remove
-          ? { wheelId: profile.wheelId, classTag }
-          : { profileId: profile.id, classTag },
+        remove ? { classTag } : { profileId: profile.id, classTag },
       );
       setDefaults(next);
       onNotice(
         remove
-          ? `${classTag ? displayClassTag(classTag) : "Wheel fallback"} default removed.`
-          : `${profile.name} is now the ${classTag ? displayClassTag(classTag) : "wheel fallback"} default.`,
+          ? `${displayClassTag(classTag)} default removed.`
+          : `${profile.name} is now the automatic default for ${displayClassTag(classTag)}.`,
       );
     } catch (reason) {
       setError(String(reason));
@@ -462,38 +458,28 @@ export function ProfileVirtualMappings({
           <span>
             <Star />
             <span>
-              <strong>Default for this wheel</strong>
+              <strong>Automatic class defaults</strong>
               <small>
-                Choose which profile should be used for each car class.
+                One profile is selected for each class across LMUKit.
               </small>
             </span>
           </span>
-          {!profile.wheelId && <em>Assign a wheel first</em>}
+          {!profile.classTags.length && <em>Add a class tag first</em>}
         </div>
-        {profile.wheelId && (
+        {!!profile.classTags.length && (
           <div className="profile-default-scopes">
-            {[...profile.classTags, null].map((classTag) => {
+            {profile.classTags.map((classTag) => {
               const assigned = defaults.find(
                 (entry) =>
-                  entry.wheelId === profile.wheelId &&
-                  (classTag === null
-                    ? entry.classTag === null
-                    : entry.classTag?.toLowerCase() === classTag.toLowerCase()),
+                  entry.classTag.toLowerCase() === classTag.toLowerCase(),
               );
               const isThisProfile = assigned?.profileId === profile.id;
-              const scope = classTag ?? "fallback";
               return (
-                <div className="profile-default-scope" key={scope}>
+                <div className="profile-default-scope" key={classTag}>
                   <span>
-                    <strong>
-                      {classTag ? displayClassTag(classTag) : "Other classes"}
-                    </strong>
+                    <strong>{displayClassTag(classTag)}</strong>
                     <small>
-                      {assigned
-                        ? assigned.profileName
-                        : classTag
-                          ? "No default selected"
-                          : "No wheel fallback selected"}
+                      {assigned ? assigned.profileName : "No default selected"}
                     </small>
                   </span>
                   <button
@@ -504,7 +490,7 @@ export function ProfileVirtualMappings({
                     disabled={busy || defaultsBusy !== null}
                     onClick={() => void changeDefault(classTag, isThisProfile)}
                   >
-                    {defaultsBusy === scope
+                    {defaultsBusy === classTag
                       ? "Saving…"
                       : isThisProfile
                         ? "Remove default"

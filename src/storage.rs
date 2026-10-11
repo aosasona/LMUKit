@@ -178,6 +178,8 @@ pub struct Settings {
     pub virtual_device_id: u32,
     #[serde(default)]
     pub virtual_profile_defaults: Vec<VirtualProfileDefault>,
+    #[serde(default)]
+    pub class_profile_defaults: Vec<ClassProfileDefault>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -185,6 +187,12 @@ pub struct VirtualProfileDefault {
     pub wheel_id: Uuid,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub class_tag: Option<String>,
+    pub profile_id: Uuid,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ClassProfileDefault {
+    pub class_tag: String,
     pub profile_id: Uuid,
 }
 
@@ -235,6 +243,7 @@ impl Default for Settings {
             virtual_device_key: None,
             virtual_device_id: default_virtual_device_id(),
             virtual_profile_defaults: Vec::new(),
+            class_profile_defaults: Vec::new(),
         }
     }
 }
@@ -315,8 +324,9 @@ impl Store {
             lmuffb.path = std::mem::take(&mut settings.lmuffb_path);
             lmuffb.enabled = true;
         }
-        let store = Self { root, settings };
+        let mut store = Self { root, settings };
         store.migrate_profile_wheels()?;
+        store.migrate_class_profile_defaults()?;
         Ok(store)
     }
 
@@ -337,88 +347,57 @@ impl Store {
     pub fn set_virtual_profile_default(
         &mut self,
         profile_id: Uuid,
-        class_tag: Option<String>,
+        class_tag: String,
     ) -> Result<()> {
         let profile = self
             .profiles()?
             .into_iter()
             .find(|profile| profile.id == profile_id)
             .context("That profile no longer exists.")?;
-        let wheel_id = profile
-            .wheel_id
-            .context("Assign this profile to a wheel before making it a default.")?;
-        let class_tag = match class_tag {
-            Some(requested) => {
-                let requested = requested.trim();
-                profile
-                    .class_tags
-                    .iter()
-                    .find(|tag| tag.eq_ignore_ascii_case(requested))
-                    .cloned()
-                    .with_context(|| {
-                        format!("This profile is not tagged for the {requested} class.")
-                    })?
-                    .into()
-            }
-            None => None,
-        };
-        self.settings.virtual_profile_defaults.retain(|entry| {
-            entry.wheel_id != wheel_id || !same_optional_tag(&entry.class_tag, &class_tag)
-        });
+        let requested = class_tag.trim();
+        let class_tag = profile
+            .class_tags
+            .iter()
+            .find(|tag| tag.eq_ignore_ascii_case(requested))
+            .cloned()
+            .with_context(|| format!("This profile is not tagged for the {requested} class."))?;
         self.settings
-            .virtual_profile_defaults
-            .push(VirtualProfileDefault {
-                wheel_id,
+            .class_profile_defaults
+            .retain(|entry| !entry.class_tag.eq_ignore_ascii_case(&class_tag));
+        self.settings
+            .class_profile_defaults
+            .push(ClassProfileDefault {
                 class_tag,
                 profile_id,
             });
-        self.sort_virtual_profile_defaults();
+        self.sort_class_profile_defaults();
         self.save_settings()
     }
 
-    pub fn clear_virtual_profile_default(
-        &mut self,
-        wheel_id: Uuid,
-        class_tag: Option<String>,
-    ) -> Result<()> {
-        let before = self.settings.virtual_profile_defaults.len();
-        self.settings.virtual_profile_defaults.retain(|entry| {
-            entry.wheel_id != wheel_id || !same_optional_tag(&entry.class_tag, &class_tag)
-        });
+    pub fn clear_virtual_profile_default(&mut self, class_tag: String) -> Result<()> {
+        let before = self.settings.class_profile_defaults.len();
+        self.settings
+            .class_profile_defaults
+            .retain(|entry| !entry.class_tag.eq_ignore_ascii_case(class_tag.trim()));
         ensure!(
-            self.settings.virtual_profile_defaults.len() != before,
+            self.settings.class_profile_defaults.len() != before,
             "That default assignment no longer exists."
         );
         self.save_settings()
     }
 
-    pub fn resolve_virtual_profile(
-        &self,
-        wheel_id: Uuid,
-        class_tag: Option<&str>,
-    ) -> Result<Option<(Profile, bool)>> {
+    pub fn resolve_virtual_profile(&self, class_tag: &str) -> Result<Option<Profile>> {
         let profiles = self.profiles()?;
-        let exact = class_tag.and_then(|class_tag| {
-            self.settings.virtual_profile_defaults.iter().find(|entry| {
-                entry.wheel_id == wheel_id
-                    && entry
-                        .class_tag
-                        .as_deref()
-                        .is_some_and(|tag| tag.eq_ignore_ascii_case(class_tag))
-            })
-        });
-        let selected = exact.or_else(|| {
-            self.settings
-                .virtual_profile_defaults
-                .iter()
-                .find(|entry| entry.wheel_id == wheel_id && entry.class_tag.is_none())
-        });
+        let selected = self
+            .settings
+            .class_profile_defaults
+            .iter()
+            .find(|entry| entry.class_tag.eq_ignore_ascii_case(class_tag.trim()));
         Ok(selected.and_then(|entry| {
             profiles
                 .iter()
                 .find(|profile| profile.id == entry.profile_id)
                 .cloned()
-                .map(|profile| (profile, exact.is_some()))
         }))
     }
 
@@ -456,21 +435,33 @@ impl Store {
                 "Only one default profile may be assigned per wheel and class."
             );
         }
+        let mut class_scopes = BTreeSet::new();
+        for entry in &self.settings.class_profile_defaults {
+            let profile = profiles
+                .iter()
+                .find(|profile| profile.id == entry.profile_id)
+                .context("A class profile default references a missing profile.")?;
+            ensure!(
+                profile
+                    .class_tags
+                    .iter()
+                    .any(|tag| tag.eq_ignore_ascii_case(&entry.class_tag)),
+                "A class profile default references a class missing from its profile."
+            );
+            ensure!(
+                class_scopes.insert(entry.class_tag.to_lowercase()),
+                "Only one default profile may be assigned per class."
+            );
+        }
         Ok(())
     }
 
-    fn sort_virtual_profile_defaults(&mut self) {
-        self.settings
-            .virtual_profile_defaults
-            .sort_by(|left, right| {
-                left.wheel_id.cmp(&right.wheel_id).then_with(|| {
-                    left.class_tag
-                        .as_deref()
-                        .unwrap_or("")
-                        .to_lowercase()
-                        .cmp(&right.class_tag.as_deref().unwrap_or("").to_lowercase())
-                })
-            });
+    fn sort_class_profile_defaults(&mut self) {
+        self.settings.class_profile_defaults.sort_by(|left, right| {
+            left.class_tag
+                .to_lowercase()
+                .cmp(&right.class_tag.to_lowercase())
+        });
     }
 
     pub fn set_profile_virtual_mapping(
@@ -945,6 +936,48 @@ impl Store {
         Ok(())
     }
 
+    fn migrate_class_profile_defaults(&mut self) -> Result<()> {
+        if !self.settings.class_profile_defaults.is_empty() {
+            return Ok(());
+        }
+        let profiles = self.profiles()?;
+        let mut candidates = BTreeMap::<String, (String, BTreeSet<Uuid>)>::new();
+        for legacy in &self.settings.virtual_profile_defaults {
+            let Some(class_tag) = &legacy.class_tag else {
+                continue;
+            };
+            let Some(profile) = profiles
+                .iter()
+                .find(|profile| profile.id == legacy.profile_id)
+            else {
+                continue;
+            };
+            let Some(canonical_tag) = profile
+                .class_tags
+                .iter()
+                .find(|tag| tag.eq_ignore_ascii_case(class_tag))
+            else {
+                continue;
+            };
+            candidates
+                .entry(canonical_tag.to_lowercase())
+                .or_insert_with(|| (canonical_tag.clone(), BTreeSet::new()))
+                .1
+                .insert(profile.id);
+        }
+        self.settings.class_profile_defaults = candidates
+            .into_values()
+            .filter_map(|(class_tag, profile_ids)| {
+                (profile_ids.len() == 1).then(|| ClassProfileDefault {
+                    class_tag,
+                    profile_id: *profile_ids.first().expect("one profile ID"),
+                })
+            })
+            .collect();
+        self.sort_class_profile_defaults();
+        Ok(())
+    }
+
     pub fn profiles(&self) -> Result<Vec<Profile>> {
         let mut profiles: Vec<Profile> = Vec::new();
         for entry in fs::read_dir(self.profiles_dir())? {
@@ -1031,6 +1064,13 @@ impl Store {
                         .iter()
                         .any(|tag| tag.eq_ignore_ascii_case(class_tag))
                 })
+        });
+        self.settings.class_profile_defaults.retain(|entry| {
+            entry.profile_id != profile_id
+                || profile
+                    .class_tags
+                    .iter()
+                    .any(|tag| tag.eq_ignore_ascii_case(&entry.class_tag))
         });
         self.save_profile_metadata(&profile)?;
         self.save_settings()
@@ -1571,9 +1611,17 @@ impl Store {
             .settings
             .virtual_profile_defaults
             .iter()
-            .any(|entry| entry.profile_id == profile.id);
+            .any(|entry| entry.profile_id == profile.id)
+            || self
+                .settings
+                .class_profile_defaults
+                .iter()
+                .any(|entry| entry.profile_id == profile.id);
         self.settings
             .virtual_profile_defaults
+            .retain(|entry| entry.profile_id != profile.id);
+        self.settings
+            .class_profile_defaults
             .retain(|entry| entry.profile_id != profile.id);
         let active_changed = self.settings.active_profile == Some(profile.id);
         let last_virtual_changed = self.settings.last_virtual_profile == Some(profile.id);
@@ -1935,14 +1983,6 @@ fn validate_virtual_label(value: &str, label: &str) -> Result<()> {
         "{label} must be 120 characters or shorter."
     );
     Ok(())
-}
-
-fn same_optional_tag(left: &Option<String>, right: &Option<String>) -> bool {
-    match (left, right) {
-        (Some(left), Some(right)) => left.eq_ignore_ascii_case(right),
-        (None, None) => true,
-        _ => false,
-    }
 }
 
 fn normalize_tags(tags: Vec<String>) -> Result<Vec<String>> {
@@ -2941,7 +2981,7 @@ mod tests {
     }
 
     #[test]
-    fn resolves_one_default_per_wheel_and_class_with_a_fallback() {
+    fn resolves_one_default_profile_per_class_across_wheels() {
         let temp = tempfile::tempdir().unwrap();
         let mut store = Store::open_at(temp.path().join("data")).unwrap();
         let race = store
@@ -2950,17 +2990,18 @@ mod tests {
         let alternate = store
             .import_profile_bytes("GT3 Alternate", br#"{"Input":{}}"#)
             .unwrap();
-        let generic = store
-            .import_profile_bytes("Generic", br#"{"Input":{}}"#)
-            .unwrap();
-        let wheel = store
+        let first_wheel = store
             .create_wheel(Some("Simagic".into()), "GT Neo".into())
             .unwrap();
-        for profile in [&race, &alternate, &generic] {
-            store
-                .assign_profile_wheel(profile.id, Some(wheel.id))
-                .unwrap();
-        }
+        let second_wheel = store
+            .create_wheel(Some("Simagic".into()), "FX Pro".into())
+            .unwrap();
+        store
+            .assign_profile_wheel(race.id, Some(first_wheel.id))
+            .unwrap();
+        store
+            .assign_profile_wheel(alternate.id, Some(second_wheel.id))
+            .unwrap();
         for profile in [&race, &alternate] {
             store
                 .set_profile_categories(profile.id, vec!["GT3".into()], Vec::new())
@@ -2968,26 +3009,71 @@ mod tests {
         }
 
         store
-            .set_virtual_profile_default(race.id, Some("gt3".into()))
+            .set_virtual_profile_default(race.id, "gt3".into())
             .unwrap();
-        store.set_virtual_profile_default(generic.id, None).unwrap();
         store
-            .set_virtual_profile_default(alternate.id, Some("GT3".into()))
+            .set_virtual_profile_default(alternate.id, "GT3".into())
             .unwrap();
 
-        assert_eq!(store.settings.virtual_profile_defaults.len(), 2);
-        let (resolved, exact) = store
-            .resolve_virtual_profile(wheel.id, Some("gt3"))
-            .unwrap()
-            .unwrap();
+        assert_eq!(store.settings.class_profile_defaults.len(), 1);
+        let resolved = store.resolve_virtual_profile("gt3").unwrap().unwrap();
         assert_eq!(resolved.id, alternate.id);
-        assert!(exact);
-        let (resolved, exact) = store
-            .resolve_virtual_profile(wheel.id, Some("HY"))
-            .unwrap()
+        assert!(store.resolve_virtual_profile("HY").unwrap().is_none());
+    }
+
+    #[test]
+    fn migrates_only_unambiguous_legacy_wheel_class_defaults() {
+        let temp = tempfile::tempdir().unwrap();
+        let data = temp.path().join("data");
+        let mut store = Store::open_at(data.clone()).unwrap();
+        let first = store
+            .import_profile_bytes("First", br#"{"Input":{}}"#)
             .unwrap();
-        assert_eq!(resolved.id, generic.id);
-        assert!(!exact);
+        let second = store
+            .import_profile_bytes("Second", br#"{"Input":{}}"#)
+            .unwrap();
+        let first_wheel = store.create_wheel(None, "First wheel".into()).unwrap();
+        let second_wheel = store.create_wheel(None, "Second wheel".into()).unwrap();
+        store
+            .assign_profile_wheel(first.id, Some(first_wheel.id))
+            .unwrap();
+        store
+            .assign_profile_wheel(second.id, Some(second_wheel.id))
+            .unwrap();
+        store
+            .set_profile_categories(first.id, vec!["GT3".into(), "HY".into()], Vec::new())
+            .unwrap();
+        store
+            .set_profile_categories(second.id, vec!["HY".into()], Vec::new())
+            .unwrap();
+        store.settings.virtual_profile_defaults = vec![
+            VirtualProfileDefault {
+                wheel_id: first_wheel.id,
+                class_tag: Some("GT3".into()),
+                profile_id: first.id,
+            },
+            VirtualProfileDefault {
+                wheel_id: first_wheel.id,
+                class_tag: Some("HY".into()),
+                profile_id: first.id,
+            },
+            VirtualProfileDefault {
+                wheel_id: second_wheel.id,
+                class_tag: Some("HY".into()),
+                profile_id: second.id,
+            },
+        ];
+        store.save_settings().unwrap();
+        drop(store);
+
+        let migrated = Store::open_at(data).unwrap();
+        assert_eq!(migrated.settings.class_profile_defaults.len(), 1);
+        assert_eq!(
+            migrated.resolve_virtual_profile("GT3").unwrap().unwrap().id,
+            first.id
+        );
+        assert!(migrated.resolve_virtual_profile("HY").unwrap().is_none());
+        assert_eq!(migrated.settings.virtual_profile_defaults.len(), 3);
     }
 
     #[test]
@@ -3005,15 +3091,17 @@ mod tests {
             .set_profile_categories(profile.id, vec!["GT3".into()], Vec::new())
             .unwrap();
         store
-            .set_virtual_profile_default(profile.id, Some("GT3".into()))
+            .set_virtual_profile_default(profile.id, "GT3".into())
             .unwrap();
 
         store
             .set_profile_categories(profile.id, vec!["HY".into()], Vec::new())
             .unwrap();
-        assert!(store.settings.virtual_profile_defaults.is_empty());
+        assert!(store.settings.class_profile_defaults.is_empty());
 
-        store.set_virtual_profile_default(profile.id, None).unwrap();
+        store
+            .set_virtual_profile_default(profile.id, "HY".into())
+            .unwrap();
         store.settings.last_virtual_profile = Some(profile.id);
         store.save_settings().unwrap();
         let saved = store
@@ -3023,7 +3111,7 @@ mod tests {
             .find(|entry| entry.id == profile.id)
             .unwrap();
         store.delete(&saved).unwrap();
-        assert!(store.settings.virtual_profile_defaults.is_empty());
+        assert!(store.settings.class_profile_defaults.is_empty());
         assert_eq!(store.settings.last_virtual_profile, None);
     }
 

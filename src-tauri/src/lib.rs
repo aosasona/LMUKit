@@ -241,8 +241,7 @@ struct VirtualMappingImportSummary {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VirtualProfileDefaultSummary {
-    wheel_id: Uuid,
-    class_tag: Option<String>,
+    class_tag: String,
     profile_id: Uuid,
     profile_name: String,
 }
@@ -748,7 +747,7 @@ fn virtual_profile_defaults(
 #[tauri::command]
 fn set_virtual_profile_default(
     profile_id: Uuid,
-    class_tag: Option<String>,
+    class_tag: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<VirtualProfileDefaultSummary>, String> {
     let mut store = state.0.lock().map_err(|error| error.to_string())?;
@@ -760,13 +759,12 @@ fn set_virtual_profile_default(
 
 #[tauri::command]
 fn clear_virtual_profile_default(
-    wheel_id: Uuid,
-    class_tag: Option<String>,
+    class_tag: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<VirtualProfileDefaultSummary>, String> {
     let mut store = state.0.lock().map_err(|error| error.to_string())?;
     store
-        .clear_virtual_profile_default(wheel_id, class_tag)
+        .clear_virtual_profile_default(class_tag)
         .map_err(|error| error.to_string())?;
     virtual_profile_default_summaries(&store)
 }
@@ -1096,14 +1094,13 @@ fn virtual_profile_default_summaries(
     let profiles = store.profiles().map_err(|error| error.to_string())?;
     Ok(store
         .settings
-        .virtual_profile_defaults
+        .class_profile_defaults
         .iter()
         .filter_map(|entry| {
             profiles
                 .iter()
                 .find(|profile| profile.id == entry.profile_id)
                 .map(|profile| VirtualProfileDefaultSummary {
-                    wheel_id: entry.wheel_id,
                     class_tag: entry.class_tag.clone(),
                     profile_id: entry.profile_id,
                     profile_name: profile.name.clone(),
@@ -1148,37 +1145,22 @@ fn start_virtual_routing(
 
 #[tauri::command]
 fn start_default_virtual_routing(
-    wheel_id: Uuid,
-    class_tag: Option<String>,
+    class_tag: String,
     app_state: State<'_, AppState>,
     routing_state: State<'_, VirtualRoutingState>,
 ) -> Result<VirtualRoutingStatus, String> {
     let (profile_id, reason) = {
         let store = app_state.0.lock().map_err(|error| error.to_string())?;
-        let (profile, exact) = store
-            .resolve_virtual_profile(wheel_id, class_tag.as_deref())
+        let profile = store
+            .resolve_virtual_profile(&class_tag)
             .map_err(|error| error.to_string())?
             .ok_or_else(|| {
-                class_tag.as_ref().map_or_else(
-                    || "No wheel fallback is configured for this wheel.".to_owned(),
-                    |class_tag| {
-                        format!(
-                            "No {} default or wheel fallback is configured for this wheel.",
-                            display_existing_class(class_tag)
-                        )
-                    },
+                format!(
+                    "No default profile is configured for {}.",
+                    display_existing_class(&class_tag)
                 )
             })?;
-        let reason = match (exact, &class_tag) {
-            (true, Some(class_tag)) => {
-                format!("{} default", display_existing_class(class_tag))
-            }
-            (false, Some(class_tag)) => format!(
-                "Wheel fallback · no {} default",
-                display_existing_class(class_tag)
-            ),
-            (_, None) => "Wheel fallback".to_owned(),
-        };
+        let reason = format!("{} class default", display_existing_class(&class_tag));
         (profile.id, reason)
     };
     start_virtual_routing_inner(profile_id, reason, &app_state, &routing_state)

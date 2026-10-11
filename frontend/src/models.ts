@@ -98,8 +98,7 @@ export type VirtualMappingImport = {
   conflictingControls: number;
 };
 export type VirtualProfileDefault = {
-  wheelId: string;
-  classTag: string | null;
+  classTag: string;
   profileId: string;
   profileName: string;
 };

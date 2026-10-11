@@ -20,25 +20,21 @@ import type {
   VirtualRoutingStatus,
   VirtualSetupEvent,
   VirtualSetupStatus,
-  Wheel,
 } from "../models";
 import type { InputMode } from "../components/InputModeSwitch";
 
-const WHEEL_FALLBACK = "__wheel_fallback__";
 const RECOMMENDED_VJOY_BUTTON_COUNT = 128;
 
 export function VirtualInputPage({
   busy,
   inputMode,
   profiles,
-  wheels,
   onNotice,
   onOpenProfiles,
 }: {
   busy: boolean;
   inputMode: InputMode;
   profiles: Profile[];
-  wheels: Wheel[];
   onNotice: (message: string) => void;
   onOpenProfiles: () => void;
 }) {
@@ -54,8 +50,7 @@ export function VirtualInputPage({
   const [setupError, setSetupError] = useState<string | null>(null);
   const [lastPulse, setLastPulse] = useState<VirtualButtonPulse | null>(null);
   const [routingBusy, setRoutingBusy] = useState(false);
-  const [selectedWheelId, setSelectedWheelId] = useState("");
-  const [selectedClass, setSelectedClass] = useState(WHEEL_FALLBACK);
+  const [selectedClass, setSelectedClass] = useState("");
   const [routing, setRouting] = useState<VirtualRoutingStatus>({
     active: false,
     profileId: null,
@@ -67,30 +62,16 @@ export function VirtualInputPage({
     selectionReason: null,
     activeEncoderModes: [],
   });
-  const profilesForWheel = profiles.filter(
-    (profile) => profile.wheelId === selectedWheelId,
-  );
   const availableClasses = Array.from(
-    new Set(profilesForWheel.flatMap((profile) => profile.classTags)),
+    new Set(profiles.flatMap((profile) => profile.classTags)),
   ).sort();
   const availableClassesKey = availableClasses.join("\u0000");
 
   useEffect(() => {
-    if (!wheels.length) {
-      setSelectedWheelId("");
-      return;
-    }
-    if (!wheels.some((wheel) => wheel.id === selectedWheelId)) {
-      setSelectedWheelId(wheels[0].id);
-    }
-  }, [selectedWheelId, wheels]);
-
-  useEffect(() => {
-    if (
-      selectedClass !== WHEEL_FALLBACK &&
-      !availableClasses.includes(selectedClass)
-    ) {
-      setSelectedClass(WHEEL_FALLBACK);
+    if (!availableClasses.length) {
+      setSelectedClass("");
+    } else if (!availableClasses.includes(selectedClass)) {
+      setSelectedClass(availableClasses[0]);
     }
   }, [availableClassesKey, selectedClass]);
 
@@ -328,18 +309,17 @@ export function VirtualInputPage({
   };
 
   const startDefaultRouting = async () => {
-    if (!selectedWheelId) return;
-    const classTag = selectedClass === WHEEL_FALLBACK ? null : selectedClass;
+    if (!selectedClass) return;
     setRoutingBusy(true);
     setError(null);
     try {
       const next = await invoke<VirtualRoutingStatus>(
         "start_default_virtual_routing",
-        { wheelId: selectedWheelId, classTag },
+        { classTag: selectedClass },
       );
       setRouting(next);
       onNotice(
-        `${next.profileName} selected from the ${classTag ? displayClassTag(classTag) : "wheel fallback"}.`,
+        `${next.profileName} selected as the ${displayClassTag(selectedClass)} default.`,
       );
     } catch (reason) {
       setError(String(reason));
@@ -572,29 +552,15 @@ export function VirtualInputPage({
         )}
         <div className="virtual-default-switcher">
           <span>
-            <strong>Switch by wheel and class</strong>
-            <small>Uses the defaults configured on your profiles.</small>
+            <strong>Switch by car class</strong>
+            <small>Uses the single class default configured on Profiles.</small>
           </span>
-          <label>
-            <span>Wheel</span>
-            <select
-              value={selectedWheelId}
-              onChange={(event) => setSelectedWheelId(event.target.value)}
-            >
-              {wheels.map((wheel) => (
-                <option value={wheel.id} key={wheel.id}>
-                  {[wheel.brand, wheel.name].filter(Boolean).join(" ")}
-                </option>
-              ))}
-            </select>
-          </label>
           <label>
             <span>Class</span>
             <select
               value={selectedClass}
               onChange={(event) => setSelectedClass(event.target.value)}
             >
-              <option value={WHEEL_FALLBACK}>Generic / other</option>
               {availableClasses.map((classTag) => (
                 <option value={classTag} key={classTag}>
                   {displayClassTag(classTag)}
@@ -609,7 +575,6 @@ export function VirtualInputPage({
               busy ||
               routingBusy ||
               setup !== null ||
-              !selectedWheelId ||
               !selectedClass ||
               inputMode !== "virtual"
             }

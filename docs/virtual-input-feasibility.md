@@ -19,7 +19,7 @@ The current data model already supports the product concepts that should be reus
 - Legacy wheel metadata is migrated additively by matching brand and wheel name. Settings and profile additions use Serde defaults so older JSON remains readable.
 - Physical input learning uses Windows `RawGameController`. Each capture listener starts on a fresh OS thread to avoid conflicting with the webview's WinRT apartment mode.
 
-The repository now has an experimental continuous DirectInput press/release monitor, virtual-output backend, stable layout, persisted per-profile button, modifier, and encoder-mode mappings, wheel/class default references with fallbacks, and manual start/stop or default-based routing. It does not yet have layers, a car-context provider, or a reliable automatic rim identity provider. The legacy Windows Gaming Input learner remains separate from the DirectInput routing path.
+The repository now has an experimental continuous DirectInput press/release monitor, virtual-output backend, stable layout, persisted per-profile button, modifier, and encoder-mode mappings, one global default profile reference per class, manual start/stop or default-based routing, and a read-only LMU car-context provider. It does not yet have layers, automatic profile switching, or a reliable automatic rim identity provider. The legacy Windows Gaming Input learner remains separate from the DirectInput routing path.
 
 ### Existing class IDs and proposed context aliases
 
@@ -39,8 +39,8 @@ Matching should be case-insensitive and trim surrounding whitespace. Values such
 
 No persisted schema changes are part of the feasibility spike. Later phases should use additive, defaulted data and keep virtual configuration separate from transient device state:
 
-- wheel/class defaults must be references keyed by wheel ID and a normalised existing class identifier, not an `is_default` flag on a profile;
-- wheel fallback and explicit manual override must also be references and must be repaired or rejected when a wheel/profile is deleted;
+- automatic defaults are global references keyed by a normalized existing class identifier, not an `is_default` flag on a profile;
+- at most one profile may be the default for a class; manual profile selection handles a different attached rim and must take precedence over future automatic selection;
 - existing `class_tags` remain authoritative—there will not be a second class-tag system;
 - old JSON profiles must never be silently treated as complete virtual mappings;
 - virtual button ranges and references must be validated during load/import;
@@ -128,7 +128,7 @@ The first context phase remains read-only. The desktop now samples the provider 
 
 1. **Feasibility:** isolated vJoy adapter, mock backend, two-button pulse/mirror probe, explicit hardware checklist. No persisted or production-UI changes.
 2. **Core routing:** the platform-independent logical-action engine, source-owned outputs, output-range validation, minimum observable button presses, and safe profile-change/shutdown reconciliation are implemented with a mock backend. The profile/settings store preserves optional physical-to-logical mappings and the shared logical-to-virtual layout. The production UI can learn buttons through buffered DirectInput and manually start, stop, or switch a selected profile without changing LMU's JSON. Direct, modifier-combination, persisted profile, hot-swap, and multi-class driving-session routing have been confirmed with the recorded hardware.
-3. **Class-aware resolution:** wheel/class default references and wheel fallback using existing class tags, with referential-integrity and migration tests.
+3. **Class-aware resolution:** one global profile default per existing class tag, with referential-integrity and conservative legacy wheel-default migration tests.
 4. **Advanced controls:** hold modifiers, unified learn-input capture, named digital encoder modes, serialised minimum-duration encoder pulses, and editor conflict diagnostics are implemented. Layers remain.
 5. **Verified car context:** the provider and read-only Overview diagnostics are backed only by observed LMU data. Transition validation, debounced selection, manual override, Resume Auto, and disagreement diagnostics remain.
 6. **Rim discovery and polish:** rotating lifecycle logs and a privacy-redacted diagnostics panel/report are implemented. A fuller device inspector, conservative identity providers, setup wizard, latency/recovery diagnostics, and packaging guidance remain.
