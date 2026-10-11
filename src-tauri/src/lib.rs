@@ -102,6 +102,15 @@ struct VirtualMappingImportSummary {
     conflicting_controls: usize,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualProfileDefaultSummary {
+    wheel_id: Uuid,
+    class_tag: Option<String>,
+    profile_id: Uuid,
+    profile_name: String,
+}
+
 #[derive(Clone)]
 struct LearnedPhysicalButton {
     device_id: String,
@@ -485,6 +494,40 @@ fn import_profile_virtual_mapping(
 }
 
 #[tauri::command]
+fn virtual_profile_defaults(
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualProfileDefaultSummary>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    virtual_profile_default_summaries(&store)
+}
+
+#[tauri::command]
+fn set_virtual_profile_default(
+    profile_id: Uuid,
+    class_tag: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualProfileDefaultSummary>, String> {
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .set_virtual_profile_default(profile_id, class_tag)
+        .map_err(|error| error.to_string())?;
+    virtual_profile_default_summaries(&store)
+}
+
+#[tauri::command]
+fn clear_virtual_profile_default(
+    wheel_id: Uuid,
+    class_tag: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualProfileDefaultSummary>, String> {
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .clear_virtual_profile_default(wheel_id, class_tag)
+        .map_err(|error| error.to_string())?;
+    virtual_profile_default_summaries(&store)
+}
+
+#[tauri::command]
 async fn learn_virtual_profile_button(
     profile_id: Uuid,
     logical_action: String,
@@ -582,6 +625,28 @@ fn mapping_summaries(mapping: Option<&VirtualProfileMapping>) -> Vec<VirtualProf
             logical_action: entry.logical_action.clone(),
         })
         .collect()
+}
+
+fn virtual_profile_default_summaries(
+    store: &Store,
+) -> Result<Vec<VirtualProfileDefaultSummary>, String> {
+    let profiles = store.profiles().map_err(|error| error.to_string())?;
+    Ok(store
+        .settings
+        .virtual_profile_defaults
+        .iter()
+        .filter_map(|entry| {
+            profiles
+                .iter()
+                .find(|profile| profile.id == entry.profile_id)
+                .map(|profile| VirtualProfileDefaultSummary {
+                    wheel_id: entry.wheel_id,
+                    class_tag: entry.class_tag.clone(),
+                    profile_id: entry.profile_id,
+                    profile_name: profile.name.clone(),
+                })
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -1733,6 +1798,9 @@ pub fn run() {
             virtual_profile_mapping,
             saved_virtual_layout,
             import_profile_virtual_mapping,
+            virtual_profile_defaults,
+            set_virtual_profile_default,
+            clear_virtual_profile_default,
             learn_virtual_profile_button,
             remove_virtual_profile_button,
             virtual_routing_status,

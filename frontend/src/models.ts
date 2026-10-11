@@ -87,6 +87,12 @@ export type VirtualMappingImport = {
   skippedUnknownDevice: number;
   conflictingControls: number;
 };
+export type VirtualProfileDefault = {
+  wheelId: string;
+  classTag: string | null;
+  profileId: string;
+  profileName: string;
+};
 export type VirtualRoutingStatus = {
   active: boolean;
   profileId: string | null;

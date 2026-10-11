@@ -6,6 +6,7 @@ import {
   Search,
   SlidersHorizontal,
   Square,
+  Star,
   Trash2,
   WandSparkles,
   X,
@@ -15,6 +16,7 @@ import type {
   Profile,
   VirtualAction,
   VirtualMappingImport,
+  VirtualProfileDefault,
   VirtualProfileMapping,
   VirtualRoutingStatus,
 } from "../models";
@@ -45,6 +47,8 @@ export function ProfileVirtualMappings({
   const [mappings, setMappings] = useState<VirtualProfileMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [migrating, setMigrating] = useState(false);
+  const [defaultsBusy, setDefaultsBusy] = useState<string | null>(null);
+  const [defaults, setDefaults] = useState<VirtualProfileDefault[]>([]);
   const [learning, setLearning] = useState<string | null>(null);
   const [routingBusy, setRoutingBusy] = useState(false);
   const [query, setQuery] = useState("");
@@ -109,12 +113,14 @@ export function ProfileVirtualMappings({
         profileId: profile.id,
       }),
       invoke<VirtualRoutingStatus>("virtual_routing_status"),
+      invoke<VirtualProfileDefault[]>("virtual_profile_defaults"),
     ])
-      .then(([nextActions, nextMappings, routing]) => {
+      .then(([nextActions, nextMappings, routing, nextDefaults]) => {
         if (cancelled) return;
         setActions(nextActions);
         setMappings(nextMappings);
         setRouting(routing);
+        setDefaults(nextDefaults);
       })
       .catch((reason) => {
         if (!cancelled) setError(String(reason));
@@ -126,7 +132,7 @@ export function ProfileVirtualMappings({
       cancelled = true;
       void invoke("cancel_binding_lookup");
     };
-  }, [profile.id]);
+  }, [profile.id, profile.wheelId, profile.classTags.join(",")]);
 
   useEffect(() => {
     const refresh = () => {
@@ -237,6 +243,34 @@ export function ProfileVirtualMappings({
     }
   };
 
+  const changeDefault = async (classTag: string | null, remove: boolean) => {
+    if (!profile.wheelId) return;
+    const scope = classTag ?? "fallback";
+    setDefaultsBusy(scope);
+    setError(null);
+    try {
+      const next = await invoke<VirtualProfileDefault[]>(
+        remove
+          ? "clear_virtual_profile_default"
+          : "set_virtual_profile_default",
+        remove
+          ? { wheelId: profile.wheelId, classTag }
+          : { profileId: profile.id, classTag },
+      );
+      setDefaults(next);
+      onNotice(
+        remove
+          ? `${classTag ?? "Wheel fallback"} default removed.`
+          : `${profile.name} is now the ${classTag ?? "wheel fallback"} default.`,
+      );
+    } catch (reason) {
+      setError(String(reason));
+      onNotice(String(reason));
+    } finally {
+      setDefaultsBusy(null);
+    }
+  };
+
   const startRouting = async () => {
     if (!mappings.length) return;
     setRoutingBusy(true);
@@ -306,6 +340,63 @@ export function ProfileVirtualMappings({
           </span>
         </div>
       )}
+      <div className="profile-defaults">
+        <div className="profile-defaults-heading">
+          <span>
+            <Star />
+            <span>
+              <strong>Default for this wheel</strong>
+              <small>
+                Choose which profile should be used for each car class.
+              </small>
+            </span>
+          </span>
+          {!profile.wheelId && <em>Assign a wheel first</em>}
+        </div>
+        {profile.wheelId && (
+          <div className="profile-default-scopes">
+            {[...profile.classTags, null].map((classTag) => {
+              const assigned = defaults.find(
+                (entry) =>
+                  entry.wheelId === profile.wheelId &&
+                  (classTag === null
+                    ? entry.classTag === null
+                    : entry.classTag?.toLowerCase() === classTag.toLowerCase()),
+              );
+              const isThisProfile = assigned?.profileId === profile.id;
+              const scope = classTag ?? "fallback";
+              return (
+                <div className="profile-default-scope" key={scope}>
+                  <span>
+                    <strong>{classTag ?? "Other classes"}</strong>
+                    <small>
+                      {assigned
+                        ? assigned.profileName
+                        : classTag
+                          ? "No default selected"
+                          : "No wheel fallback selected"}
+                    </small>
+                  </span>
+                  <button
+                    type="button"
+                    className={
+                      isThisProfile ? "ghost compact" : "secondary compact"
+                    }
+                    disabled={busy || defaultsBusy !== null}
+                    onClick={() => void changeDefault(classTag, isThisProfile)}
+                  >
+                    {defaultsBusy === scope
+                      ? "Saving…"
+                      : isThisProfile
+                        ? "Remove default"
+                        : "Make default"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
       <div className="profile-remapping-bar">
         <span>
           <i className={routing.active ? "active" : ""} />

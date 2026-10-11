@@ -3326,6 +3326,72 @@ textarea,
 .profile-virtual-mapping-actions svg {
   width: 14px;
 }
+.profile-defaults {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  background: #10110f;
+}
+.profile-defaults-heading {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+}
+.profile-defaults-heading > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.profile-defaults-heading svg {
+  width: 17px;
+  color: var(--amber);
+}
+.profile-defaults-heading strong,
+.profile-defaults-heading small,
+.profile-default-scope strong,
+.profile-default-scope small {
+  display: block;
+}
+.profile-defaults-heading strong,
+.profile-default-scope strong {
+  color: #dce4df;
+  font-size: calc(11px * var(--font-scale));
+}
+.profile-defaults-heading small,
+.profile-default-scope small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: calc(9px * var(--font-scale));
+}
+.profile-defaults-heading em {
+  color: var(--amber);
+  font-size: calc(9px * var(--font-scale));
+  font-style: normal;
+}
+.profile-default-scopes {
+  border-top: 1px solid var(--line);
+}
+.profile-default-scope {
+  min-height: 47px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+}
+.profile-default-scope + .profile-default-scope {
+  border-top: 1px solid var(--line);
+}
+.profile-default-scope > span {
+  min-width: 0;
+}
+.profile-default-scope button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .profile-mapping-dialog {
   position: relative;
   width: min(980px, 100%);
