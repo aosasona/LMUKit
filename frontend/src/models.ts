@@ -59,6 +59,13 @@ export type Snapshot = {
 };
 
 export type CompanionApp = { name: string; path: string; enabled: boolean };
+export type VirtualBindingDevice = {
+  key: string;
+  name: string;
+  buttonBindingCount: number;
+  likelyVirtual: boolean;
+};
+export type VirtualAction = { action: string; virtualButton: number };
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };
@@ -68,6 +75,7 @@ export type Page =
   | "profiles"
   | "wheels"
   | "bindings"
+  | "virtual"
   | "game"
   | "settings";
 

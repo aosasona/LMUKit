@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Settings,
   SlidersHorizontal,
+  Workflow,
   Wrench,
 } from "lucide-react";
 import type { Page } from "../models";
@@ -14,6 +15,7 @@ const items = [
   ["profiles", "Profiles", Gamepad2],
   ["wheels", "Wheels", Disc3],
   ["bindings", "Profile editor", SlidersHorizontal],
+  ["virtual", "Virtual input", Workflow],
   ["game", "Game settings", Wrench],
   ["settings", "Settings", Settings],
 ] as const;

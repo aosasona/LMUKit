@@ -23,6 +23,7 @@ import { OverviewPage } from "./pages/OverviewPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
 import { ProfileEditorPage } from "./pages/ProfileEditorPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { VirtualInputPage } from "./pages/VirtualInputPage";
 import { WheelsPage } from "./pages/WheelsPage";
 
 export default function App() {
@@ -664,6 +665,9 @@ export default function App() {
                 onSaveImage={saveLibraryWheelImage}
                 onRemoveImage={removeLibraryWheelImage}
               />
+            )}
+            {page === "virtual" && (
+              <VirtualInputPage busy={busy} onNotice={setNotice} />
             )}
             {page === "game" && (
               <GameSettingsPage

@@ -6,6 +6,7 @@ export const pageTitle = (page: Page) =>
     profiles: "Profiles",
     wheels: "Wheels",
     bindings: "Profile editor",
+    virtual: "Virtual input",
     game: "Game settings",
     settings: "Settings",
   })[page];
