@@ -8,7 +8,7 @@ LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate util
 
 ## Architecture
 
-- `frontend/src/App.tsx` composes the desktop shell and coordinates Tauri-backed workspace actions.
+- `frontend/src/App.tsx` composes the desktop shell, coordinates Tauri-backed workspace actions, and owns the shared live-routing status used by Overview and Profiles. Auto-started or externally switched live profiles must update this shared state and the selected profile so activation controls never present an already-live profile as inactive.
 - `frontend/src/pages/` contains one component per workspace page, `frontend/src/components/` contains shared shell and editor controls, and `frontend/src/models.ts` owns the frontend command payload types. Keep page-specific presentation out of `App.tsx`. The profile editor composes binding capture, device-grouped FFB controls, and the read-only JSON preview. Virtual button assignment and per-profile live-routing controls belong to the selected profile's detail pane through `ProfileVirtualMappings`; the Virtual Input page owns shared vJoy setup and global routing status only.
 - `frontend/src/styles.css` owns the shared visual system. Format TypeScript, JSX, and CSS with Prettier after UI changes.
 - `src-tauri/` owns the Tauri desktop shell and narrow command adapters. It must not duplicate storage rules. `src-tauri/src/diagnostics.rs` provides the local rotating logger; the Settings diagnostics panel consumes privacy-safe status and report commands from the shell.

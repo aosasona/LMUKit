@@ -13,7 +13,7 @@ import { useState } from "react";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
 import type { InputMode } from "../components/InputModeSwitch";
 import { WheelImage } from "../components/WheelImage";
-import type { Profile } from "../models";
+import type { Profile, VirtualRoutingStatus } from "../models";
 
 type Props = {
   active?: Profile;
@@ -24,6 +24,7 @@ type Props = {
   profiles: Profile[];
   busy: boolean;
   inputMode: InputMode;
+  routing: VirtualRoutingStatus;
   onNavigate: (page: "profiles" | "bindings" | "game") => void;
   onActivate: (profile: Profile) => void;
   onUpdate: (profile: Profile) => void;
@@ -39,6 +40,7 @@ export function OverviewPage({
   profiles,
   busy,
   inputMode,
+  routing,
   onNavigate,
   onActivate,
   onUpdate,
@@ -46,6 +48,8 @@ export function OverviewPage({
 }: Props) {
   const legacyMode = inputMode === "legacy";
   const hero = legacyMode ? (active ?? selected) : (selected ?? active);
+  const heroIsLive =
+    !legacyMode && routing.active && routing.profileId === hero?.id;
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   return (
     <>
@@ -65,7 +69,9 @@ export function OverviewPage({
               {hero && (
                 <button
                   className="primary"
-                  disabled={busy || (legacyMode && hero.id === active?.id)}
+                  disabled={
+                    busy || (legacyMode && hero.id === active?.id) || heroIsLive
+                  }
                   onClick={() => onActivate(hero)}
                 >
                   <Zap size={17} fill="currentColor" />
@@ -73,7 +79,9 @@ export function OverviewPage({
                     ? hero.id === active?.id
                       ? "Prepared"
                       : "Use this profile"
-                    : "Use this profile live"}
+                    : heroIsLive
+                      ? "Live remapping active"
+                      : "Use this profile live"}
                 </button>
               )}
               {legacyMode && active?.differsFromLive && activeDirty && (
@@ -131,8 +139,8 @@ export function OverviewPage({
           </div>
           <div>
             <span>Active bindings</span>
-            <strong>{active?.bindingCount ?? 0}</strong>
-            <small>{active?.devices.length ?? 0} input devices</small>
+            <strong>{hero?.bindingCount ?? 0}</strong>
+            <small>{hero?.devices.length ?? 0} input devices</small>
           </div>
         </section>
         <section className="metric-card">
@@ -144,7 +152,13 @@ export function OverviewPage({
             <strong
               className={legacyMode && activeDirty ? "word warning" : "word"}
             >
-              {legacyMode ? (activeDirty ? "Changed" : "Synced") : "Inactive"}
+              {legacyMode
+                ? activeDirty
+                  ? "Changed"
+                  : "Synced"
+                : routing.active
+                  ? "Live"
+                  : "Inactive"}
             </strong>
             <small>
               {!legacyMode

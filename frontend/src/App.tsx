@@ -15,6 +15,7 @@ import type {
   Page,
   Profile,
   Snapshot,
+  VirtualRoutingStatus,
   Wheel,
 } from "./models";
 import { emptySnapshot } from "./models";
@@ -30,6 +31,17 @@ import { WheelsPage } from "./pages/WheelsPage";
 export default function App() {
   const [page, setPage] = useState<Page>("home");
   const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot);
+  const [routing, setRouting] = useState<VirtualRoutingStatus>({
+    active: false,
+    profileId: null,
+    profileName: null,
+    identity: null,
+    routedEventCount: 0,
+    lastEvent: null,
+    error: null,
+    selectionReason: null,
+    activeEncoderModes: [],
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,6 +49,7 @@ export default function App() {
   const [notice, setNotice] = useState("Ready");
   const [wheelImageUrl, setWheelImageUrl] = useState<string | null>(null);
   const wheelImageObjectUrl = useRef<string | null>(null);
+  const lastLiveProfileId = useRef<string | null>(null);
   const [wheelImageRevision, setWheelImageRevision] = useState(0);
   const [bindings, setBindings] = useState<Binding[]>([]);
   const [profileDocument, setProfileDocument] = useState<JsonObject | null>(
@@ -97,12 +110,18 @@ export default function App() {
   };
   async function refresh() {
     try {
-      const next = await invoke<Snapshot>("snapshot");
+      const [next, nextRouting] = await Promise.all([
+        invoke<Snapshot>("snapshot"),
+        invoke<VirtualRoutingStatus>("virtual_routing_status"),
+      ]);
       setSnapshot(next);
+      setRouting(nextRouting);
       setSelectedId((current) =>
         next.profiles.some((profile) => profile.id === current)
           ? current
-          : (next.activeProfile ?? next.profiles[0]?.id ?? null),
+          : next.inputMode === "virtual" && nextRouting.active
+            ? (nextRouting.profileId ?? next.profiles[0]?.id ?? null)
+            : (next.activeProfile ?? next.profiles[0]?.id ?? null),
       );
     } catch (error) {
       setNotice(String(error));
@@ -113,6 +132,21 @@ export default function App() {
   useEffect(() => {
     void refresh();
   }, []);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void invoke<VirtualRoutingStatus>("virtual_routing_status")
+        .then(setRouting)
+        .catch(() => undefined);
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    const nextLiveProfileId = routing.active ? routing.profileId : null;
+    if (nextLiveProfileId && nextLiveProfileId !== lastLiveProfileId.current) {
+      setSelectedId(nextLiveProfileId);
+    }
+    lastLiveProfileId.current = nextLiveProfileId;
+  }, [routing.active, routing.profileId]);
   useEffect(() => {
     const switcher = listen("open-profile-switcher", () => {
       setSwitcherOpen(true);
@@ -130,7 +164,15 @@ export default function App() {
     );
     const virtualAutoStart = listen<string>(
       "virtual-autostart-result",
-      (event) => setNotice(event.payload),
+      (event) => {
+        setNotice(event.payload);
+        void invoke<VirtualRoutingStatus>("virtual_routing_status")
+          .then((next) => {
+            setRouting(next);
+            if (next.active && next.profileId) setSelectedId(next.profileId);
+          })
+          .catch(() => undefined);
+      },
     );
     return () => {
       void switcher.then((unlisten) => unlisten());
@@ -298,7 +340,11 @@ export default function App() {
       setSelectedId(profile.id);
       if (snapshot.inputMode === "virtual") {
         setNotice(`Starting live remapping for ${profile.name}…`);
-        await invoke("start_virtual_routing", { profileId: profile.id });
+        setRouting(
+          await invoke<VirtualRoutingStatus>("start_virtual_routing", {
+            profileId: profile.id,
+          }),
+        );
         setNotice(`${profile.name} is now remapping live.`);
       } else {
         setNotice(`Preparing ${profile.name}…`);
@@ -312,6 +358,11 @@ export default function App() {
     void withBusy(async () => {
       await invoke("set_input_mode", { inputMode });
       setSnapshot((current) => ({ ...current, inputMode }));
+      if (inputMode === "legacy") {
+        setRouting(
+          await invoke<VirtualRoutingStatus>("virtual_routing_status"),
+        );
+      }
       setNotice(
         inputMode === "virtual"
           ? "Virtual Input selected. Choose a mapped profile to start live remapping."
@@ -669,6 +720,7 @@ export default function App() {
                 profiles={snapshot.profiles}
                 busy={busy}
                 inputMode={snapshot.inputMode}
+                routing={routing}
                 onDismissDirty={() =>
                   setDismissedDirtyProfileId(active?.id ?? null)
                 }
@@ -689,6 +741,7 @@ export default function App() {
                 query={query}
                 busy={busy}
                 inputMode={snapshot.inputMode}
+                routing={routing}
                 onDismissDirty={() =>
                   setDismissedDirtyProfileId(active?.id ?? null)
                 }

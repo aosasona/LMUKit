@@ -14,7 +14,7 @@ import { ProfileTagPicker } from "../components/ProfileTagPicker";
 import { ProfileVirtualMappings } from "../components/ProfileVirtualMappings";
 import { WheelImage } from "../components/WheelImage";
 import { SearchSelect } from "../components/SearchSelect";
-import type { Device, Profile, Wheel } from "../models";
+import type { Device, Profile, VirtualRoutingStatus, Wheel } from "../models";
 
 const DEFAULT_CLASSES = ["GT3", "GTE", "LMP3", "LMP2", "HY"] as const;
 
@@ -39,6 +39,7 @@ type Props = {
   query: string;
   busy: boolean;
   inputMode: InputMode;
+  routing: VirtualRoutingStatus;
   loading: boolean;
   setQuery: (value: string) => void;
   setSelectedId: (value: string) => void;
@@ -74,6 +75,7 @@ export function ProfilesPage(props: Props) {
     query,
     busy,
     inputMode,
+    routing,
     loading,
     setQuery,
     setSelectedId,
@@ -92,6 +94,8 @@ export function ProfilesPage(props: Props) {
     onDismissDirty,
   } = props;
   const legacyMode = inputMode === "legacy";
+  const selectedIsLive =
+    !legacyMode && routing.active && routing.profileId === selected?.id;
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [captureName, setCaptureName] = useState("");
   const [wheelFilter, setWheelFilter] = useState<string | null>(null);
@@ -300,7 +304,10 @@ export function ProfilesPage(props: Props) {
                         ? "Prepare for next LMU launch"
                         : "Use this profile live",
                       hidden:
-                        legacyMode && selected.id === activeId && !activeDirty,
+                        (legacyMode &&
+                          selected.id === activeId &&
+                          !activeDirty) ||
+                        selectedIsLive,
                       onSelect: () => onActivate(selected),
                     },
                     {
@@ -441,7 +448,8 @@ export function ProfilesPage(props: Props) {
             </div>
             <div className="profile-activation-bar">
               <div>
-                {legacyMode && selected.id === activeId && !activeDirty ? (
+                {(legacyMode && selected.id === activeId && !activeDirty) ||
+                selectedIsLive ? (
                   <CircleCheck />
                 ) : (
                   <Play />
@@ -452,12 +460,16 @@ export function ProfilesPage(props: Props) {
                       ? selected.id === activeId && !activeDirty
                         ? "Profile ready"
                         : "Prepare this profile"
-                      : "Use this profile live"}
+                      : selectedIsLive
+                        ? "Live remapping active"
+                        : "Use this profile live"}
                   </strong>
                   <small>
                     {legacyMode
                       ? "LMU will load it the next time the game starts."
-                      : "LMUKit will route its assigned wheel buttons through vJoy."}
+                      : selectedIsLive
+                        ? `${routing.identity ?? "vJoy"} · ${routing.selectionReason ?? "Active profile"}`
+                        : "LMUKit will route its assigned wheel buttons through vJoy."}
                   </small>
                 </span>
               </div>
@@ -465,7 +477,8 @@ export function ProfilesPage(props: Props) {
                 className="primary"
                 disabled={
                   busy ||
-                  (legacyMode && selected.id === activeId && !activeDirty)
+                  (legacyMode && selected.id === activeId && !activeDirty) ||
+                  selectedIsLive
                 }
                 onClick={() => onActivate(selected)}
               >
@@ -475,7 +488,9 @@ export function ProfilesPage(props: Props) {
                       ? "Restore saved profile"
                       : "Currently active"
                     : "Activate for next LMU launch"
-                  : "Start live remapping"}
+                  : selectedIsLive
+                    ? "Currently live"
+                    : "Start live remapping"}
               </button>
             </div>
           </aside>
