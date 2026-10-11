@@ -14,7 +14,8 @@ pub mod direct_input;
 pub mod vjoy;
 
 pub use engine::{
-    LogicalAction, MappingEngine, PhysicalButton, ProfileBinding, ProfileMapping, VirtualLayout,
+    EncoderGroup, EncoderMode, LogicalAction, MappingEngine, PhysicalButton, ProfileBinding,
+    ProfileMapping, VirtualLayout,
 };
 
 /// Stable information about the virtual device acquired by a backend.

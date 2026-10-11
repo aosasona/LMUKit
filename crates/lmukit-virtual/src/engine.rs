@@ -109,6 +109,73 @@ pub struct ProfileBinding {
     action: LogicalAction,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EncoderMode {
+    name: String,
+    clockwise_action: LogicalAction,
+    counterclockwise_action: LogicalAction,
+}
+
+impl EncoderMode {
+    pub fn new(
+        name: impl Into<String>,
+        clockwise_action: LogicalAction,
+        counterclockwise_action: LogicalAction,
+    ) -> Result<Self> {
+        let name = name.into();
+        ensure!(
+            !name.trim().is_empty(),
+            "encoder mode name must not be empty"
+        );
+        Ok(Self {
+            name,
+            clockwise_action,
+            counterclockwise_action,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EncoderGroup {
+    name: String,
+    clockwise: PhysicalButton,
+    counterclockwise: PhysicalButton,
+    cycle: PhysicalButton,
+    modes: Vec<EncoderMode>,
+}
+
+impl EncoderGroup {
+    pub fn new(
+        name: impl Into<String>,
+        clockwise: PhysicalButton,
+        counterclockwise: PhysicalButton,
+        cycle: PhysicalButton,
+        modes: Vec<EncoderMode>,
+    ) -> Result<Self> {
+        let name = name.into();
+        ensure!(!name.trim().is_empty(), "encoder name must not be empty");
+        ensure!(!modes.is_empty(), "encoder must have at least one mode");
+        ensure!(
+            clockwise != counterclockwise && clockwise != cycle && counterclockwise != cycle,
+            "encoder directions and mode control must use different physical buttons"
+        );
+        let mut mode_names = BTreeSet::new();
+        for mode in &modes {
+            ensure!(
+                mode_names.insert(mode.name.to_lowercase()),
+                "encoder mode names must be unique"
+            );
+        }
+        Ok(Self {
+            name,
+            clockwise,
+            counterclockwise,
+            cycle,
+            modes,
+        })
+    }
+}
+
 impl ProfileBinding {
     pub fn new(
         trigger: PhysicalButton,
@@ -138,6 +205,7 @@ struct BindingInput {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ProfileMapping {
     actions: BTreeMap<BindingInput, LogicalAction>,
+    encoder_groups: BTreeMap<String, EncoderGroup>,
 }
 
 impl ProfileMapping {
@@ -165,20 +233,57 @@ impl ProfileMapping {
             );
             actions.insert(input, binding.action);
         }
-        Ok(Self { actions })
+        Ok(Self {
+            actions,
+            encoder_groups: BTreeMap::new(),
+        })
+    }
+
+    pub fn with_encoder_groups(
+        mut self,
+        groups: impl IntoIterator<Item = EncoderGroup>,
+    ) -> Result<Self> {
+        let mut encoder_inputs = BTreeSet::new();
+        for group in groups {
+            let key = group.name.to_lowercase();
+            ensure!(
+                !self.encoder_groups.contains_key(&key),
+                "encoder names must be unique"
+            );
+            for source in [&group.clockwise, &group.counterclockwise, &group.cycle] {
+                ensure!(
+                    !self.actions.keys().any(|input| {
+                        &input.trigger == source || input.modifiers.contains(source)
+                    }),
+                    "encoder controls cannot also be regular profile controls"
+                );
+                ensure!(
+                    encoder_inputs.insert(source.clone()),
+                    "encoder controls cannot be shared between encoders"
+                );
+            }
+            self.encoder_groups.insert(key, group);
+        }
+        Ok(self)
     }
 
     fn references(&self, source: &PhysicalButton) -> bool {
         self.actions
             .keys()
             .any(|input| &input.trigger == source || input.modifiers.contains(source))
+            || self.encoder_groups.values().any(|group| {
+                &group.clockwise == source
+                    || &group.counterclockwise == source
+                    || &group.cycle == source
+            })
     }
 
     fn active_bindings(
         &self,
         pressed: &BTreeSet<PhysicalButton>,
-    ) -> BTreeMap<BindingInput, &LogicalAction> {
-        let mut selected = BTreeMap::<PhysicalButton, (&BindingInput, &LogicalAction)>::new();
+        encoder_modes: &BTreeMap<String, usize>,
+    ) -> BTreeMap<BindingInput, LogicalAction> {
+        let mut selected = BTreeMap::<PhysicalButton, (BindingInput, LogicalAction)>::new();
         for (input, action) in &self.actions {
             if !pressed.contains(&input.trigger)
                 || !input
@@ -190,16 +295,29 @@ impl ProfileMapping {
             }
             let replace = selected.get(&input.trigger).is_none_or(|(current, _)| {
                 input.modifiers.len() > current.modifiers.len()
-                    || (input.modifiers.len() == current.modifiers.len() && input > *current)
+                    || (input.modifiers.len() == current.modifiers.len() && input > current)
             });
             if replace {
-                selected.insert(input.trigger.clone(), (input, action));
+                selected.insert(input.trigger.clone(), (input.clone(), action.clone()));
             }
         }
-        selected
-            .into_values()
-            .map(|(input, action)| (input.clone(), action))
-            .collect()
+        for (key, group) in &self.encoder_groups {
+            let mode_index = encoder_modes.get(key).copied().unwrap_or(0);
+            let mode = &group.modes[mode_index % group.modes.len()];
+            for (trigger, action) in [
+                (&group.clockwise, &mode.clockwise_action),
+                (&group.counterclockwise, &mode.counterclockwise_action),
+            ] {
+                if pressed.contains(trigger) {
+                    let input = BindingInput {
+                        trigger: trigger.clone(),
+                        modifiers: BTreeSet::new(),
+                    };
+                    selected.insert(trigger.clone(), (input, action.clone()));
+                }
+            }
+        }
+        selected.into_values().collect()
     }
 
     fn validate_layout(&self, layout: &VirtualLayout) -> Result<()> {
@@ -209,6 +327,19 @@ impl ProfileMapping {
                 "profile action '{}' is missing from the virtual layout",
                 action.as_str()
             );
+        }
+        for mode in self
+            .encoder_groups
+            .values()
+            .flat_map(|group| group.modes.iter())
+        {
+            for action in [&mode.clockwise_action, &mode.counterclockwise_action] {
+                ensure!(
+                    layout.button_for(action).is_some(),
+                    "encoder action '{}' is missing from the virtual layout",
+                    action.as_str()
+                );
+            }
         }
         Ok(())
     }
@@ -227,6 +358,7 @@ pub struct MappingEngine<B: VirtualInputBackend> {
     pressed_sources: BTreeSet<PhysicalButton>,
     active_bindings: BTreeMap<BindingInput, u32>,
     output_owners: BTreeMap<u32, BTreeSet<BindingInput>>,
+    encoder_modes: BTreeMap<String, usize>,
     connected: bool,
 }
 
@@ -252,6 +384,7 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
             pressed_sources: BTreeSet::new(),
             active_bindings: BTreeMap::new(),
             output_owners: BTreeMap::new(),
+            encoder_modes: BTreeMap::new(),
             connected: true,
         })
     }
@@ -269,6 +402,14 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
         } else {
             self.pressed_sources.remove(source)
         };
+        if changed && pressed {
+            for (key, group) in &self.profile.encoder_groups {
+                if &group.cycle == source {
+                    let current = self.encoder_modes.entry(key.clone()).or_default();
+                    *current = (*current + 1) % group.modes.len();
+                }
+            }
+        }
         if changed {
             self.reconcile()?;
         }
@@ -282,6 +423,7 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
         self.pressed_sources.clear();
         self.active_bindings.clear();
         self.output_owners.clear();
+        self.encoder_modes.clear();
         self.profile = profile;
         Ok(())
     }
@@ -292,6 +434,7 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
         self.pressed_sources.clear();
         self.active_bindings.clear();
         self.output_owners.clear();
+        self.encoder_modes.clear();
         self.connected = false;
         Ok(())
     }
@@ -300,15 +443,26 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
         &self.backend
     }
 
+    pub fn active_encoder_modes(&self) -> Vec<(&str, &str)> {
+        self.profile
+            .encoder_groups
+            .iter()
+            .map(|(key, group)| {
+                let index = self.encoder_modes.get(key).copied().unwrap_or(0);
+                (group.name.as_str(), group.modes[index].name.as_str())
+            })
+            .collect()
+    }
+
     fn reconcile(&mut self) -> Result<()> {
         let desired_bindings = self
             .profile
-            .active_bindings(&self.pressed_sources)
+            .active_bindings(&self.pressed_sources, &self.encoder_modes)
             .into_iter()
             .map(|(input, action)| {
                 let button = self
                     .layout
-                    .button_for(action)
+                    .button_for(&action)
                     .expect("profile mappings are validated against the layout");
                 (input, button)
             })
@@ -347,7 +501,8 @@ impl<B: VirtualInputBackend> Drop for MappingEngine<B> {
 #[cfg(test)]
 mod tests {
     use super::{
-        LogicalAction, MappingEngine, PhysicalButton, ProfileBinding, ProfileMapping, VirtualLayout,
+        EncoderGroup, EncoderMode, LogicalAction, MappingEngine, PhysicalButton, ProfileBinding,
+        ProfileMapping, VirtualLayout,
     };
     use crate::MockVirtualBackend;
 
@@ -554,5 +709,72 @@ mod tests {
     fn rejects_a_trigger_used_as_its_own_modifier() {
         let trigger = button("gt-neo", 5);
         assert!(ProfileBinding::new(trigger.clone(), [trigger], action("pit_limiter")).is_err());
+    }
+
+    #[test]
+    fn cycles_encoder_modes_without_emitting_the_mode_control() {
+        let encoder_layout = VirtualLayout::new([
+            (action("front_arb_increase"), 1),
+            (action("front_arb_decrease"), 2),
+            (action("tc2_increase"), 3),
+            (action("tc2_decrease"), 4),
+        ])
+        .unwrap();
+        let clockwise = button("gt-neo", 10);
+        let counterclockwise = button("gt-neo", 11);
+        let cycle = button("gt-neo", 12);
+        let mapping = ProfileMapping::default()
+            .with_encoder_groups([EncoderGroup::new(
+                "Encoder 1",
+                clockwise.clone(),
+                counterclockwise,
+                cycle.clone(),
+                vec![
+                    EncoderMode::new(
+                        "Front ARB",
+                        action("front_arb_increase"),
+                        action("front_arb_decrease"),
+                    )
+                    .unwrap(),
+                    EncoderMode::new("TC2", action("tc2_increase"), action("tc2_decrease"))
+                        .unwrap(),
+                ],
+            )
+            .unwrap()])
+            .unwrap();
+        let mut engine =
+            MappingEngine::connect(MockVirtualBackend::new(8), encoder_layout, mapping).unwrap();
+
+        engine.handle_button(&clockwise, true).unwrap();
+        engine.handle_button(&clockwise, false).unwrap();
+        engine.handle_button(&cycle, true).unwrap();
+        engine.handle_button(&cycle, true).unwrap();
+        engine.handle_button(&cycle, false).unwrap();
+        engine.handle_button(&clockwise, true).unwrap();
+        engine.handle_button(&clockwise, false).unwrap();
+
+        assert_eq!(
+            engine.backend().events(),
+            [(1, true), (1, false), (3, true), (3, false)]
+        );
+        assert_eq!(engine.active_encoder_modes(), [("Encoder 1", "TC2")]);
+    }
+
+    #[test]
+    fn rejects_shared_or_regular_encoder_controls() {
+        let clockwise = button("gt-neo", 10);
+        let mode =
+            EncoderMode::new("Front ARB", action("pit_limiter"), action("headlights")).unwrap();
+        let group = EncoderGroup::new(
+            "Encoder 1",
+            clockwise.clone(),
+            button("gt-neo", 11),
+            button("gt-neo", 12),
+            vec![mode],
+        )
+        .unwrap();
+        let mapping = profile(&[("gt-neo", 10, "pit_limiter")]);
+
+        assert!(mapping.with_encoder_groups([group]).is_err());
     }
 }
