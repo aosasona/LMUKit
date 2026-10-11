@@ -678,22 +678,29 @@ fn start_virtual_routing(
 #[tauri::command]
 fn start_default_virtual_routing(
     wheel_id: Uuid,
-    class_tag: String,
+    class_tag: Option<String>,
     app_state: State<'_, AppState>,
     routing_state: State<'_, VirtualRoutingState>,
 ) -> Result<VirtualRoutingStatus, String> {
     let (profile_id, reason) = {
         let store = app_state.0.lock().map_err(|error| error.to_string())?;
         let (profile, exact) = store
-            .resolve_virtual_profile(wheel_id, Some(&class_tag))
+            .resolve_virtual_profile(wheel_id, class_tag.as_deref())
             .map_err(|error| error.to_string())?
             .ok_or_else(|| {
-                format!("No {class_tag} default or wheel fallback is configured for this wheel.")
+                class_tag.as_ref().map_or_else(
+                    || "No wheel fallback is configured for this wheel.".to_owned(),
+                    |class_tag| {
+                        format!(
+                            "No {class_tag} default or wheel fallback is configured for this wheel."
+                        )
+                    },
+                )
             })?;
-        let reason = if exact {
-            format!("{class_tag} default")
-        } else {
-            format!("Wheel fallback · no {class_tag} default")
+        let reason = match (exact, &class_tag) {
+            (true, Some(class_tag)) => format!("{class_tag} default"),
+            (false, Some(class_tag)) => format!("Wheel fallback · no {class_tag} default"),
+            (_, None) => "Wheel fallback".to_owned(),
         };
         (profile.id, reason)
     };

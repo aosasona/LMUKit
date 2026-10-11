@@ -22,6 +22,8 @@ import type {
   Wheel,
 } from "../models";
 
+const WHEEL_FALLBACK = "__wheel_fallback__";
+
 export function VirtualInputPage({
   busy,
   profiles,
@@ -48,7 +50,7 @@ export function VirtualInputPage({
   const [lastPulse, setLastPulse] = useState<VirtualButtonPulse | null>(null);
   const [routingBusy, setRoutingBusy] = useState(false);
   const [selectedWheelId, setSelectedWheelId] = useState("");
-  const [selectedClass, setSelectedClass] = useState("");
+  const [selectedClass, setSelectedClass] = useState(WHEEL_FALLBACK);
   const [routing, setRouting] = useState<VirtualRoutingStatus>({
     active: false,
     profileId: null,
@@ -78,12 +80,11 @@ export function VirtualInputPage({
   }, [selectedWheelId, wheels]);
 
   useEffect(() => {
-    if (!availableClasses.length) {
-      setSelectedClass("");
-      return;
-    }
-    if (!availableClasses.includes(selectedClass)) {
-      setSelectedClass(availableClasses[0]);
+    if (
+      selectedClass !== WHEEL_FALLBACK &&
+      !availableClasses.includes(selectedClass)
+    ) {
+      setSelectedClass(WHEEL_FALLBACK);
     }
   }, [availableClassesKey, selectedClass]);
 
@@ -277,17 +278,18 @@ export function VirtualInputPage({
   };
 
   const startDefaultRouting = async () => {
-    if (!selectedWheelId || !selectedClass) return;
+    if (!selectedWheelId) return;
+    const classTag = selectedClass === WHEEL_FALLBACK ? null : selectedClass;
     setRoutingBusy(true);
     setError(null);
     try {
       const next = await invoke<VirtualRoutingStatus>(
         "start_default_virtual_routing",
-        { wheelId: selectedWheelId, classTag: selectedClass },
+        { wheelId: selectedWheelId, classTag },
       );
       setRouting(next);
       onNotice(
-        `${next.profileName} selected from the ${selectedClass} default.`,
+        `${next.profileName} selected from the ${classTag ?? "wheel fallback"}.`,
       );
     } catch (reason) {
       setError(String(reason));
@@ -513,6 +515,7 @@ export function VirtualInputPage({
               value={selectedClass}
               onChange={(event) => setSelectedClass(event.target.value)}
             >
+              <option value={WHEEL_FALLBACK}>Generic / other</option>
               {availableClasses.map((classTag) => (
                 <option value={classTag} key={classTag}>
                   {classTag}
