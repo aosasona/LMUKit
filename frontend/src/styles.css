@@ -5084,6 +5084,43 @@ textarea,
   width: 100%;
   min-height: 38px;
 }
+.virtual-default-switcher select {
+  appearance: none;
+  padding: 0 36px 0 11px;
+  border: 1px solid #353a35;
+  outline: 0;
+  background-color: #111210;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #9daa9f 50%),
+    linear-gradient(135deg, #9daa9f 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 16px,
+    calc(100% - 11px) 16px;
+  background-repeat: no-repeat;
+  background-size: 5px 5px;
+  color: #e1e8e3;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+.virtual-default-switcher select:hover {
+  border-color: #59644e;
+  background-color: #161814;
+}
+.virtual-default-switcher select:focus-visible {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 2px rgba(198, 243, 107, 0.16);
+}
+.virtual-default-switcher select:disabled {
+  color: #68716c;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.virtual-default-switcher select option {
+  background: #151615;
+  color: #e1e8e3;
+}
 .virtual-default-switcher button {
   white-space: nowrap;
 }
