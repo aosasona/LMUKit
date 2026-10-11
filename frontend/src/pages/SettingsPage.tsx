@@ -195,6 +195,21 @@ export function SettingsPage(props: Props) {
       setDiagnosticsBusy(false);
     }
   };
+  const updateLogRetention = async (days: number) => {
+    setDiagnosticsBusy(true);
+    setDiagnosticsMessage(null);
+    try {
+      await invoke("set_log_retention_days", { retentionDays: days });
+      await loadDiagnostics();
+      setDiagnosticsMessage(
+        `Daily logs will be kept for ${days} day${days === 1 ? "" : "s"}.`,
+      );
+    } catch (error) {
+      setDiagnosticsMessage(String(error));
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  };
 
   const previewScale = (scale: number) => {
     const normalized = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
@@ -511,6 +526,39 @@ export function SettingsPage(props: Props) {
                     <Download />
                   )}
                   Export report
+                </button>
+              </div>
+            </div>
+            <div className="diagnostic-retention">
+              <span>
+                <small>Log retention</small>
+                <strong>Keep daily logs for</strong>
+              </span>
+              <div>
+                <button
+                  type="button"
+                  aria-label="Keep logs for fewer days"
+                  disabled={
+                    diagnosticsBusy || diagnostics.logRetentionDays <= 1
+                  }
+                  onClick={() =>
+                    void updateLogRetention(diagnostics.logRetentionDays - 1)
+                  }
+                >
+                  <Minus />
+                </button>
+                <strong>{diagnostics.logRetentionDays} days</strong>
+                <button
+                  type="button"
+                  aria-label="Keep logs for more days"
+                  disabled={
+                    diagnosticsBusy || diagnostics.logRetentionDays >= 30
+                  }
+                  onClick={() =>
+                    void updateLogRetention(diagnostics.logRetentionDays + 1)
+                  }
+                >
+                  <Plus />
                 </button>
               </div>
             </div>

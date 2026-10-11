@@ -146,6 +146,7 @@ export type DiagnosticStatus = {
   logDirectory: string;
   currentLogSize: number;
   retainedLogFiles: number;
+  logRetentionDays: number;
   recentErrors: string[];
   activeProfile: string | null;
   inputMode: string;
