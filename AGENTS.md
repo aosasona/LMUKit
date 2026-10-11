@@ -11,7 +11,7 @@ LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate util
 - `frontend/src/App.tsx` composes the desktop shell and coordinates Tauri-backed workspace actions.
 - `frontend/src/pages/` contains one component per workspace page, `frontend/src/components/` contains shared shell and editor controls, and `frontend/src/models.ts` owns the frontend command payload types. Keep page-specific presentation out of `App.tsx`. The profile editor composes binding capture, device-grouped FFB controls, and the read-only JSON preview. Virtual button assignment and per-profile live-routing controls belong to the selected profile's detail pane through `ProfileVirtualMappings`; the Virtual Input page owns shared vJoy setup and global routing status only.
 - `frontend/src/styles.css` owns the shared visual system. Format TypeScript, JSX, and CSS with Prettier after UI changes.
-- `src-tauri/` owns the Tauri desktop shell and narrow command adapters. It must not duplicate storage rules.
+- `src-tauri/` owns the Tauri desktop shell and narrow command adapters. It must not duplicate storage rules. `src-tauri/src/diagnostics.rs` provides the local rotating logger; the Settings diagnostics panel consumes privacy-safe status and report commands from the shell.
 - `crates/lmukit-core/` exposes compatibility-sensitive Rust behavior independently of the UI runtime.
 - `crates/lmukit-virtual/` owns the button-only mapping engine, stable logical-action layout, hold-modifier precedence, profile-local digital encoder modes, bounded serialised encoder pulses, replaceable virtual-output boundary, mock backend, continuous DirectInput button monitor, experimental runtime-loaded vJoy adapter, and isolated Windows feasibility probe. The engine selects the most-specific satisfied chord per trigger and uses physical-source ownership so one source cannot release an output still held by another. Encoder detents queue 32 ms virtual presses separated by at least 8 ms released; mode controls cycle once per press and emit no virtual output. The engine must clear queued pulses, reconcile modifier changes, and release outputs on profile changes and shutdown. The crate must not install a driver or alter LMU configuration.
 - vJoy is the selected external dependency for Virtual Input Mode. Users install and configure it explicitly; LMUKit must not bundle, install, update, or silently configure the driver. Legacy JSON mode must remain usable without vJoy.
@@ -40,6 +40,7 @@ Keep filesystem and parsing behavior in `lmukit-core`; keep platform input detai
 - Do not silently edit Steam configuration. Generate and copy an explicit launch option for the user.
 - VR launch mode must append LMU's native `+XR` argument so it uses OpenXR.
 - LMU does not hot-reload `direct input.json`. Profile activation while LMU is closed prepares the next launch; do not present file replacement as an in-session switch.
+- Diagnostic logs may record lifecycle failures and local details needed for troubleshooting, but must not record the input-event stream. Exported diagnostic reports must omit configured paths, DirectInput device-instance identifiers, and raw error text that may contain either.
 
 ## LMU binding format
 

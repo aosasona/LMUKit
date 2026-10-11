@@ -123,6 +123,6 @@ The first context phase will therefore remain manual. Automatic class selection 
 3. **Class-aware resolution:** wheel/class default references and wheel fallback using existing class tags, with referential-integrity and migration tests.
 4. **Advanced controls:** hold modifiers, unified learn-input capture, named digital encoder modes, serialised minimum-duration encoder pulses, and editor conflict diagnostics are implemented. Layers remain.
 5. **Verified car context:** provider backed only by observed LMU data, debounced selection, manual override, Resume Auto, and stale/conflict diagnostics.
-6. **Rim discovery and polish:** inspector, redacted diagnostics, conservative identity providers, setup wizard, latency/recovery diagnostics, and packaging guidance.
+6. **Rim discovery and polish:** rotating lifecycle logs and a privacy-redacted diagnostics panel/report are implemented. A fuller device inspector, conservative identity providers, setup wizard, latency/recovery diagnostics, and packaging guidance remain.
 
 Each phase must preserve legacy JSON switching and its regression tests. Hardware-dependent gates are reported as manual results, never inferred from compilation or mocks.

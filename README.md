@@ -27,6 +27,7 @@ _The screenshot uses isolated synthetic profile data; no personal LMU files are 
 - Configure Desktop or native OpenXR (`+XR`) launching and start LMUKit, LMUFFB, Crew Chief, RaceLab, or custom companion applications through one explicit Steam launch option.
 - Autosave LMU paths, launch mode, and companion-app setup.
 - Scale the entire interface from Settings.
+- Inspect virtual-input health and attached controllers, open rotating local logs, and export a privacy-redacted diagnostic report from Settings.
 - Guide one-time vJoy binding setup, save LMU's named button layout, learn physical buttons and modifier combinations per profile, assign wheel/class defaults, and switch experimental live DirectInput-to-vJoy routing without recreating the virtual controller.
 
 LMUKit stores profiles, managed wheel images, settings, and timestamped recovery backups in the current Windows user's application-data directory. Use the **Folder** button on Profiles to open the exact location.
@@ -94,6 +95,12 @@ Open **Settings → LMU and companion apps**, choose **Desktop** or **VR (OpenXR
 **Steam → Le Mans Ultimate → Properties → Launch Options**
 
 VR mode passes LMU's native `+XR` argument. The launcher avoids opening duplicate LMUKit or companion-app processes. LMUKit never edits Steam configuration silently.
+
+### Diagnostics and logs
+
+Open **Settings → Diagnostics and logs** to check vJoy routing health, the active profile and input mode, and privacy-safe summaries of attached DirectInput controllers. The panel can open the log folder or export a diagnostic JSON report suitable for a bug report.
+
+LMUKit keeps local logs in its application-data `logs` folder. The active log rotates at 1 MiB and retains four older files. Normal logs record application and routing lifecycle events, not individual button presses. Exported reports omit configured filesystem paths and DirectInput device-instance identifiers; review any report before sharing it.
 
 ## Development
 
