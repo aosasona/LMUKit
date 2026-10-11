@@ -3462,6 +3462,18 @@ textarea,
 .profile-mapping-sources svg {
   width: 13px;
 }
+.profile-mapping-modifier {
+  color: var(--teal);
+  white-space: nowrap;
+}
+.profile-mapping-assign-actions {
+  display: grid;
+  gap: 5px;
+}
+.profile-mapping-assign-actions button {
+  justify-content: center;
+  white-space: nowrap;
+}
 .profile-mapping-notice,
 .profile-mapping-empty {
   margin-top: 13px;

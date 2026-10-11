@@ -44,7 +44,10 @@ export function ProfileVirtualMappings({
   const [mappings, setMappings] = useState<VirtualProfileMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [migrating, setMigrating] = useState(false);
-  const [learningAction, setLearningAction] = useState<string | null>(null);
+  const [learning, setLearning] = useState<{
+    action: string;
+    kind: "button" | "chord";
+  } | null>(null);
   const [routingBusy, setRoutingBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "assigned" | "unassigned">(
@@ -79,6 +82,12 @@ export function ProfileVirtualMappings({
           mapping.deviceId,
           `button ${mapping.physicalButton}`,
           `b${mapping.physicalButton}`,
+          ...mapping.modifiers.flatMap((modifier) => [
+            modifier.deviceName,
+            modifier.deviceId,
+            `modifier button ${modifier.physicalButton}`,
+            `modifier b${modifier.physicalButton}`,
+          ]),
         ]),
       ].join(" "),
     );
@@ -142,18 +151,26 @@ export function ProfileVirtualMappings({
     return () => window.removeEventListener("keydown", closeOnEscape);
   });
 
-  const learn = async (action: string) => {
+  const learn = async (action: string, kind: "button" | "chord") => {
     if (routingActive) return;
-    setLearningAction(action);
+    setLearning({ action, kind });
     setError(null);
-    onNotice(`Press the physical button for ${action}.`);
+    onNotice(
+      kind === "chord"
+        ? `Hold the modifier, then press the trigger for ${action}.`
+        : `Press the physical button for ${action}.`,
+    );
     try {
       const next = await invoke<VirtualProfileMapping[]>(
-        "learn_virtual_profile_button",
+        kind === "chord"
+          ? "learn_virtual_profile_chord"
+          : "learn_virtual_profile_button",
         { profileId: profile.id, logicalAction: action },
       );
       setMappings(next);
-      onNotice(`${action} mapped to the pressed physical button.`);
+      onNotice(
+        `${action} mapped to the pressed ${kind === "chord" ? "button chord" : "physical button"}.`,
+      );
     } catch (reason) {
       const message = String(reason);
       if (!message.toLowerCase().includes("cancelled")) {
@@ -161,19 +178,19 @@ export function ProfileVirtualMappings({
         onNotice(message);
       }
     } finally {
-      setLearningAction(null);
+      setLearning(null);
     }
   };
 
   const cancelLearning = async () => {
     await invoke("cancel_binding_lookup");
-    setLearningAction(null);
+    setLearning(null);
     onNotice("Button learning cancelled.");
   };
 
   const closeEditor = async () => {
-    if (learningAction) await invoke("cancel_binding_lookup");
-    setLearningAction(null);
+    if (learning) await invoke("cancel_binding_lookup");
+    setLearning(null);
     onEditorOpenChange(false);
   };
 
@@ -185,6 +202,7 @@ export function ProfileVirtualMappings({
           profileId: profile.id,
           deviceId: mapping.deviceId,
           physicalButton: mapping.physicalButton,
+          modifiers: mapping.modifiers,
         }),
       );
       onNotice("Physical button mapping removed.");
@@ -395,7 +413,7 @@ export function ProfileVirtualMappings({
                 type="button"
                 className="secondary compact"
                 disabled={
-                  busy || routingActive || migrating || learningAction !== null
+                  busy || routingActive || migrating || learning !== null
                 }
                 onClick={() => void migrate()}
               >
@@ -422,8 +440,22 @@ export function ProfileVirtualMappings({
                     <div className="profile-mapping-sources">
                       {assigned.map((mapping) => (
                         <span
-                          key={`${mapping.deviceId}-${mapping.physicalButton}`}
+                          key={`${mapping.deviceId}-${mapping.physicalButton}-${mapping.modifiers
+                            .map(
+                              (modifier) =>
+                                `${modifier.deviceId}-${modifier.physicalButton}`,
+                            )
+                            .join("+")}`}
                         >
+                          {mapping.modifiers.map((modifier) => (
+                            <span
+                              className="profile-mapping-modifier"
+                              key={`${modifier.deviceId}-${modifier.physicalButton}`}
+                            >
+                              {modifier.deviceName || "Physical controller"} ·
+                              Button {modifier.physicalButton} +
+                            </span>
+                          ))}
                           {mapping.deviceName || "Physical controller"} · Button{" "}
                           {mapping.physicalButton}
                           <button
@@ -437,27 +469,50 @@ export function ProfileVirtualMappings({
                         </span>
                       ))}
                     </div>
-                    <button
-                      type="button"
-                      className="secondary compact"
-                      disabled={
-                        busy ||
-                        routingActive ||
-                        learningAction !== null ||
-                        migrating
-                      }
-                      onClick={() => void learn(action.action)}
-                    >
-                      {learningAction === action.action ? (
-                        <>
-                          <Radio className="spin" /> Press a button…
-                        </>
-                      ) : assigned.length ? (
-                        "Add another"
-                      ) : (
-                        "Assign"
-                      )}
-                    </button>
+                    <div className="profile-mapping-assign-actions">
+                      <button
+                        type="button"
+                        className="secondary compact"
+                        disabled={
+                          busy ||
+                          routingActive ||
+                          learning !== null ||
+                          migrating
+                        }
+                        onClick={() => void learn(action.action, "button")}
+                      >
+                        {learning?.action === action.action &&
+                        learning.kind === "button" ? (
+                          <>
+                            <Radio className="spin" /> Press a button…
+                          </>
+                        ) : assigned.length ? (
+                          "Add button"
+                        ) : (
+                          "Assign button"
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost compact"
+                        disabled={
+                          busy ||
+                          routingActive ||
+                          learning !== null ||
+                          migrating
+                        }
+                        onClick={() => void learn(action.action, "chord")}
+                      >
+                        {learning?.action === action.action &&
+                        learning.kind === "chord" ? (
+                          <>
+                            <Radio className="spin" /> Hold + press…
+                          </>
+                        ) : (
+                          "Add chord"
+                        )}
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -473,7 +528,7 @@ export function ProfileVirtualMappings({
                 {visibleActions.length} of {actions.length} actions ·{" "}
                 {mappings.length} physical mappings
               </span>
-              {learningAction ? (
+              {learning ? (
                 <button
                   type="button"
                   className="secondary"

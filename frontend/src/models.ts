@@ -70,7 +70,13 @@ export type VirtualProfileMapping = {
   deviceId: string;
   deviceName: string;
   physicalButton: number;
+  modifiers: VirtualButtonModifier[];
   logicalAction: string;
+};
+export type VirtualButtonModifier = {
+  deviceId: string;
+  deviceName: string;
+  physicalButton: number;
 };
 export type VirtualMappingImport = {
   mappings: VirtualProfileMapping[];

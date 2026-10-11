@@ -101,29 +101,105 @@ impl VirtualLayout {
     }
 }
 
-/// Physical-button to logical-action mapping owned by one profile.
+/// One physical trigger plus optional hold modifiers owned by a profile.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProfileBinding {
+    trigger: PhysicalButton,
+    modifiers: BTreeSet<PhysicalButton>,
+    action: LogicalAction,
+}
+
+impl ProfileBinding {
+    pub fn new(
+        trigger: PhysicalButton,
+        modifiers: impl IntoIterator<Item = PhysicalButton>,
+        action: LogicalAction,
+    ) -> Result<Self> {
+        let modifiers = modifiers.into_iter().collect::<BTreeSet<_>>();
+        ensure!(
+            !modifiers.contains(&trigger),
+            "a physical button cannot modify itself"
+        );
+        Ok(Self {
+            trigger,
+            modifiers,
+            action,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct BindingInput {
+    trigger: PhysicalButton,
+    modifiers: BTreeSet<PhysicalButton>,
+}
+
+/// Physical chord to logical-action mapping owned by one profile.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ProfileMapping {
-    actions: BTreeMap<PhysicalButton, LogicalAction>,
+    actions: BTreeMap<BindingInput, LogicalAction>,
 }
 
 impl ProfileMapping {
     pub fn new(entries: impl IntoIterator<Item = (PhysicalButton, LogicalAction)>) -> Result<Self> {
+        Self::from_bindings(
+            entries
+                .into_iter()
+                .map(|(trigger, action)| ProfileBinding::new(trigger, [], action))
+                .collect::<Result<Vec<_>>>()?,
+        )
+    }
+
+    pub fn from_bindings(entries: impl IntoIterator<Item = ProfileBinding>) -> Result<Self> {
         let mut actions = BTreeMap::new();
-        for (source, action) in entries {
+        for binding in entries {
+            let input = BindingInput {
+                trigger: binding.trigger,
+                modifiers: binding.modifiers,
+            };
             ensure!(
-                !actions.contains_key(&source),
-                "physical button {} on '{}' is mapped more than once",
-                source.button_id(),
-                source.device_id()
+                !actions.contains_key(&input),
+                "physical chord ending with button {} on '{}' is mapped more than once",
+                input.trigger.button_id(),
+                input.trigger.device_id()
             );
-            actions.insert(source, action);
+            actions.insert(input, binding.action);
         }
         Ok(Self { actions })
     }
 
-    pub fn action_for(&self, source: &PhysicalButton) -> Option<&LogicalAction> {
-        self.actions.get(source)
+    fn references(&self, source: &PhysicalButton) -> bool {
+        self.actions
+            .keys()
+            .any(|input| &input.trigger == source || input.modifiers.contains(source))
+    }
+
+    fn active_bindings(
+        &self,
+        pressed: &BTreeSet<PhysicalButton>,
+    ) -> BTreeMap<BindingInput, &LogicalAction> {
+        let mut selected = BTreeMap::<PhysicalButton, (&BindingInput, &LogicalAction)>::new();
+        for (input, action) in &self.actions {
+            if !pressed.contains(&input.trigger)
+                || !input
+                    .modifiers
+                    .iter()
+                    .all(|modifier| pressed.contains(modifier))
+            {
+                continue;
+            }
+            let replace = selected.get(&input.trigger).is_none_or(|(current, _)| {
+                input.modifiers.len() > current.modifiers.len()
+                    || (input.modifiers.len() == current.modifiers.len() && input > *current)
+            });
+            if replace {
+                selected.insert(input.trigger.clone(), (input, action));
+            }
+        }
+        selected
+            .into_values()
+            .map(|(input, action)| (input.clone(), action))
+            .collect()
     }
 
     fn validate_layout(&self, layout: &VirtualLayout) -> Result<()> {
@@ -148,8 +224,9 @@ pub struct MappingEngine<B: VirtualInputBackend> {
     backend: B,
     layout: VirtualLayout,
     profile: ProfileMapping,
-    active_sources: BTreeMap<PhysicalButton, u32>,
-    output_owners: BTreeMap<u32, BTreeSet<PhysicalButton>>,
+    pressed_sources: BTreeSet<PhysicalButton>,
+    active_bindings: BTreeMap<BindingInput, u32>,
+    output_owners: BTreeMap<u32, BTreeSet<BindingInput>>,
     connected: bool,
 }
 
@@ -172,7 +249,8 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
             backend,
             layout,
             profile,
-            active_sources: BTreeMap::new(),
+            pressed_sources: BTreeSet::new(),
+            active_bindings: BTreeMap::new(),
             output_owners: BTreeMap::new(),
             connected: true,
         })
@@ -185,18 +263,24 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
     /// Returns true when the physical event belongs to the active profile.
     pub fn handle_button(&mut self, source: &PhysicalButton, pressed: bool) -> Result<bool> {
         ensure!(self.connected, "mapping engine is disconnected");
-        if pressed {
-            self.press(source)
+        let mapped = self.profile.references(source);
+        let changed = if pressed {
+            self.pressed_sources.insert(source.clone())
         } else {
-            self.release(source)
+            self.pressed_sources.remove(source)
+        };
+        if changed {
+            self.reconcile()?;
         }
+        Ok(mapped)
     }
 
     pub fn set_profile(&mut self, profile: ProfileMapping) -> Result<()> {
         ensure!(self.connected, "mapping engine is disconnected");
         profile.validate_layout(&self.layout)?;
         self.backend.release_all()?;
-        self.active_sources.clear();
+        self.pressed_sources.clear();
+        self.active_bindings.clear();
         self.output_owners.clear();
         self.profile = profile;
         Ok(())
@@ -205,7 +289,8 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
     pub fn disconnect(&mut self) -> Result<()> {
         ensure!(self.connected, "mapping engine is disconnected");
         self.backend.disconnect()?;
-        self.active_sources.clear();
+        self.pressed_sources.clear();
+        self.active_bindings.clear();
         self.output_owners.clear();
         self.connected = false;
         Ok(())
@@ -215,52 +300,39 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
         &self.backend
     }
 
-    fn press(&mut self, source: &PhysicalButton) -> Result<bool> {
-        if self.active_sources.contains_key(source) {
-            return Ok(true);
+    fn reconcile(&mut self) -> Result<()> {
+        let desired_bindings = self
+            .profile
+            .active_bindings(&self.pressed_sources)
+            .into_iter()
+            .map(|(input, action)| {
+                let button = self
+                    .layout
+                    .button_for(action)
+                    .expect("profile mappings are validated against the layout");
+                (input, button)
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut desired_owners = BTreeMap::<u32, BTreeSet<BindingInput>>::new();
+        for (input, button) in &desired_bindings {
+            desired_owners
+                .entry(*button)
+                .or_default()
+                .insert(input.clone());
         }
-        let Some(action) = self.profile.action_for(source) else {
-            return Ok(false);
-        };
-        let button_id = self
-            .layout
-            .button_for(action)
-            .expect("profile mappings are validated against the layout");
-        let first_owner = self
-            .output_owners
-            .get(&button_id)
-            .is_none_or(BTreeSet::is_empty);
-        if first_owner {
-            self.backend.set_button(button_id, true)?;
-        }
-        self.output_owners
-            .entry(button_id)
-            .or_default()
-            .insert(source.clone());
-        self.active_sources.insert(source.clone(), button_id);
-        Ok(true)
-    }
-
-    fn release(&mut self, source: &PhysicalButton) -> Result<bool> {
-        let Some(button_id) = self.active_sources.get(source).copied() else {
-            return Ok(false);
-        };
-        let last_owner = self
-            .output_owners
-            .get(&button_id)
-            .is_some_and(|owners| owners.len() == 1 && owners.contains(source));
-        if last_owner {
-            self.backend.set_button(button_id, false)?;
-        }
-
-        self.active_sources.remove(source);
-        if let Some(owners) = self.output_owners.get_mut(&button_id) {
-            owners.remove(source);
-            if owners.is_empty() {
-                self.output_owners.remove(&button_id);
+        for button in self.output_owners.keys() {
+            if !desired_owners.contains_key(button) {
+                self.backend.set_button(*button, false)?;
             }
         }
-        Ok(true)
+        for button in desired_owners.keys() {
+            if !self.output_owners.contains_key(button) {
+                self.backend.set_button(*button, true)?;
+            }
+        }
+        self.active_bindings = desired_bindings;
+        self.output_owners = desired_owners;
+        Ok(())
     }
 }
 
@@ -274,7 +346,9 @@ impl<B: VirtualInputBackend> Drop for MappingEngine<B> {
 
 #[cfg(test)]
 mod tests {
-    use super::{LogicalAction, MappingEngine, PhysicalButton, ProfileMapping, VirtualLayout};
+    use super::{
+        LogicalAction, MappingEngine, PhysicalButton, ProfileBinding, ProfileMapping, VirtualLayout,
+    };
     use crate::MockVirtualBackend;
 
     fn action(name: &str) -> LogicalAction {
@@ -424,5 +498,61 @@ mod tests {
         engine.disconnect().unwrap();
 
         assert_eq!(engine.backend().events(), [(1, true), (1, false)]);
+    }
+
+    #[test]
+    fn held_modifier_selects_the_more_specific_mapping() {
+        let modifier = button("gt-neo", 4);
+        let trigger = button("gt-neo", 5);
+        let mapping = ProfileMapping::from_bindings([
+            ProfileBinding::new(trigger.clone(), [], action("pit_limiter")).unwrap(),
+            ProfileBinding::new(trigger.clone(), [modifier.clone()], action("headlights")).unwrap(),
+        ])
+        .unwrap();
+        let mut engine =
+            MappingEngine::connect(MockVirtualBackend::new(8), layout(), mapping).unwrap();
+
+        engine.handle_button(&modifier, true).unwrap();
+        engine.handle_button(&trigger, true).unwrap();
+        engine.handle_button(&trigger, false).unwrap();
+        engine.handle_button(&modifier, false).unwrap();
+
+        assert_eq!(engine.backend().events(), [(2, true), (2, false)]);
+    }
+
+    #[test]
+    fn modifier_changes_reconcile_a_held_trigger_without_stuck_outputs() {
+        let modifier = button("gt-neo", 4);
+        let trigger = button("gt-neo", 5);
+        let mapping = ProfileMapping::from_bindings([
+            ProfileBinding::new(trigger.clone(), [], action("pit_limiter")).unwrap(),
+            ProfileBinding::new(trigger.clone(), [modifier.clone()], action("headlights")).unwrap(),
+        ])
+        .unwrap();
+        let mut engine =
+            MappingEngine::connect(MockVirtualBackend::new(8), layout(), mapping).unwrap();
+
+        engine.handle_button(&trigger, true).unwrap();
+        engine.handle_button(&modifier, true).unwrap();
+        engine.handle_button(&modifier, false).unwrap();
+        engine.handle_button(&trigger, false).unwrap();
+
+        assert_eq!(
+            engine.backend().events(),
+            [
+                (1, true),
+                (1, false),
+                (2, true),
+                (2, false),
+                (1, true),
+                (1, false)
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_a_trigger_used_as_its_own_modifier() {
+        let trigger = button("gt-neo", 5);
+        assert!(ProfileBinding::new(trigger.clone(), [trigger], action("pit_limiter")).is_err());
     }
 }

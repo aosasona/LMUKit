@@ -1,10 +1,12 @@
 use lmukit_core::storage::{
-    CompanionApp, LaunchMode, Profile, Store, VirtualButtonMapping, VirtualProfileMapping, Wheel,
+    CompanionApp, LaunchMode, Profile, Store, VirtualButtonMapping, VirtualButtonModifier,
+    VirtualProfileMapping, Wheel,
 };
 use lmukit_virtual::{
-    LogicalAction, PhysicalButton, ProfileMapping, SetupButtonAllocator, VirtualLayout,
+    LogicalAction, PhysicalButton, ProfileBinding, ProfileMapping, SetupButtonAllocator,
+    VirtualLayout,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
@@ -76,7 +78,16 @@ struct VirtualProfileMappingSummary {
     device_id: String,
     device_name: String,
     physical_button: u32,
+    modifiers: Vec<VirtualButtonModifierSummary>,
     logical_action: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualButtonModifierSummary {
+    device_id: String,
+    device_name: String,
+    physical_button: u32,
 }
 
 #[derive(Serialize)]
@@ -91,10 +102,16 @@ struct VirtualMappingImportSummary {
     conflicting_controls: usize,
 }
 
+#[derive(Clone)]
 struct LearnedPhysicalButton {
     device_id: String,
     device_name: String,
     button_id: u32,
+}
+
+struct LearnedPhysicalChord {
+    modifier: LearnedPhysicalButton,
+    trigger: LearnedPhysicalButton,
 }
 
 #[derive(Serialize)]
@@ -483,12 +500,56 @@ async fn learn_virtual_profile_button(
     let profile = find_profile(&store, profile_id)?;
     let mut mapping = profile.virtual_mapping.unwrap_or_default();
     mapping.buttons.retain(|entry| {
-        !(entry.device_id == pressed.device_id && entry.physical_button == pressed.button_id)
+        !(entry.device_id == pressed.device_id
+            && entry.physical_button == pressed.button_id
+            && entry.modifiers.is_empty())
     });
     mapping.buttons.push(VirtualButtonMapping {
         device_id: pressed.device_id,
         device_name: pressed.device_name,
         physical_button: pressed.button_id,
+        modifiers: Vec::new(),
+        logical_action,
+    });
+    store
+        .set_profile_virtual_mapping(profile_id, Some(mapping.clone()))
+        .map_err(|error| error.to_string())?;
+    Ok(mapping_summaries(Some(&mapping)))
+}
+
+#[tauri::command]
+async fn learn_virtual_profile_chord(
+    profile_id: Uuid,
+    logical_action: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualProfileMappingSummary>, String> {
+    let chord = wait_for_direct_input_chord().await?;
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    if !store
+        .settings
+        .virtual_layout
+        .iter()
+        .any(|entry| entry.logical_action == logical_action)
+    {
+        return Err("That action is not in the saved LMU button layout.".to_owned());
+    }
+    let profile = find_profile(&store, profile_id)?;
+    let mut mapping = profile.virtual_mapping.unwrap_or_default();
+    let modifier = VirtualButtonModifier {
+        device_id: chord.modifier.device_id,
+        device_name: chord.modifier.device_name,
+        physical_button: chord.modifier.button_id,
+    };
+    mapping.buttons.retain(|entry| {
+        !(entry.device_id == chord.trigger.device_id
+            && entry.physical_button == chord.trigger.button_id
+            && entry.modifiers == [modifier.clone()])
+    });
+    mapping.buttons.push(VirtualButtonMapping {
+        device_id: chord.trigger.device_id,
+        device_name: chord.trigger.device_name,
+        physical_button: chord.trigger.button_id,
+        modifiers: vec![modifier],
         logical_action,
     });
     store
@@ -502,13 +563,24 @@ fn remove_virtual_profile_button(
     profile_id: Uuid,
     device_id: String,
     physical_button: u32,
+    modifiers: Vec<VirtualButtonModifierSummary>,
     state: State<'_, AppState>,
 ) -> Result<Vec<VirtualProfileMappingSummary>, String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
     let profile = find_profile(&store, profile_id)?;
     let mut mapping = profile.virtual_mapping.unwrap_or_default();
+    let modifiers = modifiers
+        .into_iter()
+        .map(|modifier| VirtualButtonModifier {
+            device_id: modifier.device_id,
+            device_name: modifier.device_name,
+            physical_button: modifier.physical_button,
+        })
+        .collect::<Vec<_>>();
     mapping.buttons.retain(|entry| {
-        !(entry.device_id == device_id && entry.physical_button == physical_button)
+        !(entry.device_id == device_id
+            && entry.physical_button == physical_button
+            && entry.modifiers == modifiers)
     });
     let saved = (!mapping.buttons.is_empty()).then_some(mapping.clone());
     store
@@ -525,6 +597,15 @@ fn mapping_summaries(mapping: Option<&VirtualProfileMapping>) -> Vec<VirtualProf
             device_id: entry.device_id.clone(),
             device_name: entry.device_name.clone(),
             physical_button: entry.physical_button,
+            modifiers: entry
+                .modifiers
+                .iter()
+                .map(|modifier| VirtualButtonModifierSummary {
+                    device_id: modifier.device_id.clone(),
+                    device_name: modifier.device_name.clone(),
+                    physical_button: modifier.physical_button,
+                })
+                .collect(),
             logical_action: entry.logical_action.clone(),
         })
         .collect()
@@ -571,17 +652,29 @@ fn start_virtual_routing(
                 .map_err(|error| error.to_string())?,
         )
         .map_err(|error| error.to_string())?;
-        let mapping = ProfileMapping::new(
+        let mapping = ProfileMapping::from_bindings(
             persisted_mapping
                 .buttons
                 .iter()
                 .map(|entry| {
-                    let source =
+                    let trigger =
                         PhysicalButton::new(entry.device_id.clone(), entry.physical_button)
                             .map_err(|error| error.to_string())?;
+                    let modifiers = entry
+                        .modifiers
+                        .iter()
+                        .map(|modifier| {
+                            PhysicalButton::new(
+                                modifier.device_id.clone(),
+                                modifier.physical_button,
+                            )
+                            .map_err(|error| error.to_string())
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
                     let action = LogicalAction::new(entry.logical_action.clone())
                         .map_err(|error| error.to_string())?;
-                    Ok((source, action))
+                    ProfileBinding::new(trigger, modifiers, action)
+                        .map_err(|error| error.to_string())
                 })
                 .collect::<Result<Vec<_>, String>>()?,
         )
@@ -1443,6 +1536,17 @@ async fn wait_for_direct_input_button() -> Result<LearnedPhysicalButton, String>
     .map_err(|error| error.to_string())?
 }
 
+async fn wait_for_direct_input_chord() -> Result<LearnedPhysicalChord, String> {
+    let generation = LOOKUP_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    tauri::async_runtime::spawn_blocking(move || {
+        std::thread::spawn(move || detect_direct_input_chord(generation))
+            .join()
+            .map_err(|_| "The controller input worker stopped unexpectedly.".to_owned())?
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 #[tauri::command]
 fn cancel_binding_lookup() {
     LOOKUP_GENERATION.fetch_add(1, Ordering::SeqCst);
@@ -1488,9 +1592,55 @@ fn detect_direct_input_button(generation: u64) -> Result<LearnedPhysicalButton, 
     Err("No controller button was detected within 30 seconds.".to_owned())
 }
 
+#[cfg(target_os = "windows")]
+fn detect_direct_input_chord(generation: u64) -> Result<LearnedPhysicalChord, String> {
+    let mut listener = DirectInputButtonMonitor::new().map_err(|error| error.to_string())?;
+    let mut held = Vec::<LearnedPhysicalButton>::new();
+    let started = std::time::Instant::now();
+    while started.elapsed() < std::time::Duration::from_secs(30) {
+        if LOOKUP_GENERATION.load(Ordering::SeqCst) != generation {
+            return Err("Chord learning cancelled.".to_owned());
+        }
+        for event in listener.poll().map_err(|error| error.to_string())? {
+            if event.device_name.to_lowercase().contains("vjoy") {
+                continue;
+            }
+            let position = held.iter().position(|button| {
+                button.device_id == event.device_id && button.button_id == event.button_id
+            });
+            if event.pressed {
+                if position.is_some() {
+                    continue;
+                }
+                let pressed = LearnedPhysicalButton {
+                    device_id: event.device_id,
+                    device_name: event.device_name,
+                    button_id: event.button_id,
+                };
+                if let Some(modifier) = held.first() {
+                    return Ok(LearnedPhysicalChord {
+                        modifier: modifier.clone(),
+                        trigger: pressed,
+                    });
+                }
+                held.push(pressed);
+            } else if let Some(position) = position {
+                held.remove(position);
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(16));
+    }
+    Err("No two-button chord was detected within 30 seconds.".to_owned())
+}
+
 #[cfg(not(target_os = "windows"))]
 fn detect_direct_input_button(_generation: u64) -> Result<LearnedPhysicalButton, String> {
     Err("DirectInput button learning is only available in the Windows build.".to_owned())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn detect_direct_input_chord(_generation: u64) -> Result<LearnedPhysicalChord, String> {
+    Err("DirectInput chord learning is only available in the Windows build.".to_owned())
 }
 
 #[cfg(target_os = "windows")]
@@ -1649,6 +1799,7 @@ pub fn run() {
             saved_virtual_layout,
             import_profile_virtual_mapping,
             learn_virtual_profile_button,
+            learn_virtual_profile_chord,
             remove_virtual_profile_button,
             virtual_routing_status,
             start_virtual_routing,

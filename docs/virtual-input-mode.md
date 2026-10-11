@@ -63,6 +63,12 @@ Each profile owns its physical button, modifier, layer, and encoder-mode mapping
 
 For example, a GT Neo HY profile may map encoder 1 to Front ARB while a GT Neo GT3 profile maps the same encoder to TC2. Both profiles still target the globally stable virtual buttons assigned to those logical actions.
 
+## Hold modifiers
+
+A profile may map a direct trigger and a modifier-plus-trigger chord independently. **Add chord** listens for the modifier press first and captures the next button pressed while it remains held as the trigger. For example, button 5 may map to Pit Limiter while button 4 + button 5 maps to Recenter VR.
+
+The mapping engine tracks every currently pressed physical button. For a given trigger, the satisfied mapping with the most held modifiers wins; equal-specificity matches use a stable physical-button ordering. Changing modifier state while a trigger is held reconciles the active virtual output immediately. Output ownership remains reference-counted, and profile changes, disconnects, errors, and shutdown still release all outputs. The current UI captures one modifier per chord; the persisted and engine models allow additional modifiers in a later editor revision.
+
 ## Daily use
 
 1. Start LMUKit and LMU with the already configured virtual controller available.

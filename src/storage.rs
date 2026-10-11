@@ -50,7 +50,17 @@ pub struct VirtualButtonMapping {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub device_name: String,
     pub physical_button: u32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modifiers: Vec<VirtualButtonModifier>,
     pub logical_action: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct VirtualButtonModifier {
+    pub device_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub device_name: String,
+    pub physical_button: u32,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -294,7 +304,17 @@ impl Store {
             .mapping
             .buttons
             .iter()
-            .map(|entry| (entry.device_id.clone(), entry.physical_button))
+            .map(|entry| {
+                (
+                    entry.device_id.clone(),
+                    entry.physical_button,
+                    entry
+                        .modifiers
+                        .iter()
+                        .map(|modifier| (modifier.device_id.clone(), modifier.physical_button))
+                        .collect::<Vec<_>>(),
+                )
+            })
             .collect::<BTreeSet<_>>();
         let mut candidates = BTreeMap::<(String, String, u32), BTreeSet<String>>::new();
 
@@ -334,7 +354,7 @@ impl Store {
         }
 
         for ((device_id, device_name, physical_button), actions) in candidates {
-            if existing_sources.contains(&(device_id.clone(), physical_button)) {
+            if existing_sources.contains(&(device_id.clone(), physical_button, Vec::new())) {
                 report.already_mapped += 1;
                 continue;
             }
@@ -346,6 +366,7 @@ impl Store {
                 device_id,
                 device_name,
                 physical_button,
+                modifiers: Vec::new(),
                 logical_action: actions.into_iter().next().expect("one action"),
             });
             report.added += 1;
@@ -1491,10 +1512,33 @@ fn validate_virtual_mapping(
             "Physical button IDs must be greater than zero."
         );
         ensure!(
-            sources.insert((entry.device_id.as_str(), entry.physical_button)),
-            "Physical button {} on '{}' is mapped more than once.",
-            entry.physical_button,
-            entry.device_id
+            entry.modifiers.len() <= 4,
+            "A button mapping cannot have more than four modifiers."
+        );
+        let mut modifiers = BTreeSet::new();
+        for modifier in &entry.modifiers {
+            validate_virtual_label(&modifier.device_id, "Modifier device ID")?;
+            ensure!(
+                modifier.physical_button > 0,
+                "Modifier button IDs must be greater than zero."
+            );
+            ensure!(
+                !(modifier.device_id == entry.device_id
+                    && modifier.physical_button == entry.physical_button),
+                "A physical button cannot modify itself."
+            );
+            ensure!(
+                modifiers.insert((modifier.device_id.clone(), modifier.physical_button)),
+                "The same modifier button cannot appear twice."
+            );
+        }
+        ensure!(
+            sources.insert((
+                entry.device_id.clone(),
+                entry.physical_button,
+                modifiers.into_iter().collect::<Vec<_>>()
+            )),
+            "The same physical button chord is mapped more than once."
         );
         ensure!(
             actions.contains(entry.logical_action.as_str()),
@@ -2143,12 +2187,18 @@ mod tests {
                             device_id: "simagic-alpha-evo".into(),
                             device_name: "Simagic Alpha EVO".into(),
                             physical_button: 5,
+                            modifiers: Vec::new(),
                             logical_action: "pit_limiter".into(),
                         },
                         VirtualButtonMapping {
                             device_id: "simagic-alpha-evo".into(),
                             device_name: "Simagic Alpha EVO".into(),
                             physical_button: 6,
+                            modifiers: vec![VirtualButtonModifier {
+                                device_id: "simagic-alpha-evo".into(),
+                                device_name: "Simagic Alpha EVO".into(),
+                                physical_button: 4,
+                            }],
                             logical_action: "headlights".into(),
                         },
                     ],
@@ -2174,12 +2224,18 @@ mod tests {
                     device_id: "simagic-alpha-evo".into(),
                     device_name: "Simagic Alpha EVO".into(),
                     physical_button: 5,
+                    modifiers: Vec::new(),
                     logical_action: "pit_limiter".into(),
                 },
                 VirtualButtonMapping {
                     device_id: "simagic-alpha-evo".into(),
                     device_name: "Simagic Alpha EVO".into(),
                     physical_button: 6,
+                    modifiers: vec![VirtualButtonModifier {
+                        device_id: "simagic-alpha-evo".into(),
+                        device_name: "Simagic Alpha EVO".into(),
+                        physical_button: 4,
+                    }],
                     logical_action: "headlights".into(),
                 },
             ]
@@ -2240,6 +2296,7 @@ mod tests {
                 device_id: "hid:3670:0500".into(),
                 device_name: "SIMAGIC GT Neo".into(),
                 physical_button: 5,
+                modifiers: Vec::new(),
                 logical_action: "Pit Limiter".into(),
             }]
         );
@@ -2271,6 +2328,7 @@ mod tests {
                 device_id: "simagic-alpha-evo".into(),
                 device_name: "Simagic Alpha EVO".into(),
                 physical_button: 5,
+                modifiers: Vec::new(),
                 logical_action: "headlights".into(),
             }],
         };
