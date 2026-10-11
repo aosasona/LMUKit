@@ -169,6 +169,8 @@ pub struct Settings {
     #[serde(default)]
     pub auto_start_virtual_profile: bool,
     #[serde(default)]
+    pub auto_profile_selection: bool,
+    #[serde(default)]
     pub last_virtual_profile: Option<Uuid>,
     #[serde(default)]
     pub virtual_layout: Vec<VirtualLayoutEntry>,
@@ -238,6 +240,7 @@ impl Default for Settings {
             lmu_launch_mode: LaunchMode::Desktop,
             input_mode: InputMode::Legacy,
             auto_start_virtual_profile: false,
+            auto_profile_selection: false,
             last_virtual_profile: None,
             virtual_layout: Vec::new(),
             virtual_device_key: None,
@@ -2676,6 +2679,7 @@ mod tests {
         assert_eq!(store.settings.log_retention_days, 5);
         assert_eq!(store.settings.input_mode, InputMode::Legacy);
         assert!(!store.settings.auto_start_virtual_profile);
+        assert!(!store.settings.auto_profile_selection);
         assert_eq!(store.settings.last_virtual_profile, None);
         assert!(store.settings.virtual_layout.is_empty());
         assert_eq!(store.settings.virtual_device_key, None);
@@ -2692,6 +2696,7 @@ mod tests {
             .unwrap();
         store.settings.input_mode = InputMode::Virtual;
         store.settings.auto_start_virtual_profile = true;
+        store.settings.auto_profile_selection = true;
         store.settings.last_virtual_profile = Some(profile.id);
         store.settings.virtual_layout = vec![
             VirtualLayoutEntry {
@@ -2762,6 +2767,7 @@ mod tests {
 
         assert_eq!(reopened.settings.input_mode, InputMode::Virtual);
         assert!(reopened.settings.auto_start_virtual_profile);
+        assert!(reopened.settings.auto_profile_selection);
         assert_eq!(reopened.settings.last_virtual_profile, Some(profile.id));
         assert_eq!(reopened.settings.virtual_layout.len(), 2);
         let saved_mapping = saved_profile.virtual_mapping.unwrap();

@@ -150,6 +150,14 @@ export type LmuCarContextStatus = {
   status: "confirmed" | "stale" | "unknown";
   message: string;
 };
+export type AutoProfileSelectionStatus = {
+  enabled: boolean;
+  paused: boolean;
+  candidateClass: string | null;
+  confirmedObservations: number;
+  requiredObservations: number;
+  message: string;
+};
 export type VirtualSetupStatus = {
   identity: string;
   buttonCount: number;
@@ -223,4 +231,13 @@ export const emptyCarContextStatus: LmuCarContextStatus = {
   observedAt: null,
   status: "unknown",
   message: "Waiting for LMU shared memory.",
+};
+
+export const emptyAutoProfileSelectionStatus: AutoProfileSelectionStatus = {
+  enabled: false,
+  paused: false,
+  candidateClass: null,
+  confirmedObservations: 0,
+  requiredObservations: 2,
+  message: "Automatic profile selection is off.",
 };

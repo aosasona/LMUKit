@@ -15,6 +15,7 @@ import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
 import type { InputMode } from "../components/InputModeSwitch";
 import { WheelImage } from "../components/WheelImage";
 import type {
+  AutoProfileSelectionStatus,
   LmuCarContextStatus,
   Profile,
   VirtualRoutingStatus,
@@ -50,10 +51,13 @@ type Props = {
   inputMode: InputMode;
   routing: VirtualRoutingStatus;
   carContext: LmuCarContextStatus;
+  autoProfileSelection: AutoProfileSelectionStatus;
   onNavigate: (page: "profiles" | "bindings" | "game") => void;
   onActivate: (profile: Profile) => void;
   onUpdate: (profile: Profile) => void;
   onDismissDirty: () => void;
+  onSetAutoProfileSelection: (enabled: boolean) => void;
+  onResumeAutoProfileSelection: () => void;
 };
 
 export function OverviewPage({
@@ -67,10 +71,13 @@ export function OverviewPage({
   inputMode,
   routing,
   carContext,
+  autoProfileSelection,
   onNavigate,
   onActivate,
   onUpdate,
   onDismissDirty,
+  onSetAutoProfileSelection,
+  onResumeAutoProfileSelection,
 }: Props) {
   const legacyMode = inputMode === "legacy";
   const hero = legacyMode ? (active ?? selected) : (selected ?? active);
@@ -249,7 +256,39 @@ export function OverviewPage({
               </em>
             </span>
           </div>
-          <p>{carContext.message}</p>
+          <div className="car-context-footer">
+            <div>
+              <strong>Automatic class switching</strong>
+              <span>
+                {autoProfileSelection.enabled
+                  ? autoProfileSelection.message
+                  : carContext.message}
+              </span>
+            </div>
+            <div className="car-context-actions">
+              {autoProfileSelection.enabled && autoProfileSelection.paused && (
+                <button
+                  type="button"
+                  className="secondary compact"
+                  disabled={busy || inputMode !== "virtual"}
+                  onClick={onResumeAutoProfileSelection}
+                >
+                  Resume Auto
+                </button>
+              )}
+              <label className="inline-switch">
+                <span>Auto-select</span>
+                <input
+                  type="checkbox"
+                  checked={autoProfileSelection.enabled}
+                  disabled={busy}
+                  onChange={(event) =>
+                    onSetAutoProfileSelection(event.target.checked)
+                  }
+                />
+              </label>
+            </div>
+          </div>
         </section>
         <section className="panel recent">
           <div className="section-head">

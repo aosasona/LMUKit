@@ -83,11 +83,11 @@ Each captured detent queues a 32 ms virtual-button pulse followed by at least 8 
 
 1. Start LMUKit and LMU with the already configured virtual controller available.
 2. LMUKit uses a reliably identified wheel or the user's manual wheel selection.
-3. The user starts a profile manually from the Profiles detail pane, chooses a class on the Virtual Input page to use its global default, or explicitly enables automatic startup for the most recently used live profile.
+3. The user starts a profile manually from the Profiles detail pane, chooses a class on the Virtual Input page to use its global default, explicitly enables automatic startup for the most recently used live profile, or opts into automatic class selection on Overview.
 4. LMUKit translates physical button events through that profile into the stable virtual layout.
 5. The user may change virtual profiles while LMU is running without rebinding the virtual controller.
 
-The current class selection is manual. LMUKit shows whether the active route was selected directly or from a class default. Future automatic context detection must not override an active manual profile selection. Exact Simagic rim detection is not assumed: when a different rim needs another profile for the same class, the user selects that profile manually.
+Automatic class selection is off by default and runs only in Virtual Input mode. LMUKit samples its read-only shared-memory context every 1.5 seconds and requires two consecutive confirmed observations of the same normalized class before starting that class's global default. Unknown, stale, loading, or unsupported context holds the current route. It never chooses an arbitrary fallback. A manual profile selection, profile shortcut, manual class selection, or routing stop pauses automation until the user explicitly chooses **Resume Auto**. Exact Simagic rim detection is not assumed: when a different rim needs another profile for the same class, the user selects that profile manually.
 
 ## Operating modes
 

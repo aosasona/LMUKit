@@ -10,6 +10,7 @@ import { QuickProfileSwitcher } from "./components/QuickProfileSwitcher";
 import type {
   Binding,
   BindingAssignmentCandidate,
+  AutoProfileSelectionStatus,
   CompanionApp,
   Device,
   JsonObject,
@@ -20,7 +21,11 @@ import type {
   VirtualRoutingStatus,
   Wheel,
 } from "./models";
-import { emptyCarContextStatus, emptySnapshot } from "./models";
+import {
+  emptyAutoProfileSelectionStatus,
+  emptyCarContextStatus,
+  emptySnapshot,
+} from "./models";
 import { pageTitle } from "./lib/navigation";
 import { GameSettingsPage } from "./pages/GameSettingsPage";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -47,6 +52,8 @@ export default function App() {
   const [carContext, setCarContext] = useState<LmuCarContextStatus>(
     emptyCarContextStatus,
   );
+  const [autoProfileSelection, setAutoProfileSelection] =
+    useState<AutoProfileSelectionStatus>(emptyAutoProfileSelectionStatus);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -116,14 +123,17 @@ export default function App() {
   };
   async function refresh() {
     try {
-      const [next, nextRouting, nextCarContext] = await Promise.all([
-        invoke<Snapshot>("snapshot"),
-        invoke<VirtualRoutingStatus>("virtual_routing_status"),
-        invoke<LmuCarContextStatus>("lmu_car_context_status"),
-      ]);
+      const [next, nextRouting, nextCarContext, nextAutoSelection] =
+        await Promise.all([
+          invoke<Snapshot>("snapshot"),
+          invoke<VirtualRoutingStatus>("virtual_routing_status"),
+          invoke<LmuCarContextStatus>("lmu_car_context_status"),
+          invoke<AutoProfileSelectionStatus>("auto_profile_selection_status"),
+        ]);
       setSnapshot(next);
       setRouting(nextRouting);
       setCarContext(nextCarContext);
+      setAutoProfileSelection(nextAutoSelection);
       setSelectedId((current) =>
         next.profiles.some((profile) => profile.id === current)
           ? current
@@ -142,8 +152,14 @@ export default function App() {
   }, []);
   useEffect(() => {
     const timer = window.setInterval(() => {
-      void invoke<LmuCarContextStatus>("lmu_car_context_status")
-        .then(setCarContext)
+      void Promise.all([
+        invoke<LmuCarContextStatus>("lmu_car_context_status"),
+        invoke<AutoProfileSelectionStatus>("auto_profile_selection_status"),
+      ])
+        .then(([context, autoSelection]) => {
+          setCarContext(context);
+          setAutoProfileSelection(autoSelection);
+        })
         .catch(() => undefined);
     }, 1000);
     return () => window.clearInterval(timer);
@@ -394,6 +410,28 @@ export default function App() {
     withBusy(async () => {
       setRouting(await invoke<VirtualRoutingStatus>("stop_virtual_routing"));
       setNotice("Live remapping disabled and all virtual buttons released.");
+    });
+  const changeAutoProfileSelection = (enabled: boolean) =>
+    withBusy(async () => {
+      setAutoProfileSelection(
+        await invoke<AutoProfileSelectionStatus>("set_auto_profile_selection", {
+          enabled,
+        }),
+      );
+      setNotice(
+        enabled
+          ? "Automatic profile selection enabled. Waiting for LMU to confirm a class."
+          : "Automatic profile selection disabled. The current live profile is unchanged.",
+      );
+    });
+  const resumeAutoProfileSelection = () =>
+    withBusy(async () => {
+      setAutoProfileSelection(
+        await invoke<AutoProfileSelectionStatus>(
+          "resume_auto_profile_selection",
+        ),
+      );
+      setNotice("Automatic profile selection resumed.");
     });
   const removeDevice = (profile: Profile, device: Device) =>
     withBusy(async () => {
@@ -769,6 +807,9 @@ export default function App() {
                 inputMode={snapshot.inputMode}
                 routing={routing}
                 carContext={carContext}
+                autoProfileSelection={autoProfileSelection}
+                onSetAutoProfileSelection={changeAutoProfileSelection}
+                onResumeAutoProfileSelection={resumeAutoProfileSelection}
                 onDismissDirty={() =>
                   setDismissedDirtyProfileId(active?.id ?? null)
                 }

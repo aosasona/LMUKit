@@ -1,6 +1,6 @@
 use lmukit_core::car_context::{
-    LmuCarContext, LmuCarContextSource, LmuCarContextStatus, LmuSessionState,
-    display_existing_class,
+    ConfirmedClassDebouncer, LmuCarContext, LmuCarContextSource, LmuCarContextStatus,
+    LmuSessionState, display_existing_class,
 };
 use lmukit_core::storage::{
     CompanionApp, InputMode, LaunchMode, Profile, Store, VirtualButtonMapping,
@@ -38,6 +38,7 @@ struct AppState(Mutex<Store>);
 struct HotkeyState(std::sync::mpsc::Sender<HotkeyUpdate>);
 struct VirtualSetupState(Mutex<VirtualSetupSession>);
 struct VirtualRoutingState {
+    operation: Mutex<()>,
     session: Mutex<Option<VirtualRoutingSession>>,
     status: Arc<Mutex<VirtualRoutingStatus>>,
 }
@@ -45,6 +46,45 @@ struct VirtualRoutingState {
 struct CarContextState {
     status: Arc<Mutex<CarContextSummary>>,
     stop: Arc<std::sync::atomic::AtomicBool>,
+}
+
+struct AutoProfileState(Mutex<AutoProfileRuntime>);
+
+struct AutoProfileRuntime {
+    paused: bool,
+    debouncer: ConfirmedClassDebouncer,
+    last_attempted_profile: Option<Uuid>,
+    message: String,
+}
+
+impl Default for AutoProfileRuntime {
+    fn default() -> Self {
+        Self {
+            paused: false,
+            debouncer: ConfirmedClassDebouncer::new(2),
+            last_attempted_profile: None,
+            message: "Automatic profile selection is off.".to_owned(),
+        }
+    }
+}
+
+impl AutoProfileRuntime {
+    fn reset(&mut self, message: impl Into<String>) {
+        self.debouncer.reset();
+        self.last_attempted_profile = None;
+        self.message = message.into();
+    }
+
+    fn summary(&self, enabled: bool) -> AutoProfileSummary {
+        AutoProfileSummary {
+            enabled,
+            paused: self.paused,
+            candidate_class: self.debouncer.candidate().map(str::to_owned),
+            confirmed_observations: self.debouncer.observations(),
+            required_observations: self.debouncer.required_observations(),
+            message: self.message.clone(),
+        }
+    }
 }
 
 struct VirtualRoutingSession {
@@ -112,6 +152,17 @@ struct CarContextSummary {
     source: LmuCarContextSource,
     observed_at: Option<String>,
     status: LmuCarContextStatus,
+    message: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AutoProfileSummary {
+    enabled: bool,
+    paused: bool,
+    candidate_class: Option<String>,
+    confirmed_observations: u8,
+    required_observations: u8,
     message: String,
 }
 
@@ -481,6 +532,7 @@ fn set_input_mode(
     input_mode: InputMode,
     app_state: State<'_, AppState>,
     routing_state: State<'_, VirtualRoutingState>,
+    auto_state: State<'_, AutoProfileState>,
 ) -> Result<(), String> {
     {
         let mut store = app_state.0.lock().map_err(|error| error.to_string())?;
@@ -488,7 +540,18 @@ fn set_input_mode(
         store.save_settings().map_err(|error| error.to_string())?;
     }
     if input_mode == InputMode::Legacy {
+        let _operation = routing_state
+            .operation
+            .lock()
+            .map_err(|error| error.to_string())?;
         stop_virtual_routing_inner(&routing_state)?;
+    }
+    if let Ok(mut runtime) = auto_state.0.lock() {
+        runtime.paused = false;
+        runtime.reset(match input_mode {
+            InputMode::Legacy => "Automatic profile selection waits for Virtual Input mode.",
+            InputMode::Virtual => "Waiting for LMU to confirm a car class.",
+        });
     }
     diagnostics::info(
         "input.mode.changed",
@@ -1130,11 +1193,93 @@ fn lmu_car_context_status(state: State<'_, CarContextState>) -> Result<CarContex
 }
 
 #[tauri::command]
+fn auto_profile_selection_status(
+    app_state: State<'_, AppState>,
+    auto_state: State<'_, AutoProfileState>,
+) -> Result<AutoProfileSummary, String> {
+    let enabled = app_state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())?
+        .settings
+        .auto_profile_selection;
+    auto_state
+        .0
+        .lock()
+        .map(|runtime| runtime.summary(enabled))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_auto_profile_selection(
+    enabled: bool,
+    app_state: State<'_, AppState>,
+    auto_state: State<'_, AutoProfileState>,
+) -> Result<AutoProfileSummary, String> {
+    {
+        let mut store = app_state.0.lock().map_err(|error| error.to_string())?;
+        store.settings.auto_profile_selection = enabled;
+        store.save_settings().map_err(|error| error.to_string())?;
+    }
+    let mut runtime = auto_state.0.lock().map_err(|error| error.to_string())?;
+    runtime.paused = false;
+    runtime.reset(if enabled {
+        "Waiting for LMU to confirm a car class."
+    } else {
+        "Automatic profile selection is off."
+    });
+    diagnostics::info(
+        "routing.auto.changed",
+        if enabled {
+            "Automatic class profile selection enabled"
+        } else {
+            "Automatic class profile selection disabled"
+        },
+    );
+    Ok(runtime.summary(enabled))
+}
+
+#[tauri::command]
+fn resume_auto_profile_selection(
+    app_state: State<'_, AppState>,
+    auto_state: State<'_, AutoProfileState>,
+) -> Result<AutoProfileSummary, String> {
+    let enabled = app_state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())?
+        .settings
+        .auto_profile_selection;
+    if !enabled {
+        return Err("Enable automatic profile selection first.".to_owned());
+    }
+    let mut runtime = auto_state.0.lock().map_err(|error| error.to_string())?;
+    runtime.paused = false;
+    runtime.reset("Waiting for LMU to confirm a car class.");
+    diagnostics::info(
+        "routing.auto.resumed",
+        "Automatic class profile selection resumed",
+    );
+    Ok(runtime.summary(true))
+}
+
+fn pause_auto_profile_selection(state: &AutoProfileState, reason: &str) {
+    if let Ok(mut runtime) = state.0.lock() {
+        runtime.paused = true;
+        runtime.reset(format!(
+            "Paused after {reason}. Select Resume Auto when ready."
+        ));
+    }
+}
+
+#[tauri::command]
 fn start_virtual_routing(
     profile_id: Uuid,
     app_state: State<'_, AppState>,
     routing_state: State<'_, VirtualRoutingState>,
+    auto_state: State<'_, AutoProfileState>,
 ) -> Result<VirtualRoutingStatus, String> {
+    pause_auto_profile_selection(&auto_state, "manual profile selection");
     start_virtual_routing_inner(
         profile_id,
         "Selected manually".to_owned(),
@@ -1148,6 +1293,7 @@ fn start_default_virtual_routing(
     class_tag: String,
     app_state: State<'_, AppState>,
     routing_state: State<'_, VirtualRoutingState>,
+    auto_state: State<'_, AutoProfileState>,
 ) -> Result<VirtualRoutingStatus, String> {
     let (profile_id, reason) = {
         let store = app_state.0.lock().map_err(|error| error.to_string())?;
@@ -1163,6 +1309,7 @@ fn start_default_virtual_routing(
         let reason = format!("{} class default", display_existing_class(&class_tag));
         (profile.id, reason)
     };
+    pause_auto_profile_selection(&auto_state, "manual class selection");
     start_virtual_routing_inner(profile_id, reason, &app_state, &routing_state)
 }
 
@@ -1172,6 +1319,10 @@ fn start_virtual_routing_inner(
     app_state: &AppState,
     routing_state: &VirtualRoutingState,
 ) -> Result<VirtualRoutingStatus, String> {
+    let _operation = routing_state
+        .operation
+        .lock()
+        .map_err(|error| error.to_string())?;
     diagnostics::info(
         "routing.start.requested",
         format!("Profile {profile_id} · {selection_reason}"),
@@ -1352,7 +1503,10 @@ fn start_virtual_routing_inner(
 #[tauri::command]
 fn stop_virtual_routing(
     state: State<'_, VirtualRoutingState>,
+    auto_state: State<'_, AutoProfileState>,
 ) -> Result<VirtualRoutingStatus, String> {
+    pause_auto_profile_selection(&auto_state, "manual routing stop");
+    let _operation = state.operation.lock().map_err(|error| error.to_string())?;
     stop_virtual_routing_inner(&state)?;
     state
         .status
@@ -2586,9 +2740,11 @@ pub fn run() {
             Mutex::new(VirtualSetupSession::default()),
         ))
         .manage(VirtualRoutingState {
+            operation: Mutex::new(()),
             session: Mutex::new(None),
             status: Arc::new(Mutex::new(VirtualRoutingStatus::default())),
         })
+        .manage(AutoProfileState(Mutex::new(AutoProfileRuntime::default())))
         .manage(CarContextState {
             status: car_context_status,
             stop: car_context_stop,
@@ -2598,9 +2754,12 @@ pub fn run() {
             let handle = app.handle().clone();
             std::thread::spawn(move || poll_hotkeys(handle, hotkey_rx, shortcuts));
             #[cfg(target_os = "windows")]
-            std::thread::spawn(move || {
-                poll_lmu_car_context(context_worker_status, context_worker_stop)
-            });
+            {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    poll_lmu_car_context(handle, context_worker_status, context_worker_stop)
+                });
+            }
             let auto_start_profile = {
                 let state = app.state::<AppState>();
                 state.0.lock().ok().and_then(|store| {
@@ -2710,6 +2869,9 @@ pub fn run() {
             remove_virtual_profile_button,
             virtual_routing_status,
             lmu_car_context_status,
+            auto_profile_selection_status,
+            set_auto_profile_selection,
+            resume_auto_profile_selection,
             start_virtual_routing,
             start_default_virtual_routing,
             stop_virtual_routing,
@@ -2733,7 +2895,9 @@ pub fn run() {
         tauri::RunEvent::ExitRequested { .. } => {
             diagnostics::info("app.exit", "Application exit requested");
             let state = app_handle.state::<VirtualRoutingState>();
-            let _ = stop_virtual_routing_inner(&state);
+            if let Ok(_operation) = state.operation.lock() {
+                let _ = stop_virtual_routing_inner(&state);
+            }
             app_handle
                 .state::<CarContextState>()
                 .stop
@@ -2752,6 +2916,7 @@ fn profile_shortcuts(profiles: &[Profile]) -> Vec<(Uuid, u8)> {
 
 #[cfg(target_os = "windows")]
 fn poll_lmu_car_context(
+    app: tauri::AppHandle,
     status: Arc<Mutex<CarContextSummary>>,
     stop: Arc<std::sync::atomic::AtomicBool>,
 ) {
@@ -2764,13 +2929,166 @@ fn poll_lmu_car_context(
         // incorrectly present an old snapshot as a current observation.
         let observation = WindowsLmuCarContextProvider::connect()
             .and_then(|mut provider| provider.current_context());
-        if let Ok(mut current) = status.lock() {
-            *current = match observation {
+        let summary = if let Ok(current) = status.lock() {
+            match observation {
                 Ok(context) => CarContextSummary::observed(context),
                 Err(_) => CarContextSummary::unavailable(&current),
-            };
+            }
+        } else {
+            CarContextSummary::default()
+        };
+        if let Ok(mut current) = status.lock() {
+            *current = summary.clone();
         }
+        apply_automatic_profile_selection(&app, &summary);
         std::thread::sleep(std::time::Duration::from_millis(1_500));
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn apply_automatic_profile_selection(app: &tauri::AppHandle, context: &CarContextSummary) {
+    let app_state = app.state::<AppState>();
+    let (enabled, input_mode) = match app_state.0.lock() {
+        Ok(store) => (
+            store.settings.auto_profile_selection,
+            store.settings.input_mode,
+        ),
+        Err(_) => return,
+    };
+    let auto_state = app.state::<AutoProfileState>();
+    let confirmed_class = (context.connected
+        && context.status == LmuCarContextStatus::Confirmed
+        && matches!(
+            context.session_state,
+            LmuSessionState::Session | LmuSessionState::Realtime | LmuSessionState::Replay
+        ))
+    .then_some(context.class_id.as_deref())
+    .flatten();
+    let stable_class = {
+        let Ok(mut runtime) = auto_state.0.lock() else {
+            return;
+        };
+        if !enabled {
+            runtime.reset("Automatic profile selection is off.");
+            return;
+        }
+        if input_mode != InputMode::Virtual {
+            runtime.reset("Automatic profile selection waits for Virtual Input mode.");
+            return;
+        }
+        if runtime.paused {
+            runtime.debouncer.reset();
+            runtime.last_attempted_profile = None;
+            return;
+        }
+        let Some(class_tag) = confirmed_class else {
+            runtime.reset("Holding the current profile until LMU confirms a car class.");
+            return;
+        };
+        if !runtime
+            .debouncer
+            .candidate()
+            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(class_tag))
+        {
+            runtime.last_attempted_profile = None;
+        }
+        let stable = runtime
+            .debouncer
+            .observe(Some(class_tag))
+            .map(str::to_owned);
+        if stable.is_none() {
+            runtime.message = format!(
+                "Confirming {} ({}/{})…",
+                display_existing_class(class_tag),
+                runtime.debouncer.observations(),
+                runtime.debouncer.required_observations()
+            );
+        }
+        stable
+    };
+    let Some(class_tag) = stable_class else {
+        return;
+    };
+    let resolved: Result<Option<Profile>, String> = match app_state.0.lock() {
+        Ok(store) => store
+            .resolve_virtual_profile(&class_tag)
+            .map_err(|error| error.to_string()),
+        Err(error) => Err(error.to_string()),
+    };
+    let profile = match resolved {
+        Ok(Some(profile)) => profile,
+        Ok(None) => {
+            if let Ok(mut runtime) = auto_state.0.lock() {
+                runtime.message = format!(
+                    "No automatic profile default is configured for {}.",
+                    display_existing_class(&class_tag)
+                );
+            }
+            return;
+        }
+        Err(error) => {
+            if let Ok(mut runtime) = auto_state.0.lock() {
+                runtime.message = format!("Could not resolve the class default: {error}");
+            }
+            return;
+        }
+    };
+    let routing_state = app.state::<VirtualRoutingState>();
+    if routing_state
+        .status
+        .lock()
+        .is_ok_and(|status| status.active && status.profile_id == Some(profile.id))
+    {
+        if let Ok(mut runtime) = auto_state.0.lock() {
+            runtime.last_attempted_profile = Some(profile.id);
+            runtime.message = format!(
+                "{} is already active for {}.",
+                profile.name,
+                display_existing_class(&class_tag)
+            );
+        }
+        return;
+    }
+    {
+        let Ok(mut runtime) = auto_state.0.lock() else {
+            return;
+        };
+        if runtime.paused {
+            return;
+        }
+        if runtime.last_attempted_profile == Some(profile.id) {
+            return;
+        }
+        runtime.last_attempted_profile = Some(profile.id);
+        runtime.message = format!("Switching to {}…", profile.name);
+    }
+    let reason = format!(
+        "{} detected automatically",
+        display_existing_class(&class_tag)
+    );
+    match start_virtual_routing_inner(profile.id, reason, &app_state, &routing_state) {
+        Ok(_) => {
+            if let Ok(mut runtime) = auto_state.0.lock() {
+                runtime.message = format!(
+                    "Switched to {} for {}.",
+                    profile.name,
+                    display_existing_class(&class_tag)
+                );
+            }
+            diagnostics::info(
+                "routing.auto.selected",
+                format!("{} selected for {}", profile.name, class_tag),
+            );
+        }
+        Err(error) => {
+            if let Ok(mut runtime) = auto_state.0.lock() {
+                runtime.message = format!(
+                    "Could not start {} automatically: {error}. Use Resume Auto to retry.",
+                    profile.name
+                );
+            }
+            diagnostics::warn("routing.auto.failed", error);
+        }
     }
 }
 
@@ -2845,6 +3163,8 @@ fn poll_hotkeys(
                         }),
                     InputMode::Virtual => {
                         let routing_state = app.state::<VirtualRoutingState>();
+                        let auto_state = app.state::<AutoProfileState>();
+                        pause_auto_profile_selection(&auto_state, "profile shortcut");
                         start_virtual_routing_inner(
                             profile_id,
                             "Profile shortcut".to_owned(),

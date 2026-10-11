@@ -717,12 +717,48 @@ main {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.car-context-card > p {
+.car-context-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
   margin: 14px -20px -14px;
   padding: 10px 20px;
   border-top: 1px solid var(--line);
   color: #75817b;
   background: rgba(0, 0, 0, 0.1);
+  font-size: calc(11px * var(--font-scale));
+}
+.car-context-footer > div:first-child {
+  min-width: 0;
+}
+.car-context-footer strong,
+.car-context-footer span {
+  display: block;
+}
+.car-context-footer strong {
+  margin-bottom: 3px;
+  color: #b8c2bd;
+  font-size: calc(11px * var(--font-scale));
+}
+.car-context-actions,
+.inline-switch {
+  display: flex;
+  align-items: center;
+}
+.car-context-actions {
+  flex: none;
+  gap: 12px;
+}
+.inline-switch {
+  gap: 9px;
+  color: #aab5af;
+  font-weight: 600;
+  cursor: pointer;
+}
+.car-context-actions .compact {
+  min-height: 31px;
+  padding: 0 11px;
   font-size: calc(11px * var(--font-scale));
 }
 .panel {

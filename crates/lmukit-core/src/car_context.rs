@@ -85,6 +85,63 @@ pub trait LmuCarContextProvider {
     fn current_context(&mut self) -> anyhow::Result<LmuCarContext>;
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConfirmedClassDebouncer {
+    required_observations: u8,
+    candidate: Option<String>,
+    observations: u8,
+}
+
+impl ConfirmedClassDebouncer {
+    pub fn new(required_observations: u8) -> Self {
+        Self {
+            required_observations: required_observations.max(1),
+            candidate: None,
+            observations: 0,
+        }
+    }
+
+    pub fn observe(&mut self, confirmed_class: Option<&str>) -> Option<&str> {
+        let Some(confirmed_class) = confirmed_class
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            self.reset();
+            return None;
+        };
+        if self
+            .candidate
+            .as_deref()
+            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(confirmed_class))
+        {
+            self.observations = self.observations.saturating_add(1);
+        } else {
+            self.candidate = Some(confirmed_class.to_owned());
+            self.observations = 1;
+        }
+        (self.observations >= self.required_observations)
+            .then_some(self.candidate.as_deref())
+            .flatten()
+    }
+
+    pub fn reset(&mut self) {
+        self.candidate = None;
+        self.observations = 0;
+    }
+
+    pub fn candidate(&self) -> Option<&str> {
+        self.candidate.as_deref()
+    }
+
+    pub fn observations(&self) -> u8 {
+        self.observations
+    }
+
+    pub fn required_observations(&self) -> u8 {
+        self.required_observations
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,5 +178,28 @@ mod tests {
         assert_eq!(display_existing_class(CLASS_GT3), "LMGT3");
         assert_eq!(display_existing_class("gt3"), "LMGT3");
         assert_eq!(display_existing_class(CLASS_HY), CLASS_HY);
+    }
+
+    #[test]
+    fn requires_repeated_confirmed_class_observations() {
+        let mut debouncer = ConfirmedClassDebouncer::new(2);
+        assert_eq!(debouncer.observe(Some("GT3")), None);
+        assert_eq!(debouncer.candidate(), Some("GT3"));
+        assert_eq!(debouncer.observations(), 1);
+        assert_eq!(debouncer.observe(Some("gt3")), Some("GT3"));
+        assert_eq!(debouncer.observations(), 2);
+    }
+
+    #[test]
+    fn unknown_or_changed_context_restarts_confirmation() {
+        let mut debouncer = ConfirmedClassDebouncer::new(2);
+        assert_eq!(debouncer.observe(Some("GT3")), None);
+        assert_eq!(debouncer.observe(None), None);
+        assert_eq!(debouncer.candidate(), None);
+        assert_eq!(debouncer.observe(Some("HY")), None);
+        assert_eq!(debouncer.observe(Some("LMP2")), None);
+        assert_eq!(debouncer.candidate(), Some("LMP2"));
+        assert_eq!(debouncer.observations(), 1);
+        assert_eq!(debouncer.observe(Some("LMP2")), Some("LMP2"));
     }
 }
