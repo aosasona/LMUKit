@@ -72,6 +72,15 @@ export type VirtualProfileMapping = {
   physicalButton: number;
   logicalAction: string;
 };
+export type VirtualMappingImport = {
+  mappings: VirtualProfileMapping[];
+  added: number;
+  alreadyMapped: number;
+  skippedWithoutVirtualAction: number;
+  skippedNonButton: number;
+  skippedUnknownDevice: number;
+  conflictingControls: number;
+};
 export type VirtualRoutingStatus = {
   active: boolean;
   profileId: string | null;

@@ -53,6 +53,17 @@ pub struct VirtualButtonMapping {
     pub logical_action: String,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VirtualMappingImportReport {
+    pub mapping: VirtualProfileMapping,
+    pub added: usize,
+    pub already_mapped: usize,
+    pub skipped_without_virtual_action: usize,
+    pub skipped_non_button: usize,
+    pub skipped_unknown_device: usize,
+    pub conflicting_controls: usize,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Wheel {
     pub id: Uuid,
@@ -247,6 +258,108 @@ impl Store {
             .context("That profile no longer exists.")?;
         profile.virtual_mapping = mapping;
         self.save_profile_metadata(&profile)
+    }
+
+    pub fn import_profile_virtual_mapping(
+        &self,
+        profile_id: Uuid,
+    ) -> Result<VirtualMappingImportReport> {
+        let profile = self
+            .profiles()?
+            .into_iter()
+            .find(|profile| profile.id == profile_id)
+            .context("That profile no longer exists.")?;
+        let document = self.load_profile_document(&profile)?;
+        let layout = self
+            .settings
+            .virtual_layout
+            .iter()
+            .map(|entry| {
+                (
+                    entry.logical_action.to_lowercase(),
+                    entry.logical_action.clone(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        ensure!(
+            !layout.is_empty(),
+            "Set up and save the LMU virtual-button layout before importing profile buttons."
+        );
+
+        let mut report = VirtualMappingImportReport {
+            mapping: profile.virtual_mapping.unwrap_or_default(),
+            ..Default::default()
+        };
+        let existing_sources = report
+            .mapping
+            .buttons
+            .iter()
+            .map(|entry| (entry.device_id.clone(), entry.physical_button))
+            .collect::<BTreeSet<_>>();
+        let mut candidates = BTreeMap::<(String, String, u32), BTreeSet<String>>::new();
+
+        for binding in Self::bindings_from_document(&document) {
+            if binding.input_id < 32 {
+                report.skipped_non_button += 1;
+                continue;
+            }
+            let Ok(physical_button) = u32::try_from(binding.input_id - 31) else {
+                report.skipped_non_button += 1;
+                continue;
+            };
+            if physical_button > 128 {
+                report.skipped_non_button += 1;
+                continue;
+            }
+            let Some(logical_action) = layout.get(&binding.action.to_lowercase()).cloned() else {
+                report.skipped_without_virtual_action += 1;
+                continue;
+            };
+            if self.settings.virtual_device_key.as_deref() == Some(binding.device.as_str()) {
+                continue;
+            }
+            let Some((device_id, device_name)) =
+                device_hardware_identity(&document, &binding.device)
+            else {
+                report.skipped_unknown_device += 1;
+                continue;
+            };
+            if device_name.to_lowercase().contains("vjoy") {
+                continue;
+            }
+            candidates
+                .entry((device_id, device_name, physical_button))
+                .or_default()
+                .insert(logical_action);
+        }
+
+        for ((device_id, device_name, physical_button), actions) in candidates {
+            if existing_sources.contains(&(device_id.clone(), physical_button)) {
+                report.already_mapped += 1;
+                continue;
+            }
+            if actions.len() != 1 {
+                report.conflicting_controls += 1;
+                continue;
+            }
+            report.mapping.buttons.push(VirtualButtonMapping {
+                device_id,
+                device_name,
+                physical_button,
+                logical_action: actions.into_iter().next().expect("one action"),
+            });
+            report.added += 1;
+        }
+        report.mapping.buttons.sort_by(|left, right| {
+            left.logical_action
+                .to_lowercase()
+                .cmp(&right.logical_action.to_lowercase())
+                .then_with(|| left.device_id.cmp(&right.device_id))
+                .then_with(|| left.physical_button.cmp(&right.physical_button))
+        });
+        let saved = (!report.mapping.buttons.is_empty()).then_some(report.mapping.clone());
+        self.set_profile_virtual_mapping(profile_id, saved)?;
+        Ok(report)
     }
 
     pub fn load_lmu_settings_document(&self) -> Result<serde_json::Value> {
@@ -1184,19 +1297,34 @@ fn device_matches(
     vendor_id: u16,
     product_id: u16,
 ) -> bool {
-    let Some(guid) = document
+    device_usb_ids(document, device).is_some_and(|ids| ids == (vendor_id, product_id))
+}
+
+fn device_usb_ids(document: &serde_json::Value, device: &str) -> Option<(u16, u16)> {
+    let guid = document
         .get("Devices")
         .and_then(|devices| devices.get(device))
         .and_then(|device| device.get("product guid"))
+        .and_then(serde_json::Value::as_str)?;
+    let data = guid.strip_prefix('{').and_then(|guid| guid.get(..8))?;
+    let id = u32::from_str_radix(data, 16).ok()?;
+    Some((id as u16, (id >> 16) as u16))
+}
+
+fn device_hardware_identity(
+    document: &serde_json::Value,
+    device: &str,
+) -> Option<(String, String)> {
+    let (vendor_id, product_id) = device_usb_ids(document, device)?;
+    let name = document
+        .get("Devices")
+        .and_then(|devices| devices.get(device))
+        .and_then(|device| device.get("name"))
         .and_then(serde_json::Value::as_str)
-    else {
-        return false;
-    };
-    let Some(data) = guid.strip_prefix('{').and_then(|guid| guid.get(..8)) else {
-        return false;
-    };
-    u32::from_str_radix(data, 16)
-        .is_ok_and(|id| id as u16 == vendor_id && (id >> 16) as u16 == product_id)
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(device)
+        .to_owned();
+    Some((format!("hid:{vendor_id:04x}:{product_id:04x}"), name))
 }
 
 fn collect_bindings(
@@ -2056,6 +2184,73 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn imports_legacy_profile_buttons_by_logical_action() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let profile = store
+            .import_profile_bytes(
+                "GT Neo GT3",
+                br#"{
+                    "Devices": {
+                        "Wheel-123": {
+                            "name": "SIMAGIC GT Neo",
+                            "product guid": "{05003670-0000-0000-0000-504944564944}"
+                        }
+                    },
+                    "Input": {
+                        "Pit Limiter": {"device": "Wheel-123", "id": 36},
+                        "Shift Up": {"device": "Wheel-123", "id": 37},
+                        "Steering": {"device": "Wheel-123", "id": 0},
+                        "Unshared action": {"device": "Wheel-123", "id": 38}
+                    },
+                    "Alternative Input": {
+                        "Headlights": {"device": "Wheel-123", "id": 37}
+                    }
+                }"#,
+            )
+            .unwrap();
+        store.settings.virtual_layout = vec![
+            VirtualLayoutEntry {
+                logical_action: "Pit Limiter".into(),
+                virtual_button: 1,
+            },
+            VirtualLayoutEntry {
+                logical_action: "Shift Up".into(),
+                virtual_button: 2,
+            },
+            VirtualLayoutEntry {
+                logical_action: "Headlights".into(),
+                virtual_button: 3,
+            },
+        ];
+        store.save_settings().unwrap();
+
+        let report = store.import_profile_virtual_mapping(profile.id).unwrap();
+
+        assert_eq!(report.added, 1);
+        assert_eq!(report.conflicting_controls, 1);
+        assert_eq!(report.skipped_non_button, 1);
+        assert_eq!(report.skipped_without_virtual_action, 1);
+        assert_eq!(
+            report.mapping.buttons,
+            vec![VirtualButtonMapping {
+                device_id: "hid:3670:0500".into(),
+                device_name: "SIMAGIC GT Neo".into(),
+                physical_button: 5,
+                logical_action: "Pit Limiter".into(),
+            }]
+        );
+
+        let saved = store
+            .profiles()
+            .unwrap()
+            .into_iter()
+            .find(|saved| saved.id == profile.id)
+            .unwrap();
+        assert_eq!(saved.virtual_mapping.unwrap(), report.mapping);
     }
 
     #[test]

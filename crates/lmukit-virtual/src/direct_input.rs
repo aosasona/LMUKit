@@ -51,6 +51,7 @@ pub struct DirectInputButtonEvent {
 #[derive(Clone)]
 struct EnumeratedDevice {
     instance_guid: GUID,
+    product_guid: GUID,
     name: String,
     product_name: String,
 }
@@ -124,7 +125,7 @@ impl DirectInputButtonReader {
             device,
             summary: DirectInputDeviceSummary {
                 index,
-                device_id: guid_id(&selected.instance_guid),
+                device_id: product_id(&selected.product_guid),
                 name: selected.name.clone(),
                 product_name: selected.product_name.clone(),
                 button_count: capabilities.dwButtons,
@@ -301,7 +302,7 @@ pub fn list_devices() -> Result<Vec<DirectInputDeviceSummary>> {
             unsafe { device.GetCapabilities(&mut capabilities)? };
             Ok(DirectInputDeviceSummary {
                 index,
-                device_id: guid_id(&item.instance_guid),
+                device_id: product_id(&item.product_guid),
                 name: item.name,
                 product_name: item.product_name,
                 button_count: capabilities.dwButtons,
@@ -310,8 +311,10 @@ pub fn list_devices() -> Result<Vec<DirectInputDeviceSummary>> {
         .collect()
 }
 
-fn guid_id(guid: &GUID) -> String {
-    format!("directinput:{:032x}", guid.to_u128())
+fn product_id(guid: &GUID) -> String {
+    let vendor_id = guid.data1 as u16;
+    let product_id = (guid.data1 >> 16) as u16;
+    format!("hid:{vendor_id:04x}:{product_id:04x}")
 }
 
 fn create_direct_input() -> Result<IDirectInput8W> {
@@ -357,6 +360,7 @@ unsafe extern "system" fn enumerate_callback(
     let devices = unsafe { &mut *context.cast::<Vec<EnumeratedDevice>>() };
     devices.push(EnumeratedDevice {
         instance_guid: instance.guidInstance,
+        product_guid: instance.guidProduct,
         name: wide_string(&instance.tszInstanceName),
         product_name: wide_string(&instance.tszProductName),
     });

@@ -38,6 +38,10 @@ After LMU saves its assignments, **Finish & rescan** stops the hotkey and reads 
 
 The mapping editor presents the action first—for example **Pit Limiter**—and keeps **vJoy B1** as secondary diagnostic information. A user chooses the action and presses the desired physical control; LMUKit stores physical control -> Pit Limiter, while the shared layout supplies Pit Limiter -> B1. Users do not manually calculate or memorise button numbers.
 
+For an existing profile, **Reuse existing bindings** reads that profile's saved `direct input.json` and joins both sides by logical action name (case-insensitively): the old LMU binding supplies the physical USB device and button, while the shared layout supplies the virtual button LMU now expects. This is an explicit, reviewable migration and does not edit either the profile's JSON or LMU's live file. Existing manual virtual mappings win, axes and POVs are ignored, unknown actions are skipped, and a physical control assigned to several matching actions is reported for manual resolution.
+
+The live DirectInput reader and the importer identify a controller using the USB VID/PID encoded in DirectInput's product GUID. That is stable across reconnects and matches LMU's device metadata, but it is not a unique rim identity: two simultaneously connected devices with the same VID/PID cannot yet be distinguished automatically. Profile selection remains explicit, which is especially important for rims presented through the same Simagic base.
+
 Importing the layout is read-only and never rewrites LMU's file. LMUKit rejects ambiguous layouts, including one virtual button bound to several LMU actions or one action bound to several buttons on the virtual device, and asks the user to resolve them in LMU. Axis and POV bindings on the virtual device are ignored because Virtual Input Mode is button-only.
 
 Steering, throttle, brake, clutch, and FFB remain connected directly between the physical hardware and LMU. Virtual Input Mode never reads, emits, transforms, or suppresses those axes and never participates in force-feedback delivery. It manages only programmable buttons, switches, encoder steps, and optional digital paddles.
@@ -46,7 +50,7 @@ LMU continues to see the physical controller. A physical control managed through
 
 ## Profile contents and selection
 
-Virtual mappings are an optional extension to an existing profile, not an automatic reinterpretation of its saved `direct input.json`. Adding a virtual mapping must be explicit and reviewable. A profile may retain its Legacy JSON configuration while also carrying a separate Virtual Input mapping.
+Virtual mappings are an optional extension to an existing profile, not a silent reinterpretation of its saved `direct input.json`. The user can explicitly import matching button bindings and review or adjust the result. A profile retains its Legacy JSON configuration while also carrying a separate Virtual Input mapping.
 
 Profiles continue to use reusable wheel references and the existing class tags. Several profiles may exist for the same wheel and class, for example:
 

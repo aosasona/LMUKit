@@ -3816,9 +3816,22 @@ textarea,
 .virtual-mapping-heading h3 {
   margin: 4px 0 0;
 }
-.virtual-mapping-heading > span {
+.virtual-mapping-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.virtual-mapping-heading-actions > span {
   color: var(--muted);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(10px * var(--font-scale));
+  white-space: nowrap;
+}
+.virtual-mapping-heading-actions > button {
+  min-height: 38px;
+  white-space: nowrap;
+}
+.virtual-mapping-heading-actions svg {
+  width: 15px;
 }
 .virtual-mapping-row {
   min-height: 62px;

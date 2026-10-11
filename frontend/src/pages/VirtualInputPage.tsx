@@ -11,6 +11,7 @@ import {
   Send,
   Square,
   Trash2,
+  WandSparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type {
@@ -19,6 +20,7 @@ import type {
   VirtualBindingDevice,
   VirtualButtonPulse,
   VirtualProfileMapping,
+  VirtualMappingImport,
   VirtualRoutingStatus,
   VirtualSetupEvent,
   VirtualSetupStatus,
@@ -53,6 +55,7 @@ export function VirtualInputPage({
     VirtualProfileMapping[]
   >([]);
   const [learningAction, setLearningAction] = useState<string | null>(null);
+  const [migratingProfile, setMigratingProfile] = useState(false);
   const [routingBusy, setRoutingBusy] = useState(false);
   const [routing, setRouting] = useState<VirtualRoutingStatus>({
     active: false,
@@ -303,6 +306,39 @@ export function VirtualInputPage({
     }
   };
 
+  const migrateProfileBindings = async () => {
+    if (!selectedProfileId || routing.active) return;
+    setMigratingProfile(true);
+    setError(null);
+    try {
+      const report = await invoke<VirtualMappingImport>(
+        "import_profile_virtual_mapping",
+        { profileId: selectedProfileId },
+      );
+      setProfileMappings(report.mappings);
+      const warnings = [
+        report.conflictingControls
+          ? `${report.conflictingControls} conflicting control${report.conflictingControls === 1 ? "" : "s"} need manual assignment`
+          : "",
+        report.skippedUnknownDevice
+          ? `${report.skippedUnknownDevice} binding${report.skippedUnknownDevice === 1 ? " has" : "s have"} no usable device ID`
+          : "",
+      ].filter(Boolean);
+      onNotice(
+        report.added
+          ? `Reused ${report.added} existing LMU button${report.added === 1 ? "" : "s"}.${warnings.length ? ` ${warnings.join("; ")}.` : ""}`
+          : warnings.length
+            ? `No buttons were added. ${warnings.join("; ")}.`
+            : "This profile's matching LMU buttons are already assigned.",
+      );
+    } catch (reason) {
+      setError(String(reason));
+      onNotice(String(reason));
+    } finally {
+      setMigratingProfile(false);
+    }
+  };
+
   const startRouting = async () => {
     if (!selectedProfileId) return;
     setRoutingBusy(true);
@@ -550,9 +586,32 @@ export function VirtualInputPage({
           <div>
             <span className="eyebrow">Step 2</span>
             <h2>Assign wheel buttons</h2>
-            <p>Choose an LMU action, then press the button you want to use.</p>
+            <p>
+              Reuse this profile&apos;s existing LMU buttons, then adjust any
+              action by pressing a different button.
+            </p>
           </div>
-          <span>{profileMappings.length} assigned</span>
+          <div className="virtual-mapping-heading-actions">
+            <span>{profileMappings.length} assigned</span>
+            <button
+              type="button"
+              className="secondary"
+              disabled={
+                routing.active ||
+                migratingProfile ||
+                !selectedProfileId ||
+                !actions.length
+              }
+              onClick={() => void migrateProfileBindings()}
+            >
+              {migratingProfile ? (
+                <LoaderCircle className="spin" />
+              ) : (
+                <WandSparkles />
+              )}
+              Reuse existing bindings
+            </button>
+          </div>
         </div>
         {error && <div className="virtual-error">{error}</div>}
         {actions.map((action) => {

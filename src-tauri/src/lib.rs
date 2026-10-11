@@ -79,6 +79,18 @@ struct VirtualProfileMappingSummary {
     logical_action: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualMappingImportSummary {
+    mappings: Vec<VirtualProfileMappingSummary>,
+    added: usize,
+    already_mapped: usize,
+    skipped_without_virtual_action: usize,
+    skipped_non_button: usize,
+    skipped_unknown_device: usize,
+    conflicting_controls: usize,
+}
+
 struct LearnedPhysicalButton {
     device_id: String,
     device_name: String,
@@ -416,6 +428,26 @@ fn virtual_profile_mapping(
     let store = state.0.lock().map_err(|error| error.to_string())?;
     let profile = find_profile(&store, profile_id)?;
     Ok(mapping_summaries(profile.virtual_mapping.as_ref()))
+}
+
+#[tauri::command]
+fn import_profile_virtual_mapping(
+    profile_id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<VirtualMappingImportSummary, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let report = store
+        .import_profile_virtual_mapping(profile_id)
+        .map_err(|error| error.to_string())?;
+    Ok(VirtualMappingImportSummary {
+        mappings: mapping_summaries(Some(&report.mapping)),
+        added: report.added,
+        already_mapped: report.already_mapped,
+        skipped_without_virtual_action: report.skipped_without_virtual_action,
+        skipped_non_button: report.skipped_non_button,
+        skipped_unknown_device: report.skipped_unknown_device,
+        conflicting_controls: report.conflicting_controls,
+    })
 }
 
 #[tauri::command]
@@ -1600,6 +1632,7 @@ pub fn run() {
             preview_virtual_layout,
             import_virtual_layout,
             virtual_profile_mapping,
+            import_profile_virtual_mapping,
             learn_virtual_profile_button,
             remove_virtual_profile_button,
             virtual_routing_status,
