@@ -13,6 +13,8 @@ use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
 use uuid::Uuid;
 
+mod diagnostics;
+
 #[cfg(target_os = "windows")]
 use lmukit_virtual::{
     MappingEngine, VirtualInputBackend, direct_input::DirectInputButtonMonitor, vjoy::VJoyBackend,
@@ -80,6 +82,29 @@ struct VirtualRoutingStatus {
 struct ActiveEncoderModeSummary {
     encoder_name: String,
     mode_name: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DiagnosticDeviceSummary {
+    name: String,
+    product_name: String,
+    button_count: u32,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DiagnosticStatus {
+    app_version: &'static str,
+    log_directory: String,
+    current_log_size: u64,
+    retained_log_files: usize,
+    recent_errors: Vec<String>,
+    active_profile: Option<String>,
+    input_mode: &'static str,
+    virtual_health: String,
+    routing: VirtualRoutingStatus,
+    devices: Vec<DiagnosticDeviceSummary>,
 }
 
 #[derive(Clone, Serialize)]
@@ -876,6 +901,10 @@ fn start_virtual_routing_inner(
     app_state: &AppState,
     routing_state: &VirtualRoutingState,
 ) -> Result<VirtualRoutingStatus, String> {
+    diagnostics::info(
+        "routing.start.requested",
+        format!("Profile {profile_id} · {selection_reason}"),
+    );
     let (profile_name, device_id, layout, mapping) = {
         let store = app_state.0.lock().map_err(|error| error.to_string())?;
         let profile = find_profile(&store, profile_id)?;
@@ -993,11 +1022,16 @@ fn start_virtual_routing_inner(
             Ok(Ok(ready)) => ready,
             Ok(Err(error)) => {
                 let _ = worker.join();
+                diagnostics::error("routing.start.failed", &error);
                 return Err(error);
             }
             Err(_) => {
                 stop.store(true, Ordering::SeqCst);
                 let _ = worker.join();
+                diagnostics::error(
+                    "routing.start.timeout",
+                    "Virtual routing did not start within five seconds",
+                );
                 return Err("Virtual routing did not start within five seconds.".to_owned());
             }
         };
@@ -1018,6 +1052,14 @@ fn start_virtual_routing_inner(
         .status
         .lock()
         .map_err(|error| error.to_string())? = next.clone();
+    diagnostics::info(
+        "routing.started",
+        format!(
+            "{} · {}",
+            next.profile_name.as_deref().unwrap_or("Unknown profile"),
+            next.identity.as_deref().unwrap_or("Unknown virtual device")
+        ),
+    );
     Ok(next)
 }
 
@@ -1040,11 +1082,13 @@ fn stop_virtual_routing_inner(state: &VirtualRoutingState) -> Result<(), String>
         .map_err(|error| error.to_string())?
         .take();
     if let Some(session) = session {
+        diagnostics::info("routing.stop.requested", "Stopping virtual input routing");
         session.stop.store(true, Ordering::SeqCst);
         session
             .worker
             .join()
             .map_err(|_| "The virtual routing worker stopped unexpectedly.".to_owned())?;
+        diagnostics::info("routing.stopped", "Virtual input routing stopped cleanly");
     }
     if let Ok(mut status) = state.status.lock() {
         status.active = false;
@@ -1067,6 +1111,17 @@ fn run_virtual_routing_worker(
 ) {
     let result = (|| -> Result<(), String> {
         let mut listener = DirectInputButtonMonitor::new().map_err(|error| error.to_string())?;
+        let mut known_devices = listener
+            .device_summaries()
+            .into_iter()
+            .map(|device| (device.device_id, (device.product_name, device.button_count)))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        for (name, button_count) in known_devices.values() {
+            diagnostics::info(
+                "device.connected",
+                format!("{name} · {button_count} buttons"),
+            );
+        }
         let backend = VJoyBackend::new(device_id).map_err(|error| error.to_string())?;
         let mut engine =
             MappingEngine::connect(backend, layout, mapping).map_err(|error| error.to_string())?;
@@ -1118,6 +1173,25 @@ fn run_virtual_routing_worker(
                         .collect();
                 }
             }
+            let current_devices = listener
+                .device_summaries()
+                .into_iter()
+                .map(|device| (device.device_id, (device.product_name, device.button_count)))
+                .collect::<std::collections::BTreeMap<_, _>>();
+            for (device_id, (name, button_count)) in &current_devices {
+                if !known_devices.contains_key(device_id) {
+                    diagnostics::info(
+                        "device.connected",
+                        format!("{name} · {button_count} buttons"),
+                    );
+                }
+            }
+            for (device_id, (name, _)) in &known_devices {
+                if !current_devices.contains_key(device_id) {
+                    diagnostics::warn("device.disconnected", format!("{name} disconnected"));
+                }
+            }
+            known_devices = current_devices;
             engine.tick().map_err(|error| error.to_string())?;
             std::thread::sleep(std::time::Duration::from_millis(4));
         }
@@ -1125,12 +1199,14 @@ fn run_virtual_routing_worker(
     })();
 
     if let Err(error) = result {
+        diagnostics::error("routing.worker.failed", &error);
         let _ = ready.send(Err(error.clone()));
         if let Ok(mut current) = status.lock() {
             current.active = false;
             current.error = Some(error);
         }
     } else if let Ok(mut current) = status.lock() {
+        diagnostics::info("routing.worker.stopped", "Routing worker exited cleanly");
         current.active = false;
     }
 }
@@ -1159,6 +1235,10 @@ async fn start_virtual_binding_setup(
     setup_state: State<'_, VirtualSetupState>,
     hotkey_state: State<'_, HotkeyState>,
 ) -> Result<VirtualSetupStatus, String> {
+    diagnostics::info(
+        "setup.start.requested",
+        "Starting guided virtual binding setup",
+    );
     let (device_id, used_buttons) = {
         let store = state.0.lock().map_err(|error| error.to_string())?;
         let used_buttons = existing_vjoy_buttons(&store)?;
@@ -1210,6 +1290,15 @@ async fn start_virtual_binding_setup(
         .allocator
         .as_ref()
         .ok_or_else(|| "The virtual binding setup is not initialised.".to_owned())?;
+    diagnostics::info(
+        "setup.started",
+        format!(
+            "{} · {} buttons · {} already assigned",
+            session.identity,
+            allocator.button_count(),
+            allocator.used_button_count()
+        ),
+    );
     Ok(VirtualSetupStatus {
         identity: session.identity.clone(),
         button_count: allocator.button_count(),
@@ -1231,7 +1320,9 @@ fn stop_virtual_binding_setup(
     hotkey_state
         .0
         .send(HotkeyUpdate::VirtualSetup(false))
-        .map_err(|_| "The shortcut worker is not running.".to_owned())
+        .map_err(|_| "The shortcut worker is not running.".to_owned())?;
+    diagnostics::info("setup.stopped", "Guided virtual binding setup stopped");
+    Ok(())
 }
 
 #[tauri::command]
@@ -1403,6 +1494,10 @@ fn activate_profile(profile_id: Uuid, state: State<'_, AppState>) -> Result<(), 
     store
         .activate(&profile)
         .map_err(|error| error.to_string())?;
+    diagnostics::info(
+        "profile.activated",
+        format!("Prepared '{}' for the next LMU launch", profile.name),
+    );
     Ok(())
 }
 
@@ -1613,6 +1708,131 @@ fn delete_profile(profile_id: Uuid, state: State<'_, AppState>) -> Result<(), St
 fn reveal_profiles(state: State<'_, AppState>) -> Result<(), String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
     reveal_directory(&store.profiles_dir())
+}
+
+#[tauri::command]
+fn diagnostic_status(
+    app_state: State<'_, AppState>,
+    routing_state: State<'_, VirtualRoutingState>,
+) -> Result<DiagnosticStatus, String> {
+    build_diagnostic_status(&app_state, &routing_state)
+}
+
+#[tauri::command]
+fn reveal_logs() -> Result<(), String> {
+    let directory = diagnostics::directory()
+        .ok_or_else(|| "The logging directory is not available.".to_owned())?;
+    reveal_directory(&directory)
+}
+
+#[tauri::command]
+fn export_diagnostic_report(
+    app_state: State<'_, AppState>,
+    routing_state: State<'_, VirtualRoutingState>,
+) -> Result<String, String> {
+    let status = build_diagnostic_status(&app_state, &routing_state)?;
+    let directory = diagnostics::directory()
+        .ok_or_else(|| "The logging directory is not available.".to_owned())?;
+    let generated_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let path = directory.join(format!("diagnostic-report-{generated_at}.json"));
+    let report = serde_json::json!({
+        "generatedAtUnix": generated_at,
+        "appVersion": status.app_version,
+        "activeProfile": status.active_profile,
+        "inputMode": status.input_mode,
+        "virtualHealth": status.virtual_health,
+        "routing": status.routing,
+        "devices": status.devices,
+        "recentErrors": status.recent_errors,
+        "privacy": "Device instance identifiers and configured filesystem paths are omitted."
+    });
+    std::fs::write(
+        &path,
+        serde_json::to_vec_pretty(&report).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| format!("Could not export the diagnostic report: {error}"))?;
+    diagnostics::info(
+        "diagnostics.export",
+        "Exported a privacy-redacted diagnostic report",
+    );
+    Ok(path.display().to_string())
+}
+
+fn build_diagnostic_status(
+    app_state: &AppState,
+    routing_state: &VirtualRoutingState,
+) -> Result<DiagnosticStatus, String> {
+    let (active_profile, input_mode) = {
+        let store = app_state.0.lock().map_err(|error| error.to_string())?;
+        let active_profile = store.settings.active_profile.and_then(|active_id| {
+            store
+                .profiles()
+                .ok()?
+                .into_iter()
+                .find(|profile| profile.id == active_id)
+                .map(|profile| profile.name)
+        });
+        let input_mode = match store.settings.input_mode {
+            lmukit_core::storage::InputMode::Legacy => "Legacy JSON",
+            lmukit_core::storage::InputMode::Virtual => "Virtual input",
+        };
+        (active_profile, input_mode)
+    };
+    let routing = routing_state
+        .status
+        .lock()
+        .map_err(|error| error.to_string())?
+        .clone();
+    let virtual_health = if routing.active {
+        routing.identity.as_ref().map_or_else(
+            || "Connected".to_owned(),
+            |identity| format!("Connected · {identity}"),
+        )
+    } else if let Some(error) = &routing.error {
+        format!("Error · {error}")
+    } else {
+        "Not running".to_owned()
+    };
+    let log =
+        diagnostics::summary().ok_or_else(|| "The logging system is not available.".to_owned())?;
+    Ok(DiagnosticStatus {
+        app_version: env!("CARGO_PKG_VERSION"),
+        log_directory: log.directory,
+        current_log_size: log.current_size,
+        retained_log_files: log.retained_files,
+        recent_errors: log.recent_errors,
+        active_profile,
+        input_mode,
+        virtual_health,
+        routing,
+        devices: diagnostic_devices(),
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn diagnostic_devices() -> Vec<DiagnosticDeviceSummary> {
+    match lmukit_virtual::direct_input::list_devices() {
+        Ok(devices) => devices
+            .into_iter()
+            .map(|device| DiagnosticDeviceSummary {
+                name: device.name,
+                product_name: device.product_name,
+                button_count: device.button_count,
+            })
+            .collect(),
+        Err(error) => {
+            diagnostics::warn("device.enumeration", error.to_string());
+            Vec::new()
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn diagnostic_devices() -> Vec<DiagnosticDeviceSummary> {
+    Vec::new()
 }
 
 #[tauri::command]
@@ -2005,6 +2225,9 @@ fn wheel_summary(wheel: Wheel, profiles: &[Profile]) -> WheelSummary {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let store = Store::open().expect("LMUKit data store should open");
+    if let Err(error) = diagnostics::initialise(&store.data_dir()) {
+        eprintln!("LMUKit logging could not start: {error}");
+    }
     let shortcuts = store
         .profiles()
         .map(|profiles| profile_shortcuts(&profiles))
@@ -2044,6 +2267,9 @@ pub fn run() {
             update_profile,
             delete_profile,
             reveal_profiles,
+            diagnostic_status,
+            reveal_logs,
+            export_diagnostic_report,
             profile_bindings,
             load_profile_document,
             save_profile_document,
@@ -2089,6 +2315,7 @@ pub fn run() {
         .expect("error while building LMUKit");
     app.run(|app_handle, event| {
         if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+            diagnostics::info("app.exit", "Application exit requested");
             let state = app_handle.state::<VirtualRoutingState>();
             let _ = stop_virtual_routing_inner(&state);
         }

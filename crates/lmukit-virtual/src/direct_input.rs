@@ -225,6 +225,13 @@ impl DirectInputButtonMonitor {
         Ok(events)
     }
 
+    pub fn device_summaries(&self) -> Vec<DirectInputDeviceSummary> {
+        self.readers
+            .values()
+            .map(|reader| reader.summary.clone())
+            .collect()
+    }
+
     fn refresh(&mut self) -> Result<()> {
         let devices = list_devices()?;
         let present = devices

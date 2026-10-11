@@ -646,6 +646,10 @@ impl Store {
         self.root.join("profiles")
     }
 
+    pub fn data_dir(&self) -> PathBuf {
+        self.root.clone()
+    }
+
     pub fn wheels(&self) -> Result<Vec<Wheel>> {
         let mut wheels: Vec<Wheel> = Vec::new();
         for entry in fs::read_dir(self.root.join("wheels"))? {
