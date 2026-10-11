@@ -83,6 +83,11 @@ export function OverviewPage({
   const hero = legacyMode ? (active ?? selected) : (selected ?? active);
   const heroIsLive =
     !legacyMode && routing.active && routing.profileId === hero?.id;
+  const highlightedProfileId = legacyMode
+    ? active?.id
+    : routing.active
+      ? routing.profileId
+      : selected?.id;
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   return (
     <>
@@ -308,7 +313,7 @@ export function OverviewPage({
               <button
                 key={profile.id}
                 className={
-                  profile.id === active?.id
+                  profile.id === highlightedProfileId
                     ? "mini-profile active"
                     : "mini-profile"
                 }
