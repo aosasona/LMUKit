@@ -50,6 +50,9 @@ export default function App() {
   const [gameSettingsBaseline, setGameSettingsBaseline] =
     useState<JsonObject | null>(null);
   const [gameSettingsLoading, setGameSettingsLoading] = useState(false);
+  const [dismissedDirtyProfileId, setDismissedDirtyProfileId] = useState<
+    string | null
+  >(null);
   const selected =
     snapshot.profiles.find((profile) => profile.id === selectedId) ??
     snapshot.profiles[0];
@@ -60,6 +63,9 @@ export default function App() {
     snapshot.inputMode === "virtual"
       ? (selected ?? active)
       : (active ?? selected);
+  const visibleActiveDirty =
+    snapshot.activeProfileDirty === true &&
+    active?.id !== dismissedDirtyProfileId;
   const gameSettingsDirty = Boolean(
     gameSettings &&
       gameSettingsBaseline &&
@@ -142,6 +148,10 @@ export default function App() {
       snapshot.uiFontScale.toString(),
     );
   }, [snapshot.uiFontScale]);
+  useEffect(() => {
+    if (!snapshot.activeProfileDirty) setDismissedDirtyProfileId(null);
+  }, [snapshot.activeProfileDirty]);
+  useEffect(() => setDismissedDirtyProfileId(null), [snapshot.activeProfile]);
   useEffect(() => {
     let pendingUrl: string | null = null;
     let cancelled = false;
@@ -624,13 +634,16 @@ export default function App() {
             {page === "home" && (
               <OverviewPage
                 active={active}
-                activeDirty={snapshot.activeProfileDirty}
+                activeDirty={visibleActiveDirty}
                 selected={selected}
                 wheelImageUrl={wheelImageUrl}
                 wheelImageRevision={wheelImageRevision}
                 profiles={snapshot.profiles}
                 busy={busy}
                 inputMode={snapshot.inputMode}
+                onDismissDirty={() =>
+                  setDismissedDirtyProfileId(active?.id ?? null)
+                }
                 onNavigate={navigate}
                 onActivate={activate}
                 onUpdate={updateProfile}
@@ -643,11 +656,14 @@ export default function App() {
                 selected={selected}
                 wheelImageRevision={wheelImageRevision}
                 activeId={snapshot.activeProfile}
-                activeDirty={snapshot.activeProfileDirty}
+                activeDirty={visibleActiveDirty}
                 selectedId={selectedId}
                 query={query}
                 busy={busy}
                 inputMode={snapshot.inputMode}
+                onDismissDirty={() =>
+                  setDismissedDirtyProfileId(active?.id ?? null)
+                }
                 loading={loading}
                 setQuery={setQuery}
                 setSelectedId={setSelectedId}

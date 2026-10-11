@@ -1641,6 +1641,10 @@ img.profile-card-icon {
   gap: 8px;
 }
 .profile-dirty-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   margin: -3px 0 14px;
   padding: 10px 12px;
   border: 1px solid rgba(244, 211, 94, 0.22);
@@ -1648,6 +1652,15 @@ img.profile-card-icon {
   color: #cabd7d;
   font-size: calc(12px * var(--font-scale));
   line-height: 1.45;
+}
+.profile-dirty-notice button {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border: 1px solid rgba(244, 211, 94, 0.24);
+  background: transparent;
+  color: #ddd08f;
+  font-size: calc(10px * var(--font-scale));
+  cursor: pointer;
 }
 @media (max-width: 1180px) {
   .input-mode-switch > span,

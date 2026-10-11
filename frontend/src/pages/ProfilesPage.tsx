@@ -59,6 +59,7 @@ type Props = {
   onCreateWheel: (profile: Profile, brand: string, name: string) => void;
   onAssignWheel: (profile: Profile, wheel: Wheel | null) => void;
   onNotice: (message: string) => void;
+  onDismissDirty: () => void;
 };
 
 export function ProfilesPage(props: Props) {
@@ -88,6 +89,7 @@ export function ProfilesPage(props: Props) {
     onCreateWheel,
     onAssignWheel,
     onNotice,
+    onDismissDirty,
   } = props;
   const legacyMode = inputMode === "legacy";
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -307,7 +309,9 @@ export function ProfilesPage(props: Props) {
                     },
                     {
                       label: "Update from LMU",
-                      hidden: !selected.differsFromLive,
+                      hidden:
+                        !selected.differsFromLive ||
+                        (selected.id === activeId && !activeDirty),
                       separatorBefore: true,
                       onSelect: () =>
                         setConfirmation({
@@ -356,9 +360,14 @@ export function ProfilesPage(props: Props) {
             </div>
             {legacyMode && selected.id === activeId && activeDirty && (
               <div className="profile-dirty-notice">
-                LMU's live bindings differ from this profile. Update the saved
-                copy from the actions menu, or use this profile again to restore
-                its bindings.
+                <span>
+                  LMU's live bindings differ from this profile. Update the saved
+                  copy from the actions menu, or use this profile again to
+                  restore its bindings.
+                </span>
+                <button type="button" onClick={onDismissDirty}>
+                  Dismiss
+                </button>
               </div>
             )}
             <CategoryEditor

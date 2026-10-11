@@ -27,6 +27,7 @@ type Props = {
   onNavigate: (page: "profiles" | "bindings" | "game") => void;
   onActivate: (profile: Profile) => void;
   onUpdate: (profile: Profile) => void;
+  onDismissDirty: () => void;
 };
 
 export function OverviewPage({
@@ -41,6 +42,7 @@ export function OverviewPage({
   onNavigate,
   onActivate,
   onUpdate,
+  onDismissDirty,
 }: Props) {
   const legacyMode = inputMode === "legacy";
   const hero = legacyMode ? (active ?? selected) : (selected ?? active);
@@ -74,7 +76,7 @@ export function OverviewPage({
                     : "Use this profile live"}
                 </button>
               )}
-              {legacyMode && active?.differsFromLive && (
+              {legacyMode && active?.differsFromLive && activeDirty && (
                 <button
                   className="secondary"
                   onClick={() =>
@@ -149,6 +151,11 @@ export function OverviewPage({
                   ? "No pending changes"
                   : "Legacy file comparison is inactive"}
             </small>
+            {legacyMode && activeDirty && (
+              <button className="text-button" onClick={onDismissDirty}>
+                Dismiss
+              </button>
+            )}
           </div>
         </section>
         <section className="panel recent">
