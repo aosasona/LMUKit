@@ -4291,7 +4291,7 @@ textarea,
 .profile-mapping-toolbar {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: minmax(210px, 1fr) auto auto;
+  grid-template-columns: minmax(210px, 1fr) auto auto auto;
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
@@ -4351,6 +4351,48 @@ textarea,
   overflow-y: auto;
   background: #10100f;
 }
+.profile-control-inspection {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border-bottom: 1px solid rgba(198, 243, 107, 0.3);
+  background: #1b1e16;
+}
+.profile-control-inspection > svg {
+  width: 18px;
+  color: var(--teal);
+}
+.profile-control-inspection strong,
+.profile-control-inspection small {
+  display: block;
+}
+.profile-control-inspection strong {
+  color: #e7eee9;
+  font-size: calc(13px * var(--font-scale));
+}
+.profile-control-inspection small {
+  margin-top: 3px;
+  color: var(--teal);
+  font-size: calc(11px * var(--font-scale));
+}
+.profile-control-inspection button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.profile-control-inspection button:hover {
+  color: #e7eee9;
+}
+.profile-control-inspection button svg {
+  width: 15px;
+}
 .profile-mapping-row {
   min-height: 60px;
   display: grid;
@@ -4359,6 +4401,10 @@ textarea,
   gap: 10px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--line);
+}
+.profile-mapping-row.tested {
+  background: rgba(198, 243, 107, 0.1);
+  box-shadow: inset 3px 0 0 var(--teal);
 }
 .profile-mapping-row:last-child {
   border-bottom: 0;

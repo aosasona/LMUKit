@@ -80,6 +80,10 @@ export type VirtualButtonModifier = {
   deviceName: string;
   physicalButton: number;
 };
+export type VirtualControlInspection = {
+  control: string;
+  matches: { logicalAction: string; virtualButton: number }[];
+};
 export type VirtualMappingImport = {
   mappings: VirtualProfileMapping[];
   added: number;

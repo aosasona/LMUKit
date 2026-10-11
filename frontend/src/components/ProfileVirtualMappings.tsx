@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  Crosshair,
   Gamepad2,
   LoaderCircle,
   Radio,
@@ -15,6 +16,7 @@ import { useEffect, useState } from "react";
 import type {
   Profile,
   VirtualAction,
+  VirtualControlInspection,
   VirtualMappingImport,
   VirtualProfileDefault,
   VirtualProfileMapping,
@@ -54,6 +56,10 @@ export function ProfileVirtualMappings({
   const [defaultsBusy, setDefaultsBusy] = useState<string | null>(null);
   const [defaults, setDefaults] = useState<VirtualProfileDefault[]>([]);
   const [learning, setLearning] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [inspection, setInspection] = useState<VirtualControlInspection | null>(
+    null,
+  );
   const [routingBusy, setRoutingBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "assigned" | "unassigned">(
@@ -113,6 +119,8 @@ export function ProfileVirtualMappings({
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setInspection(null);
+    setTesting(false);
     void Promise.all([
       invoke<VirtualAction[]>("saved_virtual_layout"),
       invoke<VirtualProfileMapping[]>("virtual_profile_mapping", {
@@ -189,12 +197,46 @@ export function ProfileVirtualMappings({
   const cancelLearning = async () => {
     await invoke("cancel_binding_lookup");
     setLearning(null);
-    onNotice("Button learning cancelled.");
+    setTesting(false);
+    onNotice("Control capture cancelled.");
+  };
+
+  const testControl = async () => {
+    if (routingActive) return;
+    setTesting(true);
+    setInspection(null);
+    setError(null);
+    setQuery("");
+    setFilter("all");
+    onNotice(
+      "Press and release a control, or hold a modifier and press its control.",
+    );
+    try {
+      const result = await invoke<VirtualControlInspection>(
+        "inspect_virtual_profile_button",
+        { profileId: profile.id },
+      );
+      setInspection(result);
+      onNotice(
+        result.matches.length
+          ? `${result.control} maps to ${result.matches.map((match) => match.logicalAction).join(", ")}.`
+          : `${result.control} is not mapped in this profile.`,
+      );
+    } catch (reason) {
+      const message = String(reason);
+      if (!message.toLowerCase().includes("cancelled")) {
+        setError(message);
+        onNotice(message);
+      }
+    } finally {
+      setTesting(false);
+    }
   };
 
   const closeEditor = async () => {
-    if (learning) await invoke("cancel_binding_lookup");
+    if (learning || testing) await invoke("cancel_binding_lookup");
     setLearning(null);
+    setTesting(false);
     onEditorOpenChange(false);
   };
 
@@ -532,7 +574,11 @@ export function ProfileVirtualMappings({
                 type="button"
                 className="secondary compact"
                 disabled={
-                  busy || routingActive || migrating || learning !== null
+                  busy ||
+                  routingActive ||
+                  migrating ||
+                  learning !== null ||
+                  testing
                 }
                 onClick={() => void migrate()}
               >
@@ -543,7 +589,48 @@ export function ProfileVirtualMappings({
                 )}
                 Reuse existing bindings
               </button>
+              <button
+                type="button"
+                className="secondary compact"
+                disabled={
+                  busy ||
+                  routingActive ||
+                  migrating ||
+                  learning !== null ||
+                  testing
+                }
+                onClick={() => void testControl()}
+              >
+                {testing ? <Radio className="spin" /> : <Crosshair />}
+                {testing ? "Press a control…" : "Test a control"}
+              </button>
             </div>
+
+            {inspection && (
+              <div className="profile-control-inspection">
+                <Crosshair />
+                <span>
+                  <strong>{inspection.control}</strong>
+                  <small>
+                    {inspection.matches.length
+                      ? inspection.matches
+                          .map(
+                            (match) =>
+                              `${match.logicalAction} · vJoy B${match.virtualButton}`,
+                          )
+                          .join(" · ")
+                      : "Not mapped in this profile"}
+                  </small>
+                </span>
+                <button
+                  type="button"
+                  aria-label="Clear tested control"
+                  onClick={() => setInspection(null)}
+                >
+                  <X />
+                </button>
+              </div>
+            )}
 
             <div className="profile-mapping-dialog-list">
               {visibleActions.map((action) => {
@@ -551,7 +638,16 @@ export function ProfileVirtualMappings({
                   (mapping) => mapping.logicalAction === action.action,
                 );
                 return (
-                  <div className="profile-mapping-row" key={action.action}>
+                  <div
+                    className={
+                      inspection?.matches.some(
+                        (match) => match.logicalAction === action.action,
+                      )
+                        ? "profile-mapping-row tested"
+                        : "profile-mapping-row"
+                    }
+                    key={action.action}
+                  >
                     <span>
                       <strong>{action.action}</strong>
                       <small>vJoy B{action.virtualButton}</small>
@@ -596,7 +692,8 @@ export function ProfileVirtualMappings({
                           busy ||
                           routingActive ||
                           learning !== null ||
-                          migrating
+                          migrating ||
+                          testing
                         }
                         onClick={() => void learn(action.action)}
                       >
@@ -627,13 +724,13 @@ export function ProfileVirtualMappings({
                 {visibleActions.length} of {actions.length} actions ·{" "}
                 {mappings.length} physical mappings
               </span>
-              {learning ? (
+              {learning || testing ? (
                 <button
                   type="button"
                   className="secondary"
                   onClick={() => void cancelLearning()}
                 >
-                  <Square /> Cancel button capture
+                  <Square /> Cancel control capture
                 </button>
               ) : (
                 <button

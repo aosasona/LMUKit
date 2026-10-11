@@ -82,6 +82,28 @@ pub struct VirtualButtonMapping {
     pub logical_action: String,
 }
 
+pub fn resolve_virtual_button_mapping<'a>(
+    mapping: &'a VirtualProfileMapping,
+    device_id: &str,
+    physical_button: u32,
+    held_modifiers: &[(String, u32)],
+) -> Option<&'a VirtualButtonMapping> {
+    mapping
+        .buttons
+        .iter()
+        .filter(|entry| {
+            entry.device_id == device_id
+                && entry.physical_button == physical_button
+                && entry.modifiers.iter().all(|modifier| {
+                    held_modifiers.iter().any(|(held_device, held_button)| {
+                        held_device == &modifier.device_id
+                            && *held_button == modifier.physical_button
+                    })
+                })
+        })
+        .max_by_key(|entry| entry.modifiers.len())
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VirtualButtonModifier {
     pub device_id: String,
@@ -1899,6 +1921,45 @@ fn unix_time() -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolves_the_most_specific_virtual_button_mapping() {
+        let mapping = VirtualProfileMapping {
+            buttons: vec![
+                VirtualButtonMapping {
+                    device_id: "wheel".into(),
+                    device_name: "Test wheel".into(),
+                    physical_button: 5,
+                    modifiers: Vec::new(),
+                    logical_action: "pit_limiter".into(),
+                },
+                VirtualButtonMapping {
+                    device_id: "wheel".into(),
+                    device_name: "Test wheel".into(),
+                    physical_button: 5,
+                    modifiers: vec![VirtualButtonModifier {
+                        device_id: "wheel".into(),
+                        device_name: "Test wheel".into(),
+                        physical_button: 1,
+                    }],
+                    logical_action: "recenter_vr".into(),
+                },
+            ],
+            encoder_groups: Vec::new(),
+        };
+
+        let base = resolve_virtual_button_mapping(&mapping, "wheel", 5, &[]).unwrap();
+        assert_eq!(base.logical_action, "pit_limiter");
+
+        let modified =
+            resolve_virtual_button_mapping(&mapping, "wheel", 5, &[("wheel".into(), 1)]).unwrap();
+        assert_eq!(modified.logical_action, "recenter_vr");
+
+        let unrelated =
+            resolve_virtual_button_mapping(&mapping, "wheel", 5, &[("wheel".into(), 9)]).unwrap();
+        assert_eq!(unrelated.logical_action, "pit_limiter");
+        assert!(resolve_virtual_button_mapping(&mapping, "wheel", 8, &[]).is_none());
+    }
 
     #[test]
     fn loads_profile_metadata_without_a_hotkey() {

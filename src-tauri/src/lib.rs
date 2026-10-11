@@ -2,6 +2,7 @@ use lmukit_core::storage::{
     CompanionApp, InputMode, LaunchMode, Profile, Store, VirtualButtonMapping,
     VirtualButtonModifier, VirtualEncoderControl, VirtualEncoderGroup,
     VirtualEncoderMode as StoredEncoderMode, VirtualProfileMapping, Wheel,
+    resolve_virtual_button_mapping,
 };
 use lmukit_virtual::{
     EncoderGroup, EncoderMode, LogicalAction, PhysicalButton, ProfileBinding, ProfileMapping,
@@ -145,6 +146,20 @@ struct VirtualProfileDefaultSummary {
     class_tag: Option<String>,
     profile_id: Uuid,
     profile_name: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualControlInspection {
+    control: String,
+    matches: Vec<VirtualControlInspectionMatch>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualControlInspectionMatch {
+    logical_action: String,
+    virtual_button: u32,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -769,6 +784,56 @@ async fn learn_virtual_profile_button(
         .set_profile_virtual_mapping(profile_id, Some(mapping.clone()))
         .map_err(|error| error.to_string())?;
     Ok(mapping_summaries(Some(&mapping)))
+}
+
+#[tauri::command]
+async fn inspect_virtual_profile_button(
+    profile_id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<VirtualControlInspection, String> {
+    let learned = wait_for_direct_input_mapping().await?;
+    let (trigger, modifiers) = match learned {
+        LearnedPhysicalMapping::Button(trigger) => (trigger, Vec::new()),
+        LearnedPhysicalMapping::Modified { modifier, trigger } => (trigger, vec![modifier]),
+    };
+    let control = modifiers
+        .iter()
+        .map(|modifier| format!("{} · Button {}", modifier.device_name, modifier.button_id))
+        .chain(std::iter::once(format!(
+            "{} · Button {}",
+            trigger.device_name, trigger.button_id
+        )))
+        .collect::<Vec<_>>()
+        .join(" + ");
+    let held_modifiers = modifiers
+        .iter()
+        .map(|modifier| (modifier.device_id.clone(), modifier.button_id))
+        .collect::<Vec<_>>();
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    let matched = profile.virtual_mapping.as_ref().and_then(|mapping| {
+        resolve_virtual_button_mapping(
+            mapping,
+            &trigger.device_id,
+            trigger.button_id,
+            &held_modifiers,
+        )
+    });
+    let matches = matched
+        .and_then(|mapping| {
+            store
+                .settings
+                .virtual_layout
+                .iter()
+                .find(|entry| entry.logical_action == mapping.logical_action)
+                .map(|layout| VirtualControlInspectionMatch {
+                    logical_action: mapping.logical_action.clone(),
+                    virtual_button: layout.virtual_button,
+                })
+        })
+        .into_iter()
+        .collect();
+    Ok(VirtualControlInspection { control, matches })
 }
 
 #[tauri::command]
@@ -2437,6 +2502,7 @@ pub fn run() {
             save_virtual_profile_encoder_group,
             remove_virtual_profile_encoder_group,
             learn_virtual_profile_button,
+            inspect_virtual_profile_button,
             remove_virtual_profile_button,
             virtual_routing_status,
             start_virtual_routing,
