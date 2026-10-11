@@ -56,7 +56,10 @@ mod windows_probe {
 
         match args.first().map(String::as_str) {
             Some("list") => list_controllers(),
-            Some("pulse") => pulse(parse_u32(args.get(1), 1, "vJoy device ID")?),
+            Some("pulse") => pulse(
+                parse_u32(args.get(1), 1, "vJoy device ID")?,
+                parse_u64(args.get(2), 1_500, "button hold milliseconds")?,
+            ),
             Some("mirror") => mirror(
                 parse_u32(args.get(1), 1, "vJoy device ID")?,
                 parse_u32(args.get(2), 0, "controller index")?,
@@ -84,7 +87,7 @@ mod windows_probe {
     fn print_help() {
         println!("LMUKit experimental virtual-input probe");
         println!("  lmukit-virtual-probe list");
-        println!("  lmukit-virtual-probe pulse [vjoy-device-id]");
+        println!("  lmukit-virtual-probe pulse [vjoy-device-id] [hold-ms]");
         println!("  lmukit-virtual-probe mirror [vjoy-device-id] [controller-index] [seconds]");
         println!("This tool does not install a driver or modify LMU configuration.");
     }
@@ -112,7 +115,11 @@ mod windows_probe {
         Ok(())
     }
 
-    fn pulse(device_id: u32) -> Result<()> {
+    fn pulse(device_id: u32, hold_milliseconds: u64) -> Result<()> {
+        ensure!(
+            (100..=5_000).contains(&hold_milliseconds),
+            "button hold duration must be 100..=5000 milliseconds"
+        );
         let mut backend = VJoyBackend::new(device_id)?;
         backend.connect()?;
         let capabilities = backend.capabilities()?;
@@ -130,9 +137,10 @@ mod windows_probe {
             }
             println!("Pressing virtual button {button}");
             backend.set_button(button, true)?;
-            thread::sleep(Duration::from_millis(200));
+            thread::sleep(Duration::from_millis(hold_milliseconds));
             backend.set_button(button, false)?;
-            thread::sleep(Duration::from_millis(200));
+            println!("Released virtual button {button}");
+            thread::sleep(Duration::from_millis(500));
         }
         backend.disconnect()?;
         println!("All virtual buttons released; device disconnected.");
