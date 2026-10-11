@@ -204,44 +204,63 @@ export function VirtualInputPage({
 
   return (
     <section className="virtual-input-page">
-      <div className="virtual-intro panel">
+      <div className="virtual-mode-banner panel">
+        <Gamepad2 />
         <div>
-          <span className="eyebrow">Experimental · setup step 1</span>
-          <h2>Name the virtual controls from LMU</h2>
+          <span className="eyebrow">Experimental · button-only</span>
+          <strong>
+            Virtual profiles use your separately installed vJoy device
+          </strong>
           <p>
-            LMUKit reads the vJoy bindings LMU has already saved and turns B1,
-            B2, and the rest into named actions. This scan never edits LMU.
-          </p>
-          <p>
-            Virtual Input Mode requires vJoy to be installed and configured
-            separately. LMUKit does not bundle, install, or update the driver.
+            Bind vJoy once in LMU, then profiles can translate different wheel
+            buttons into the same named actions.
           </p>
         </div>
-        <div className="virtual-safety">
+        <div className="virtual-mode-guard">
           <AlertTriangle />
-          <span>Steering, pedals, and FFB stay directly connected to LMU.</span>
+          <span>Steering, pedals, and FFB always remain direct.</span>
         </div>
       </div>
 
       <section className="virtual-wizard panel">
-        <div className="virtual-wizard-copy">
-          <span className="eyebrow">Guided LMU binding</span>
-          <h3>Assign the virtual buttons once</h3>
-          <ol>
-            <li>Start setup, then open LMU&apos;s control assignments.</li>
-            <li>Select an LMU action so it is listening for input.</li>
-            <li>
-              Press <kbd>Ctrl Alt V</kbd>; LMUKit sends the next unused vJoy
-              button.
-            </li>
-            <li>Repeat, save in LMU, then finish and rescan here.</li>
-          </ol>
-          <p>
-            If LMU captures the keyboard shortcut instead, use the on-screen
-            send button while its assignment dialog is still listening.
-          </p>
+        <header className="virtual-wizard-header">
+          <div>
+            <span className="eyebrow">One-time setup</span>
+            <h2>Teach LMU the virtual buttons</h2>
+            <p>LMUKit advances through unused buttons and never edits LMU.</p>
+          </div>
+          <span className={setup ? "active" : ""}>
+            <i /> {setup ? "Setup active" : "Setup stopped"}
+          </span>
+        </header>
+
+        <div className="virtual-wizard-steps">
+          <div>
+            <b>1</b>
+            <span>
+              <strong>Listen in LMU</strong>
+              <small>Choose the action you want to bind.</small>
+            </span>
+          </div>
+          <div>
+            <b>2</b>
+            <span>
+              <strong>Send the next button</strong>
+              <small>
+                Press <kbd>Ctrl Alt V</kbd> or use Send below.
+              </small>
+            </span>
+          </div>
+          <div>
+            <b>3</b>
+            <span>
+              <strong>Save and rescan</strong>
+              <small>LMUKit names only bindings LMU actually saved.</small>
+            </span>
+          </div>
         </div>
-        <div className="virtual-wizard-control">
+
+        <div className="virtual-wizard-console">
           {setupError && <div className="virtual-error">{setupError}</div>}
           {setup ? (
             <>
@@ -250,8 +269,8 @@ export function VirtualInputPage({
                 <span>
                   <strong>{setup.identity}</strong>
                   <small>
-                    {setup.buttonCount} configured buttons ·{" "}
-                    {setup.usedButtonCount} reserved or already bound
+                    {setup.usedButtonCount} of {setup.buttonCount} buttons
+                    reserved or already bound
                   </small>
                 </span>
               </div>
@@ -280,6 +299,7 @@ export function VirtualInputPage({
                 </button>
                 <button
                   type="button"
+                  className="secondary"
                   disabled={busy || setupBusy}
                   onClick={() => void stopSetup(true)}
                 >
@@ -300,10 +320,9 @@ export function VirtualInputPage({
               <div className="virtual-wizard-status idle">
                 <Gamepad2 />
                 <span>
-                  <strong>vJoy setup is stopped</strong>
+                  <strong>Ready to check vJoy device 1</strong>
                   <small>
-                    Starting checks device 1 and enables Ctrl+Alt+V only for
-                    this setup session.
+                    The global shortcut is enabled only while setup is active.
                   </small>
                 </span>
               </div>
