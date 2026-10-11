@@ -310,6 +310,7 @@ export function ProfilesPage(props: Props) {
                     {
                       label: "Update from LMU",
                       hidden:
+                        !legacyMode ||
                         !selected.differsFromLive ||
                         (selected.id === activeId && !activeDirty),
                       separatorBefore: true,

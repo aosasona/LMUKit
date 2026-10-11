@@ -64,6 +64,7 @@ export default function App() {
       ? (selected ?? active)
       : (active ?? selected);
   const visibleActiveDirty =
+    snapshot.inputMode === "legacy" &&
     snapshot.activeProfileDirty === true &&
     active?.id !== dismissedDirtyProfileId;
   const gameSettingsDirty = Boolean(

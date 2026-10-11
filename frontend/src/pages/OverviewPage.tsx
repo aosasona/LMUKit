@@ -141,15 +141,17 @@ export function OverviewPage({
           </div>
           <div>
             <span>Profile health</span>
-            <strong className={activeDirty ? "word warning" : "word"}>
-              {activeDirty ? "Changed" : "Synced"}
+            <strong
+              className={legacyMode && activeDirty ? "word warning" : "word"}
+            >
+              {legacyMode ? (activeDirty ? "Changed" : "Synced") : "Inactive"}
             </strong>
             <small>
-              {activeDirty
-                ? "LMU differs from the saved profile"
-                : legacyMode
-                  ? "No pending changes"
-                  : "Legacy file comparison is inactive"}
+              {!legacyMode
+                ? "Legacy file comparison is inactive"
+                : activeDirty
+                  ? "LMU differs from the saved profile"
+                  : "No pending changes"}
             </small>
             {legacyMode && activeDirty && (
               <button className="text-button" onClick={onDismissDirty}>

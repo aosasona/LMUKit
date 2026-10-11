@@ -34,6 +34,7 @@ Keep filesystem and parsing behavior in `lmukit-core`; keep platform input detai
 - Virtual Input Mode is button-only. It may translate programmable buttons, switches, encoder steps, and optional digital paddles, but it must never read, transform, suppress, or emit steering/pedal axes or participate in the FFB path. Existing profile/settings editing of LMU's stored FFB values is a separate legacy tool.
 - The persisted global `input_mode` is authoritative. Legacy profile activation may replace the backed-up LMU JSON only in Legacy mode; live routing may start only in Virtual mode. Switching to Legacy must stop routing and release outputs. Profile shortcuts and the quick switcher must follow the selected mode. Live routing remains stopped after launch by default; the explicit default-off `auto_start_virtual_profile` setting may restore only the last successfully routed profile, and only while the persisted mode is Virtual.
 - Compare parsed `serde_json::Value` values for dirty detection so formatting and object-key order do not create false positives.
+- Show LMU live-file difference warnings and Update from LMU actions only in Legacy JSON mode. Virtual Input mappings do not use the live JSON swap flow and must not nag about those differences.
 - Preserve backward compatibility for `settings.json` with `#[serde(default)]` or an explicit migration.
 - Do not inspect, modify, or commit a developer's real profiles or Windows application data.
 - Use the `LMUKIT_DATA_DIR` environment override with synthetic data for screenshots and isolated manual testing.
