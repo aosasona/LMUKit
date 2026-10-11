@@ -630,6 +630,101 @@ main {
   font-size: calc(16px * var(--font-scale));
   color: #d9f6a4;
 }
+.car-context-card {
+  grid-column: 1/-1;
+  padding: 17px 20px 14px;
+}
+.car-context-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.car-context-heading h3 {
+  margin: 4px 0 0;
+  font:
+    600 15px "Segoe UI Variable Display",
+    sans-serif;
+}
+.car-context-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #8b9690;
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 650;
+}
+.car-context-state i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #626b66;
+  box-shadow: 0 0 0 4px rgba(98, 107, 102, 0.1);
+}
+.car-context-state.connected {
+  color: var(--teal);
+}
+.car-context-state.connected i {
+  background: var(--teal);
+  box-shadow: 0 0 0 4px rgba(198, 243, 107, 0.1);
+}
+.context-stale .car-context-state {
+  color: var(--amber);
+}
+.context-stale .car-context-state i {
+  background: var(--amber);
+  box-shadow: 0 0 0 4px rgba(244, 211, 94, 0.1);
+}
+.car-context-details {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1.7fr) repeat(3, minmax(120px, 1fr));
+  align-items: center;
+  gap: 18px;
+  margin-top: 16px;
+}
+.car-context-details > svg {
+  width: 23px;
+  color: #77847d;
+}
+.car-context-details > span {
+  min-width: 0;
+}
+.car-context-details small,
+.car-context-details strong,
+.car-context-details em {
+  display: block;
+}
+.car-context-details small {
+  color: #6f7c76;
+  font-size: calc(10px * var(--font-scale));
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.car-context-details strong {
+  overflow: hidden;
+  margin-top: 4px;
+  color: #dce5e0;
+  font-size: calc(13px * var(--font-scale));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.car-context-details em {
+  overflow: hidden;
+  margin-top: 3px;
+  color: #68746e;
+  font-size: calc(10px * var(--font-scale));
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.car-context-card > p {
+  margin: 14px -20px -14px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--line);
+  color: #75817b;
+  background: rgba(0, 0, 0, 0.1);
+  font-size: calc(11px * var(--font-scale));
+}
 .panel {
   padding: 20px;
 }
@@ -734,6 +829,20 @@ main {
   color: #626e68;
   font-size: calc(11px * var(--font-scale));
   margin-top: 2px;
+}
+@media (max-width: 820px) {
+  .car-context-details {
+    grid-template-columns: auto minmax(0, 1fr) minmax(110px, 0.7fr);
+  }
+  .car-context-details > span:nth-of-type(n + 3) {
+    grid-column: auto;
+  }
+  .car-context-details > span:nth-of-type(3) {
+    grid-column: 2;
+  }
+  .car-context-details > span:nth-of-type(4) {
+    grid-column: 3;
+  }
 }
 .profiles-page {
   height: 100%;

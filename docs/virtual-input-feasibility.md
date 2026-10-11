@@ -122,7 +122,7 @@ This confirms that the older `Local\\LMUSharedMem` assumption is wrong for the i
 
 The first live probe passed on 2026-10-11 against the installed LMU v1.4200 mapping. It read a selected BMW LMGT3 entry, the raw `GT3` class, the stable normalized `GT3` profile identifier, its vehicle identifier, and a confirmed non-realtime session state. This validates the mapping name, 324,820-byte payload layout, lock protocol, player-row selection, and consumed scoring offsets on that build. It does not yet prove behavior across menus, loading transitions, replay, realtime driving, or a game update. Those states must be sampled before automatic switching is enabled.
 
-The first context phase remains read-only. Automatic class selection is gated on a low-frequency provider with freshness, debounce, manual-override handling, and transition tests; no legacy rFactor 2 plugin installation is required.
+The first context phase remains read-only. The desktop now samples the provider off the UI thread every 1.5 seconds, closes the game-owned handles after each observation, retains the last successful result as stale when LMU disappears, and presents vehicle/class/session/source/freshness diagnostics on Overview. Automatic class selection remains gated on menu/loading/replay/realtime transition tests plus debounce and manual-override handling; no legacy rFactor 2 plugin installation is required.
 
 ## Phased implementation
 
@@ -130,7 +130,7 @@ The first context phase remains read-only. Automatic class selection is gated on
 2. **Core routing:** the platform-independent logical-action engine, source-owned outputs, output-range validation, minimum observable button presses, and safe profile-change/shutdown reconciliation are implemented with a mock backend. The profile/settings store preserves optional physical-to-logical mappings and the shared logical-to-virtual layout. The production UI can learn buttons through buffered DirectInput and manually start, stop, or switch a selected profile without changing LMU's JSON. Direct, modifier-combination, persisted profile, hot-swap, and multi-class driving-session routing have been confirmed with the recorded hardware.
 3. **Class-aware resolution:** wheel/class default references and wheel fallback using existing class tags, with referential-integrity and migration tests.
 4. **Advanced controls:** hold modifiers, unified learn-input capture, named digital encoder modes, serialised minimum-duration encoder pulses, and editor conflict diagnostics are implemented. Layers remain.
-5. **Verified car context:** provider backed only by observed LMU data, debounced selection, manual override, Resume Auto, and stale/conflict diagnostics.
+5. **Verified car context:** the provider and read-only Overview diagnostics are backed only by observed LMU data. Transition validation, debounced selection, manual override, Resume Auto, and disagreement diagnostics remain.
 6. **Rim discovery and polish:** rotating lifecycle logs and a privacy-redacted diagnostics panel/report are implemented. A fuller device inspector, conservative identity providers, setup wizard, latency/recovery diagnostics, and packaging guidance remain.
 
 Each phase must preserve legacy JSON switching and its regression tests. Hardware-dependent gates are reported as manual results, never inferred from compilation or mocks.

@@ -131,6 +131,26 @@ export type VirtualRoutingStatus = {
   selectionReason: string | null;
   activeEncoderModes: { encoderName: string; modeName: string }[];
 };
+export type LmuCarContextStatus = {
+  connected: boolean;
+  gameVersion: number | null;
+  vehicleId: string | null;
+  vehicleName: string | null;
+  classRaw: string | null;
+  classId: string | null;
+  classLabel: string | null;
+  sessionState:
+    | "menu"
+    | "loading"
+    | "session"
+    | "realtime"
+    | "replay"
+    | "unknown";
+  source: "rest" | "shared_memory" | "manual" | "unknown";
+  observedAt: string | null;
+  status: "confirmed" | "stale" | "unknown";
+  message: string;
+};
 export type VirtualSetupStatus = {
   identity: string;
   buttonCount: number;
@@ -189,4 +209,19 @@ export const emptySnapshot: Snapshot = {
   autoStartVirtualProfile: false,
   companionApps: [],
   lmuLaunchMode: "desktop",
+};
+
+export const emptyCarContextStatus: LmuCarContextStatus = {
+  connected: false,
+  gameVersion: null,
+  vehicleId: null,
+  vehicleName: null,
+  classRaw: null,
+  classId: null,
+  classLabel: null,
+  sessionState: "unknown",
+  source: "unknown",
+  observedAt: null,
+  status: "unknown",
+  message: "Waiting for LMU shared memory.",
 };

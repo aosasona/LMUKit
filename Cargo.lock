@@ -1798,6 +1798,7 @@ name = "lmukit"
 version = "0.4.1"
 dependencies = [
  "global-hotkey",
+ "lmukit-context",
  "lmukit-core",
  "lmukit-virtual",
  "serde",

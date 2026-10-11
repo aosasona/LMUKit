@@ -13,13 +13,14 @@ import type {
   CompanionApp,
   Device,
   JsonObject,
+  LmuCarContextStatus,
   Page,
   Profile,
   Snapshot,
   VirtualRoutingStatus,
   Wheel,
 } from "./models";
-import { emptySnapshot } from "./models";
+import { emptyCarContextStatus, emptySnapshot } from "./models";
 import { pageTitle } from "./lib/navigation";
 import { GameSettingsPage } from "./pages/GameSettingsPage";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -43,6 +44,9 @@ export default function App() {
     selectionReason: null,
     activeEncoderModes: [],
   });
+  const [carContext, setCarContext] = useState<LmuCarContextStatus>(
+    emptyCarContextStatus,
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -112,12 +116,14 @@ export default function App() {
   };
   async function refresh() {
     try {
-      const [next, nextRouting] = await Promise.all([
+      const [next, nextRouting, nextCarContext] = await Promise.all([
         invoke<Snapshot>("snapshot"),
         invoke<VirtualRoutingStatus>("virtual_routing_status"),
+        invoke<LmuCarContextStatus>("lmu_car_context_status"),
       ]);
       setSnapshot(next);
       setRouting(nextRouting);
+      setCarContext(nextCarContext);
       setSelectedId((current) =>
         next.profiles.some((profile) => profile.id === current)
           ? current
@@ -133,6 +139,14 @@ export default function App() {
   }
   useEffect(() => {
     void refresh();
+  }, []);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void invoke<LmuCarContextStatus>("lmu_car_context_status")
+        .then(setCarContext)
+        .catch(() => undefined);
+    }, 1000);
+    return () => window.clearInterval(timer);
   }, []);
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -754,6 +768,7 @@ export default function App() {
                 busy={busy}
                 inputMode={snapshot.inputMode}
                 routing={routing}
+                carContext={carContext}
                 onDismissDirty={() =>
                   setDismissedDirtyProfileId(active?.id ?? null)
                 }

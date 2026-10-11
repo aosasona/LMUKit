@@ -1,5 +1,6 @@
 import {
   Activity,
+  CarFront,
   ChevronRight,
   CircleGauge,
   Gamepad2,
@@ -13,7 +14,30 @@ import { useState } from "react";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
 import type { InputMode } from "../components/InputModeSwitch";
 import { WheelImage } from "../components/WheelImage";
-import type { Profile, VirtualRoutingStatus } from "../models";
+import type {
+  LmuCarContextStatus,
+  Profile,
+  VirtualRoutingStatus,
+} from "../models";
+
+function contextStateLabel(context: LmuCarContextStatus) {
+  if (context.connected && context.status === "confirmed") return "Live";
+  if (context.connected) return "Waiting";
+  if (context.status === "stale") return "Stale";
+  return "Offline";
+}
+
+function displaySession(value: LmuCarContextStatus["sessionState"]) {
+  if (value === "realtime") return "Driving";
+  return value[0].toUpperCase() + value.slice(1);
+}
+
+function displayObservedAt(value: string | null) {
+  if (!value) return "No observation yet";
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return value;
+  return `Observed ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+}
 
 type Props = {
   active?: Profile;
@@ -25,6 +49,7 @@ type Props = {
   busy: boolean;
   inputMode: InputMode;
   routing: VirtualRoutingStatus;
+  carContext: LmuCarContextStatus;
   onNavigate: (page: "profiles" | "bindings" | "game") => void;
   onActivate: (profile: Profile) => void;
   onUpdate: (profile: Profile) => void;
@@ -41,6 +66,7 @@ export function OverviewPage({
   busy,
   inputMode,
   routing,
+  carContext,
   onNavigate,
   onActivate,
   onUpdate,
@@ -173,6 +199,57 @@ export function OverviewPage({
               </button>
             )}
           </div>
+        </section>
+        <section
+          className={`panel car-context-card context-${carContext.status}`}
+        >
+          <div className="car-context-heading">
+            <div>
+              <span className="eyebrow">Read-only game context</span>
+              <h3>LMU car detection</h3>
+            </div>
+            <span
+              className={`car-context-state ${carContext.connected ? "connected" : ""}`}
+            >
+              <i /> {contextStateLabel(carContext)}
+            </span>
+          </div>
+          <div className="car-context-details">
+            <CarFront />
+            <span>
+              <small>Player car</small>
+              <strong>{carContext.vehicleName ?? "Not detected"}</strong>
+              <em>{carContext.vehicleId ?? "Waiting for a player vehicle"}</em>
+            </span>
+            <span>
+              <small>Class</small>
+              <strong>
+                {carContext.classLabel ?? carContext.classRaw ?? "Unknown"}
+              </strong>
+              <em>
+                {carContext.classLabel && carContext.classRaw
+                  ? `LMU reports ${carContext.classRaw}`
+                  : "No matching profile tag"}
+              </em>
+            </span>
+            <span>
+              <small>Session</small>
+              <strong>{displaySession(carContext.sessionState)}</strong>
+              <em>
+                {carContext.source === "shared_memory"
+                  ? "LMU shared memory"
+                  : "Source unavailable"}
+              </em>
+            </span>
+            <span>
+              <small>Freshness</small>
+              <strong>{contextStateLabel(carContext)}</strong>
+              <em title={carContext.observedAt ?? undefined}>
+                {displayObservedAt(carContext.observedAt)}
+              </em>
+            </span>
+          </div>
+          <p>{carContext.message}</p>
         </section>
         <section className="panel recent">
           <div className="section-head">

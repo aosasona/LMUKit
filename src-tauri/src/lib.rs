@@ -1,4 +1,7 @@
-use lmukit_core::car_context::display_existing_class;
+use lmukit_core::car_context::{
+    LmuCarContext, LmuCarContextSource, LmuCarContextStatus, LmuSessionState,
+    display_existing_class,
+};
 use lmukit_core::storage::{
     CompanionApp, InputMode, LaunchMode, Profile, Store, VirtualButtonMapping,
     VirtualButtonModifier, VirtualEncoderControl, VirtualEncoderGroup,
@@ -37,6 +40,11 @@ struct VirtualSetupState(Mutex<VirtualSetupSession>);
 struct VirtualRoutingState {
     session: Mutex<Option<VirtualRoutingSession>>,
     status: Arc<Mutex<VirtualRoutingStatus>>,
+}
+
+struct CarContextState {
+    status: Arc<Mutex<CarContextSummary>>,
+    stop: Arc<std::sync::atomic::AtomicBool>,
 }
 
 struct VirtualRoutingSession {
@@ -88,6 +96,85 @@ struct VirtualRoutingStatus {
 struct ActiveEncoderModeSummary {
     encoder_name: String,
     mode_name: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CarContextSummary {
+    connected: bool,
+    game_version: Option<i32>,
+    vehicle_id: Option<String>,
+    vehicle_name: Option<String>,
+    class_raw: Option<String>,
+    class_id: Option<String>,
+    class_label: Option<String>,
+    session_state: LmuSessionState,
+    source: LmuCarContextSource,
+    observed_at: Option<String>,
+    status: LmuCarContextStatus,
+    message: String,
+}
+
+impl Default for CarContextSummary {
+    fn default() -> Self {
+        Self {
+            connected: false,
+            game_version: None,
+            vehicle_id: None,
+            vehicle_name: None,
+            class_raw: None,
+            class_id: None,
+            class_label: None,
+            session_state: LmuSessionState::Unknown,
+            source: LmuCarContextSource::Unknown,
+            observed_at: None,
+            status: LmuCarContextStatus::Unknown,
+            message: "Waiting for LMU shared memory.".to_owned(),
+        }
+    }
+}
+
+impl CarContextSummary {
+    fn observed(context: LmuCarContext) -> Self {
+        let class_label = context
+            .class_normalized
+            .as_deref()
+            .map(display_existing_class)
+            .map(str::to_owned);
+        let message = if context.status == LmuCarContextStatus::Confirmed {
+            "Player car context confirmed. Automatic profile selection is not enabled yet."
+                .to_owned()
+        } else {
+            "LMU is connected, but no player car is currently confirmed.".to_owned()
+        };
+        Self {
+            connected: true,
+            game_version: context.game_version,
+            vehicle_id: context.vehicle_id,
+            vehicle_name: context.vehicle_name,
+            class_raw: context.class_raw,
+            class_id: context.class_normalized,
+            class_label,
+            session_state: context.session_state,
+            source: context.source,
+            observed_at: context.observed_at,
+            status: context.status,
+            message,
+        }
+    }
+
+    fn unavailable(previous: &Self) -> Self {
+        let mut next = previous.clone();
+        next.connected = false;
+        next.message =
+            "LMU shared memory is unavailable. Start LMU to detect the player car.".to_owned();
+        next.status = if next.observed_at.is_some() {
+            LmuCarContextStatus::Stale
+        } else {
+            LmuCarContextStatus::Unknown
+        };
+        next
+    }
 }
 
 #[derive(Serialize)]
@@ -1029,6 +1116,15 @@ fn virtual_profile_default_summaries(
 fn virtual_routing_status(
     state: State<'_, VirtualRoutingState>,
 ) -> Result<VirtualRoutingStatus, String> {
+    state
+        .status
+        .lock()
+        .map(|status| status.clone())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn lmu_car_context_status(state: State<'_, CarContextState>) -> Result<CarContextSummary, String> {
     state
         .status
         .lock()
@@ -2495,6 +2591,12 @@ pub fn run() {
         .map(|profiles| profile_shortcuts(&profiles))
         .unwrap_or_default();
     let (hotkey_tx, hotkey_rx) = std::sync::mpsc::channel();
+    let car_context_status = Arc::new(Mutex::new(CarContextSummary::default()));
+    let car_context_stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    #[cfg(target_os = "windows")]
+    let context_worker_status = Arc::clone(&car_context_status);
+    #[cfg(target_os = "windows")]
+    let context_worker_stop = Arc::clone(&car_context_stop);
     let app = tauri::Builder::default()
         .manage(AppState(Mutex::new(store)))
         .manage(HotkeyState(hotkey_tx))
@@ -2505,10 +2607,18 @@ pub fn run() {
             session: Mutex::new(None),
             status: Arc::new(Mutex::new(VirtualRoutingStatus::default())),
         })
+        .manage(CarContextState {
+            status: car_context_status,
+            stop: car_context_stop,
+        })
         .setup(move |app| {
             setup_tray(app)?;
             let handle = app.handle().clone();
             std::thread::spawn(move || poll_hotkeys(handle, hotkey_rx, shortcuts));
+            #[cfg(target_os = "windows")]
+            std::thread::spawn(move || {
+                poll_lmu_car_context(context_worker_status, context_worker_stop)
+            });
             let auto_start_profile = {
                 let state = app.state::<AppState>();
                 state.0.lock().ok().and_then(|store| {
@@ -2617,6 +2727,7 @@ pub fn run() {
             inspect_virtual_profile_button,
             remove_virtual_profile_button,
             virtual_routing_status,
+            lmu_car_context_status,
             start_virtual_routing,
             start_default_virtual_routing,
             stop_virtual_routing,
@@ -2641,6 +2752,10 @@ pub fn run() {
             diagnostics::info("app.exit", "Application exit requested");
             let state = app_handle.state::<VirtualRoutingState>();
             let _ = stop_virtual_routing_inner(&state);
+            app_handle
+                .state::<CarContextState>()
+                .stop
+                .store(true, Ordering::Release);
         }
         _ => {}
     });
@@ -2651,6 +2766,30 @@ fn profile_shortcuts(profiles: &[Profile]) -> Vec<(Uuid, u8)> {
         .iter()
         .filter_map(|profile| profile.hotkey_slot.map(|slot| (profile.id, slot)))
         .collect()
+}
+
+#[cfg(target_os = "windows")]
+fn poll_lmu_car_context(
+    status: Arc<Mutex<CarContextSummary>>,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+) {
+    use lmukit_context::windows::WindowsLmuCarContextProvider;
+    use lmukit_core::car_context::LmuCarContextProvider;
+
+    while !stop.load(Ordering::Acquire) {
+        // Open and close the LMU handles for each low-frequency sample. If LMU
+        // exits, LMUKit therefore cannot keep the game-owned mappings alive and
+        // incorrectly present an old snapshot as a current observation.
+        let observation = WindowsLmuCarContextProvider::connect()
+            .and_then(|mut provider| provider.current_context());
+        if let Ok(mut current) = status.lock() {
+            *current = match observation {
+                Ok(context) => CarContextSummary::observed(context),
+                Err(_) => CarContextSummary::unavailable(&current),
+            };
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1_500));
+    }
 }
 
 fn poll_hotkeys(
