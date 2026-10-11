@@ -40,7 +40,7 @@ Keep filesystem and parsing behavior in `lmukit-core`; keep platform input detai
 - Do not silently edit Steam configuration. Generate and copy an explicit launch option for the user.
 - VR launch mode must append LMU's native `+XR` argument so it uses OpenXR.
 - LMU does not hot-reload `direct input.json`. Profile activation while LMU is closed prepares the next launch; do not present file replacement as an in-session switch.
-- Diagnostic logs use local-calendar `lmukit-YYYY-MM-DD.log` names and retain 5 days by default, configurable from 1 to 30. They may record lifecycle failures and local details needed for troubleshooting, but must not record the input-event stream. Cleanup must not remove exported reports. Exported diagnostic reports must omit configured paths, DirectInput device-instance identifiers, and raw error text that may contain either.
+- Diagnostic logs use local-calendar `lmukit-YYYY-MM-DD.log` names, readable ISO-style UTC timestamps for entries, and retain 5 days by default, configurable from 1 to 30. They may record lifecycle failures and local details needed for troubleshooting, but must not record the input-event stream. Cleanup must not remove exported reports. Exported diagnostic reports must omit configured paths, DirectInput device-instance identifiers, and raw error text that may contain either.
 
 ## LMU binding format
 

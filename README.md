@@ -100,7 +100,7 @@ VR mode passes LMU's native `+XR` argument. The launcher avoids opening duplicat
 
 Open **Settings → Diagnostics and logs** to check vJoy routing health, the active profile and input mode, and privacy-safe summaries of attached DirectInput controllers. The panel can open the log folder or export a diagnostic JSON report suitable for a bug report.
 
-LMUKit keeps one date-named log per local calendar day in its application-data `logs` folder. Logs are retained for five days by default; change the period from 1 to 30 days in the diagnostics panel. Normal logs record application and routing lifecycle events, not individual button presses. Exported reports omit configured filesystem paths and DirectInput device-instance identifiers; review any report before sharing it.
+LMUKit keeps one date-named log per local calendar day in its application-data `logs` folder. Entries use readable ISO-style UTC timestamps. Logs are retained for five days by default; change the period from 1 to 30 days in the diagnostics panel. Normal logs record application and routing lifecycle events, not individual button presses. Exported reports omit configured filesystem paths and DirectInput device-instance identifiers; review any report before sharing it.
 
 ## Development
 

@@ -122,13 +122,9 @@ fn remember_error(event: &str) {
 
 fn write(level: &str, event: &str, message: &str) {
     let Some(logger) = LOGGER.get() else { return };
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
     let line = format!(
-        "[{}.{:03}] {level:<5} {} {}\n",
-        timestamp.as_secs(),
-        timestamp.subsec_millis(),
+        "[{}] {level:<5} {} {}\n",
+        utc_timestamp(SystemTime::now()),
         clean(event),
         clean(message)
     );
@@ -160,6 +156,20 @@ fn write(level: &str, event: &str, message: &str) {
 
 fn clean(value: &str) -> String {
     value.replace(['\r', '\n'], " ")
+}
+
+fn utc_timestamp(time: SystemTime) -> String {
+    let elapsed = time.duration_since(UNIX_EPOCH).unwrap_or_default();
+    let seconds = elapsed.as_secs();
+    let seconds_today = seconds % 86_400;
+    let hour = seconds_today / 3_600;
+    let minute = seconds_today % 3_600 / 60;
+    let second = seconds_today % 60;
+    let date = date_from_days((seconds / 86_400) as i64);
+    format!(
+        "{date}T{hour:02}:{minute:02}:{second:02}.{:03}Z",
+        elapsed.subsec_millis()
+    )
 }
 
 fn normalize_retention(retention_days: usize) -> usize {
@@ -269,9 +279,10 @@ fn date_from_days(days: i64) -> String {
 mod tests {
     use super::{
         clean, cleanup_old_logs, date_from_days, days_from_civil, log_date_from_filename,
-        log_file_count,
+        log_file_count, utc_timestamp,
     };
     use std::fs;
+    use std::time::{Duration, UNIX_EPOCH};
 
     #[test]
     fn sanitises_log_lines() {
@@ -282,6 +293,12 @@ mod tests {
     fn formats_calendar_dates() {
         assert_eq!(date_from_days(0), "1970-01-01");
         assert_eq!(date_from_days(days_from_civil(2026, 10, 11)), "2026-10-11");
+    }
+
+    #[test]
+    fn formats_readable_utc_timestamps() {
+        let time = UNIX_EPOCH + Duration::new(90_061, 123_000_000);
+        assert_eq!(utc_timestamp(time), "1970-01-02T01:01:01.123Z");
     }
 
     #[test]
