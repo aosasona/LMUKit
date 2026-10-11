@@ -490,6 +490,58 @@ impl Store {
         self.save_profile_metadata(&profile)
     }
 
+    pub fn virtual_button_conflict(
+        &self,
+        profile_id: Uuid,
+        proposed: &VirtualButtonMapping,
+    ) -> Result<Option<String>> {
+        let profile = self
+            .profiles()?
+            .into_iter()
+            .find(|profile| profile.id == profile_id)
+            .context("That profile no longer exists.")?;
+        Ok(profile.virtual_mapping.as_ref().and_then(|mapping| {
+            mapping
+                .buttons
+                .iter()
+                .find(|entry| same_virtual_button_control(entry, proposed))
+                .filter(|entry| entry.logical_action != proposed.logical_action)
+                .map(|entry| entry.logical_action.clone())
+        }))
+    }
+
+    pub fn assign_profile_virtual_button(
+        &self,
+        profile_id: Uuid,
+        proposed: VirtualButtonMapping,
+        replace_conflict: bool,
+    ) -> Result<VirtualProfileMapping> {
+        let profile = self
+            .profiles()?
+            .into_iter()
+            .find(|profile| profile.id == profile_id)
+            .context("That profile no longer exists.")?;
+        let mut mapping = profile.virtual_mapping.unwrap_or_default();
+        if let Some(existing) = mapping
+            .buttons
+            .iter()
+            .find(|entry| same_virtual_button_control(entry, &proposed))
+            && existing.logical_action != proposed.logical_action
+        {
+            ensure!(
+                replace_conflict,
+                "That control is already mapped to '{}'. Confirm replacement before changing it.",
+                existing.logical_action
+            );
+        }
+        mapping
+            .buttons
+            .retain(|entry| !same_virtual_button_control(entry, &proposed));
+        mapping.buttons.push(proposed);
+        self.set_profile_virtual_mapping(profile_id, Some(mapping.clone()))?;
+        Ok(mapping)
+    }
+
     pub fn import_profile_virtual_mapping(
         &self,
         profile_id: Uuid,
@@ -1860,6 +1912,21 @@ fn validate_virtual_mapping(
     Ok(())
 }
 
+fn same_virtual_button_control(left: &VirtualButtonMapping, right: &VirtualButtonMapping) -> bool {
+    left.device_id == right.device_id
+        && left.physical_button == right.physical_button
+        && left
+            .modifiers
+            .iter()
+            .map(|modifier| (&modifier.device_id, modifier.physical_button))
+            .collect::<BTreeSet<_>>()
+            == right
+                .modifiers
+                .iter()
+                .map(|modifier| (&modifier.device_id, modifier.physical_button))
+                .collect::<BTreeSet<_>>()
+}
+
 fn validate_virtual_label(value: &str, label: &str) -> Result<()> {
     ensure!(!value.trim().is_empty(), "{label} must not be empty.");
     ensure!(value == value.trim(), "{label} must not have outer spaces.");
@@ -1959,6 +2026,62 @@ mod tests {
             resolve_virtual_button_mapping(&mapping, "wheel", 5, &[("wheel".into(), 9)]).unwrap();
         assert_eq!(unrelated.logical_action, "pit_limiter");
         assert!(resolve_virtual_button_mapping(&mapping, "wheel", 8, &[]).is_none());
+    }
+
+    #[test]
+    fn requires_confirmation_before_replacing_a_virtual_button_mapping() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let profile = store
+            .import_profile_bytes("GT Neo", br#"{"Input":{}}"#)
+            .unwrap();
+        store.settings.virtual_layout = vec![
+            VirtualLayoutEntry {
+                logical_action: "pit_limiter".into(),
+                virtual_button: 1,
+            },
+            VirtualLayoutEntry {
+                logical_action: "headlights".into(),
+                virtual_button: 2,
+            },
+        ];
+        let mapping = |logical_action: &str| VirtualButtonMapping {
+            device_id: "wheel".into(),
+            device_name: "Test wheel".into(),
+            physical_button: 5,
+            modifiers: Vec::new(),
+            logical_action: logical_action.into(),
+        };
+
+        store
+            .assign_profile_virtual_button(profile.id, mapping("pit_limiter"), false)
+            .unwrap();
+        assert_eq!(
+            store
+                .virtual_button_conflict(profile.id, &mapping("headlights"))
+                .unwrap(),
+            Some("pit_limiter".into())
+        );
+        assert!(
+            store
+                .assign_profile_virtual_button(profile.id, mapping("headlights"), false)
+                .is_err()
+        );
+        let unchanged = store
+            .profiles()
+            .unwrap()
+            .into_iter()
+            .find(|entry| entry.id == profile.id)
+            .unwrap()
+            .virtual_mapping
+            .unwrap();
+        assert_eq!(unchanged.buttons[0].logical_action, "pit_limiter");
+
+        let replaced = store
+            .assign_profile_virtual_button(profile.id, mapping("headlights"), true)
+            .unwrap();
+        assert_eq!(replaced.buttons.len(), 1);
+        assert_eq!(replaced.buttons[0].logical_action, "headlights");
     }
 
     #[test]

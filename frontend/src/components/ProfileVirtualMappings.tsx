@@ -16,12 +16,14 @@ import { useEffect, useState } from "react";
 import type {
   Profile,
   VirtualAction,
+  VirtualButtonCapture,
   VirtualControlInspection,
   VirtualMappingImport,
   VirtualProfileDefault,
   VirtualProfileMapping,
   VirtualRoutingStatus,
 } from "../models";
+import { ConfirmDialog, type Confirmation } from "./ConfirmDialog";
 import { ProfileEncoderMappings } from "./ProfileEncoderMappings";
 import type { InputMode } from "./InputModeSwitch";
 
@@ -32,6 +34,16 @@ function searchTokens(value: string) {
     .trim()
     .split(/\s+/)
     .filter(Boolean);
+}
+
+function describeControl(mapping: VirtualProfileMapping) {
+  return [
+    ...mapping.modifiers.map(
+      (modifier) =>
+        `${modifier.deviceName || "Physical controller"} · Button ${modifier.physicalButton}`,
+    ),
+    `${mapping.deviceName || "Physical controller"} · Button ${mapping.physicalButton}`,
+  ].join(" + ");
 }
 
 export function ProfileVirtualMappings({
@@ -56,6 +68,8 @@ export function ProfileVirtualMappings({
   const [defaultsBusy, setDefaultsBusy] = useState<string | null>(null);
   const [defaults, setDefaults] = useState<VirtualProfileDefault[]>([]);
   const [learning, setLearning] = useState<string | null>(null);
+  const [savingMapping, setSavingMapping] = useState(false);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [testing, setTesting] = useState(false);
   const [inspection, setInspection] = useState<VirtualControlInspection | null>(
     null,
@@ -121,6 +135,7 @@ export function ProfileVirtualMappings({
     setError(null);
     setInspection(null);
     setTesting(false);
+    setConfirmation(null);
     void Promise.all([
       invoke<VirtualAction[]>("saved_virtual_layout"),
       invoke<VirtualProfileMapping[]>("virtual_profile_mapping", {
@@ -163,11 +178,45 @@ export function ProfileVirtualMappings({
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
+      if (confirmation) {
+        if (!savingMapping) setConfirmation(null);
+        return;
+      }
       void closeEditor();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   });
+
+  const saveCapturedMapping = async (
+    capture: VirtualButtonCapture,
+    replaceConflict: boolean,
+  ) => {
+    setSavingMapping(true);
+    setError(null);
+    try {
+      const next = await invoke<VirtualProfileMapping[]>(
+        "save_virtual_profile_button",
+        {
+          profileId: profile.id,
+          proposed: capture.mapping,
+          replaceConflict,
+        },
+      );
+      setMappings(next);
+      setInspection(null);
+      setConfirmation(null);
+      onNotice(
+        `${capture.mapping.logicalAction} mapped to ${describeControl(capture.mapping)}.`,
+      );
+    } catch (reason) {
+      const message = String(reason);
+      setError(message);
+      onNotice(message);
+    } finally {
+      setSavingMapping(false);
+    }
+  };
 
   const learn = async (action: string) => {
     if (routingActive) return;
@@ -177,12 +226,24 @@ export function ProfileVirtualMappings({
       `Press and release one button for ${action}, or hold a modifier and press another button.`,
     );
     try {
-      const next = await invoke<VirtualProfileMapping[]>(
-        "learn_virtual_profile_button",
+      const capture = await invoke<VirtualButtonCapture>(
+        "capture_virtual_profile_button",
         { profileId: profile.id, logicalAction: action },
       );
-      setMappings(next);
-      onNotice(`${action} mapped to the control you pressed.`);
+      if (capture.conflictingAction) {
+        const control = describeControl(capture.mapping);
+        setConfirmation({
+          title: "Replace this button mapping?",
+          description: `${control} currently triggers “${capture.conflictingAction}”. Replace it with “${action}”?`,
+          confirmLabel: "Replace mapping",
+          onConfirm: () => void saveCapturedMapping(capture, true),
+        });
+        onNotice(
+          `${control} is already mapped to ${capture.conflictingAction}. Confirm before replacing it.`,
+        );
+      } else {
+        await saveCapturedMapping(capture, false);
+      }
     } catch (reason) {
       const message = String(reason);
       if (!message.toLowerCase().includes("cancelled")) {
@@ -237,6 +298,7 @@ export function ProfileVirtualMappings({
     if (learning || testing) await invoke("cancel_binding_lookup");
     setLearning(null);
     setTesting(false);
+    setConfirmation(null);
     onEditorOpenChange(false);
   };
 
@@ -578,7 +640,8 @@ export function ProfileVirtualMappings({
                   routingActive ||
                   migrating ||
                   learning !== null ||
-                  testing
+                  testing ||
+                  savingMapping
                 }
                 onClick={() => void migrate()}
               >
@@ -597,7 +660,8 @@ export function ProfileVirtualMappings({
                   routingActive ||
                   migrating ||
                   learning !== null ||
-                  testing
+                  testing ||
+                  savingMapping
                 }
                 onClick={() => void testControl()}
               >
@@ -693,7 +757,8 @@ export function ProfileVirtualMappings({
                           routingActive ||
                           learning !== null ||
                           migrating ||
-                          testing
+                          testing ||
+                          savingMapping
                         }
                         onClick={() => void learn(action.action)}
                       >
@@ -736,6 +801,7 @@ export function ProfileVirtualMappings({
                 <button
                   type="button"
                   className="primary"
+                  disabled={savingMapping}
                   onClick={() => void closeEditor()}
                 >
                   Done
@@ -745,6 +811,11 @@ export function ProfileVirtualMappings({
           </section>
         </div>
       )}
+      <ConfirmDialog
+        confirmation={confirmation}
+        busy={savingMapping}
+        onClose={() => setConfirmation(null)}
+      />
     </section>
   );
 }

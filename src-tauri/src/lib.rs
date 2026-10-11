@@ -109,7 +109,7 @@ struct DiagnosticStatus {
     devices: Vec<DiagnosticDeviceSummary>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VirtualProfileMappingSummary {
     device_id: String,
@@ -117,6 +117,13 @@ struct VirtualProfileMappingSummary {
     physical_button: u32,
     modifiers: Vec<VirtualButtonModifierSummary>,
     logical_action: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualButtonCaptureSummary {
+    mapping: VirtualProfileMappingSummary,
+    conflicting_action: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -740,11 +747,11 @@ fn remove_virtual_profile_encoder_group(
 }
 
 #[tauri::command]
-async fn learn_virtual_profile_button(
+async fn capture_virtual_profile_button(
     profile_id: Uuid,
     logical_action: String,
     state: State<'_, AppState>,
-) -> Result<Vec<VirtualProfileMappingSummary>, String> {
+) -> Result<VirtualButtonCaptureSummary, String> {
     let learned = wait_for_direct_input_mapping().await?;
     let store = state.0.lock().map_err(|error| error.to_string())?;
     if !store
@@ -755,8 +762,6 @@ async fn learn_virtual_profile_button(
     {
         return Err("That action is not in the saved LMU button layout.".to_owned());
     }
-    let profile = find_profile(&store, profile_id)?;
-    let mut mapping = profile.virtual_mapping.unwrap_or_default();
     let (pressed, modifiers) = match learned {
         LearnedPhysicalMapping::Button(pressed) => (pressed, Vec::new()),
         LearnedPhysicalMapping::Modified { modifier, trigger } => (
@@ -768,22 +773,43 @@ async fn learn_virtual_profile_button(
             }],
         ),
     };
-    mapping.buttons.retain(|entry| {
-        !(entry.device_id == pressed.device_id
-            && entry.physical_button == pressed.button_id
-            && entry.modifiers == modifiers)
-    });
-    mapping.buttons.push(VirtualButtonMapping {
+    let proposed = VirtualButtonMapping {
         device_id: pressed.device_id,
         device_name: pressed.device_name,
         physical_button: pressed.button_id,
         modifiers,
         logical_action,
-    });
-    store
-        .set_profile_virtual_mapping(profile_id, Some(mapping.clone()))
+    };
+    let conflicting_action = store
+        .virtual_button_conflict(profile_id, &proposed)
         .map_err(|error| error.to_string())?;
-    Ok(mapping_summaries(Some(&mapping)))
+    Ok(VirtualButtonCaptureSummary {
+        mapping: mapping_summary(&proposed),
+        conflicting_action,
+    })
+}
+
+#[tauri::command]
+fn save_virtual_profile_button(
+    profile_id: Uuid,
+    proposed: VirtualProfileMappingSummary,
+    replace_conflict: bool,
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualProfileMappingSummary>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    if !store
+        .settings
+        .virtual_layout
+        .iter()
+        .any(|entry| entry.logical_action == proposed.logical_action)
+    {
+        return Err("That action is not in the saved LMU button layout.".to_owned());
+    }
+    let proposed = stored_button_mapping(proposed);
+    store
+        .assign_profile_virtual_button(profile_id, proposed, replace_conflict)
+        .map(|mapping| mapping_summaries(Some(&mapping)))
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -872,22 +898,44 @@ fn mapping_summaries(mapping: Option<&VirtualProfileMapping>) -> Vec<VirtualProf
     mapping
         .into_iter()
         .flat_map(|mapping| mapping.buttons.iter())
-        .map(|entry| VirtualProfileMappingSummary {
-            device_id: entry.device_id.clone(),
-            device_name: entry.device_name.clone(),
-            physical_button: entry.physical_button,
-            modifiers: entry
-                .modifiers
-                .iter()
-                .map(|modifier| VirtualButtonModifierSummary {
-                    device_id: modifier.device_id.clone(),
-                    device_name: modifier.device_name.clone(),
-                    physical_button: modifier.physical_button,
-                })
-                .collect(),
-            logical_action: entry.logical_action.clone(),
-        })
+        .map(mapping_summary)
         .collect()
+}
+
+fn mapping_summary(entry: &VirtualButtonMapping) -> VirtualProfileMappingSummary {
+    VirtualProfileMappingSummary {
+        device_id: entry.device_id.clone(),
+        device_name: entry.device_name.clone(),
+        physical_button: entry.physical_button,
+        modifiers: entry
+            .modifiers
+            .iter()
+            .map(|modifier| VirtualButtonModifierSummary {
+                device_id: modifier.device_id.clone(),
+                device_name: modifier.device_name.clone(),
+                physical_button: modifier.physical_button,
+            })
+            .collect(),
+        logical_action: entry.logical_action.clone(),
+    }
+}
+
+fn stored_button_mapping(entry: VirtualProfileMappingSummary) -> VirtualButtonMapping {
+    VirtualButtonMapping {
+        device_id: entry.device_id,
+        device_name: entry.device_name,
+        physical_button: entry.physical_button,
+        modifiers: entry
+            .modifiers
+            .into_iter()
+            .map(|modifier| VirtualButtonModifier {
+                device_id: modifier.device_id,
+                device_name: modifier.device_name,
+                physical_button: modifier.physical_button,
+            })
+            .collect(),
+        logical_action: entry.logical_action,
+    }
 }
 
 fn encoder_control_summary(control: VirtualEncoderControl) -> VirtualEncoderControlSummary {
@@ -2501,7 +2549,8 @@ pub fn run() {
             virtual_profile_encoder_groups,
             save_virtual_profile_encoder_group,
             remove_virtual_profile_encoder_group,
-            learn_virtual_profile_button,
+            capture_virtual_profile_button,
+            save_virtual_profile_button,
             inspect_virtual_profile_button,
             remove_virtual_profile_button,
             virtual_routing_status,
