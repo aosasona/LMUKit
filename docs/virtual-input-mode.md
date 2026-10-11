@@ -36,7 +36,7 @@ The guided setup lets the user leave LMU listening on an action and press `Ctrl+
 
 After LMU saves its assignments, **Finish & rescan** stops the hotkey and reads `direct input.json` again. Emitting a pulse is not treated as proof that LMU accepted it; the resulting action must appear in the saved binding scan. The hotkey path remains hardware-dependent because LMU may capture the keyboard trigger before the virtual press. Cancellation, errors, page navigation, and backend teardown stop setup, and the vJoy backend releases every output when it disconnects.
 
-Each selected profile exposes its mapping editor directly in the Profiles detail pane. It presents the action first—for example **Pit Limiter**—and keeps **vJoy B1** as secondary diagnostic information. A user chooses the action and presses the desired physical control; LMUKit stores physical control -> Pit Limiter, while the shared layout supplies Pit Limiter -> B1. Users do not manually calculate or memorise button numbers. The Virtual Input page is reserved for the shared vJoy setup and starting or stopping live remapping.
+Each selected profile exposes its mapping editor directly in the Profiles detail pane. It presents the action first—for example **Pit Limiter**—and keeps **vJoy B1** as secondary diagnostic information. A user chooses the action and presses the desired physical control; LMUKit stores physical control -> Pit Limiter, while the shared layout supplies Pit Limiter -> B1. Users do not manually calculate or memorise button numbers. Live remapping is also started, switched, or stopped from that profile pane. The Virtual Input page is reserved for shared vJoy setup and global routing status.
 
 For an existing profile, **Reuse existing bindings** reads that profile's saved `direct input.json` and joins both sides by logical action name (case-insensitively): the old LMU binding supplies the physical USB device and button, while the shared layout supplies the virtual button LMU now expects. This is an explicit, reviewable migration and does not edit either the profile's JSON or LMU's live file. Existing manual virtual mappings win, axes and POVs are ignored, unknown actions are skipped, and a physical control assigned to several matching actions is reported for manual resolution.
 
@@ -67,7 +67,7 @@ For example, a GT Neo HY profile may map encoder 1 to Front ARB while a GT Neo G
 
 1. Start LMUKit and LMU with the already configured virtual controller available.
 2. LMUKit uses a reliably identified wheel or the user's manual wheel selection.
-3. The user selects a profile manually, or confirmed class context resolves a configured wheel/class default.
+3. The user selects a profile manually and starts it live from the Profiles detail pane, or confirmed class context resolves a configured wheel/class default.
 4. LMUKit translates physical button events through that profile into the stable virtual layout.
 5. The user may change virtual profiles while LMU is running without rebinding the virtual controller.
 

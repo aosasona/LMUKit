@@ -5,7 +5,6 @@ import {
   Check,
   Gamepad2,
   LoaderCircle,
-  Play,
   Radio,
   RefreshCw,
   Send,
@@ -13,11 +12,9 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type {
-  Profile,
   VirtualAction,
   VirtualBindingDevice,
   VirtualButtonPulse,
-  VirtualProfileMapping,
   VirtualRoutingStatus,
   VirtualSetupEvent,
   VirtualSetupStatus,
@@ -25,14 +22,12 @@ import type {
 
 export function VirtualInputPage({
   busy,
-  profiles,
-  activeProfileId,
   onNotice,
+  onOpenProfiles,
 }: {
   busy: boolean;
-  profiles: Profile[];
-  activeProfileId: string | null;
   onNotice: (message: string) => void;
+  onOpenProfiles: () => void;
 }) {
   const [devices, setDevices] = useState<VirtualBindingDevice[]>([]);
   const [selectedKey, setSelectedKey] = useState("");
@@ -45,12 +40,6 @@ export function VirtualInputPage({
   const [setupBusy, setSetupBusy] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [lastPulse, setLastPulse] = useState<VirtualButtonPulse | null>(null);
-  const [selectedProfileId, setSelectedProfileId] = useState(
-    activeProfileId ?? profiles[0]?.id ?? "",
-  );
-  const [profileMappings, setProfileMappings] = useState<
-    VirtualProfileMapping[]
-  >([]);
   const [routingBusy, setRoutingBusy] = useState(false);
   const [routing, setRouting] = useState<VirtualRoutingStatus>({
     active: false,
@@ -61,24 +50,6 @@ export function VirtualInputPage({
     lastEvent: null,
     error: null,
   });
-
-  useEffect(() => {
-    if (!selectedProfileId && profiles.length) {
-      setSelectedProfileId(activeProfileId ?? profiles[0].id);
-    }
-  }, [activeProfileId, profiles, selectedProfileId]);
-
-  useEffect(() => {
-    if (!selectedProfileId) {
-      setProfileMappings([]);
-      return;
-    }
-    void invoke<VirtualProfileMapping[]>("virtual_profile_mapping", {
-      profileId: selectedProfileId,
-    })
-      .then(setProfileMappings)
-      .catch((reason) => setError(String(reason)));
-  }, [selectedProfileId]);
 
   useEffect(() => {
     const refresh = () => {
@@ -255,24 +226,6 @@ export function VirtualInputPage({
     }
   };
 
-  const startRouting = async () => {
-    if (!selectedProfileId) return;
-    setRoutingBusy(true);
-    setError(null);
-    try {
-      const next = await invoke<VirtualRoutingStatus>("start_virtual_routing", {
-        profileId: selectedProfileId,
-      });
-      setRouting(next);
-      onNotice(`Wheel remapping enabled for ${next.profileName}.`);
-    } catch (reason) {
-      setError(String(reason));
-      onNotice(String(reason));
-    } finally {
-      setRoutingBusy(false);
-    }
-  };
-
   const stopRouting = async () => {
     setRoutingBusy(true);
     try {
@@ -438,35 +391,20 @@ export function VirtualInputPage({
           <h2>
             {routing.active
               ? "Wheel remapping is on"
-              : "Choose the profile you are using"}
+              : "Choose a profile from your garage"}
           </h2>
           <p>
             {routing.active
               ? `${routing.profileName} is sending its assigned buttons to LMU.`
-              : "LMUKit must remain open while remapping is enabled."}
+              : "Select and configure a profile in Profiles, then start it from the same detail pane."}
           </p>
         </div>
-        <label>
-          <span>Current profile</span>
-          <select
-            value={selectedProfileId}
-            disabled={routing.active || routingBusy || !profiles.length}
-            onChange={(event) => setSelectedProfileId(event.target.value)}
-          >
-            {profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.name}
-              </option>
-            ))}
-          </select>
-        </label>
         <div className="virtual-router-health">
           <i className={routing.active ? "active" : ""} />
           <span>
             <strong>{routing.active ? "Remapping on" : "Remapping off"}</strong>
             <small>
-              {routing.lastEvent ??
-                `${profileMappings.length} physical mappings`}
+              {routing.lastEvent ?? "No profile is currently being routed"}
             </small>
           </span>
         </div>
@@ -483,16 +421,10 @@ export function VirtualInputPage({
           <button
             type="button"
             className="primary"
-            disabled={
-              routingBusy ||
-              !selectedProfileId ||
-              !profileMappings.length ||
-              setup !== null
-            }
-            onClick={() => void startRouting()}
+            disabled={setup !== null}
+            onClick={onOpenProfiles}
           >
-            {routingBusy ? <LoaderCircle className="spin" /> : <Play />}
-            Enable remapping
+            <Gamepad2 /> Open profiles
           </button>
         )}
       </section>

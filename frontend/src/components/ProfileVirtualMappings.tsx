@@ -30,8 +30,18 @@ export function ProfileVirtualMappings({
   const [loading, setLoading] = useState(true);
   const [migrating, setMigrating] = useState(false);
   const [learningAction, setLearningAction] = useState<string | null>(null);
-  const [routingActive, setRoutingActive] = useState(false);
+  const [routingBusy, setRoutingBusy] = useState(false);
+  const [routing, setRouting] = useState<VirtualRoutingStatus>({
+    active: false,
+    profileId: null,
+    profileName: null,
+    identity: null,
+    routedEventCount: 0,
+    lastEvent: null,
+    error: null,
+  });
   const [error, setError] = useState<string | null>(null);
+  const routingActive = routing.active;
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +58,7 @@ export function ProfileVirtualMappings({
         if (cancelled) return;
         setActions(nextActions);
         setMappings(nextMappings);
-        setRoutingActive(routing.active);
+        setRouting(routing);
       })
       .catch((reason) => {
         if (!cancelled) setError(String(reason));
@@ -61,6 +71,16 @@ export function ProfileVirtualMappings({
       void invoke("cancel_binding_lookup");
     };
   }, [profile.id]);
+
+  useEffect(() => {
+    const refresh = () => {
+      void invoke<VirtualRoutingStatus>("virtual_routing_status")
+        .then(setRouting)
+        .catch(() => undefined);
+    };
+    const timer = window.setInterval(refresh, 500);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const learn = async (action: string) => {
     if (routingActive) return;
@@ -138,6 +158,38 @@ export function ProfileVirtualMappings({
       onNotice(String(reason));
     } finally {
       setMigrating(false);
+    }
+  };
+
+  const startRouting = async () => {
+    if (!mappings.length) return;
+    setRoutingBusy(true);
+    setError(null);
+    try {
+      const next = await invoke<VirtualRoutingStatus>("start_virtual_routing", {
+        profileId: profile.id,
+      });
+      setRouting(next);
+      onNotice(`Wheel remapping enabled for ${profile.name}.`);
+    } catch (reason) {
+      setError(String(reason));
+      onNotice(String(reason));
+    } finally {
+      setRoutingBusy(false);
+    }
+  };
+
+  const stopRouting = async () => {
+    setRoutingBusy(true);
+    try {
+      const next = await invoke<VirtualRoutingStatus>("stop_virtual_routing");
+      setRouting(next);
+      onNotice("Wheel remapping disabled and all buttons released.");
+    } catch (reason) {
+      setError(String(reason));
+      onNotice(String(reason));
+    } finally {
+      setRoutingBusy(false);
     }
   };
 
@@ -248,6 +300,47 @@ export function ProfileVirtualMappings({
           <Square /> Cancel button capture
         </button>
       )}
+      <div className="profile-remapping-bar">
+        <span>
+          <i className={routing.active ? "active" : ""} />
+          <span>
+            <strong>
+              {routing.active
+                ? routing.profileId === profile.id
+                  ? "Live remapping is on"
+                  : `${routing.profileName ?? "Another profile"} is remapping`
+                : "Live remapping is off"}
+            </strong>
+            <small>
+              {routing.profileId === profile.id && routing.lastEvent
+                ? routing.lastEvent
+                : `${mappings.length} physical mapping${mappings.length === 1 ? "" : "s"}`}
+            </small>
+          </span>
+        </span>
+        {routing.active && routing.profileId === profile.id ? (
+          <button
+            type="button"
+            className="secondary compact"
+            disabled={routingBusy}
+            onClick={() => void stopRouting()}
+          >
+            <Square /> Disable remapping
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="primary compact"
+            disabled={busy || routingBusy || !mappings.length}
+            onClick={() => void startRouting()}
+          >
+            {routingBusy ? <LoaderCircle className="spin" /> : <Gamepad2 />}
+            {routing.active
+              ? "Switch to this profile"
+              : "Use this profile live"}
+          </button>
+        )}
+      </div>
     </section>
   );
 }

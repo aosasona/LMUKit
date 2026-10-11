@@ -670,9 +670,8 @@ export default function App() {
             {page === "virtual" && (
               <VirtualInputPage
                 busy={busy}
-                profiles={snapshot.profiles}
-                activeProfileId={snapshot.activeProfile}
                 onNotice={setNotice}
+                onOpenProfiles={() => navigate("profiles")}
               />
             )}
             {page === "game" && (
