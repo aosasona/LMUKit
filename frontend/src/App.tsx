@@ -636,6 +636,7 @@ export default function App() {
                 onSaveCategories={saveCategories}
                 onCreateWheel={createWheel}
                 onAssignWheel={assignWheel}
+                onNotice={setNotice}
               />
             )}
             {page === "bindings" && (

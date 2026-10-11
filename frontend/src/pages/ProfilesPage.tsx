@@ -11,6 +11,7 @@ import { useState } from "react";
 import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
 import { ProfileTagPicker } from "../components/ProfileTagPicker";
+import { ProfileVirtualMappings } from "../components/ProfileVirtualMappings";
 import { WheelImage } from "../components/WheelImage";
 import { SearchSelect } from "../components/SearchSelect";
 import type { Device, Profile, Wheel } from "../models";
@@ -56,6 +57,7 @@ type Props = {
   ) => void;
   onCreateWheel: (profile: Profile, brand: string, name: string) => void;
   onAssignWheel: (profile: Profile, wheel: Wheel | null) => void;
+  onNotice: (message: string) => void;
 };
 
 export function ProfilesPage(props: Props) {
@@ -83,6 +85,7 @@ export function ProfilesPage(props: Props) {
     onSaveCategories,
     onCreateWheel,
     onAssignWheel,
+    onNotice,
   } = props;
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [captureName, setCaptureName] = useState("");
@@ -344,6 +347,12 @@ export function ProfilesPage(props: Props) {
               onSave={onSaveCategories}
               onCreateWheel={onCreateWheel}
               onAssignWheel={onAssignWheel}
+            />
+            <ProfileVirtualMappings
+              key={`virtual-${selected.id}`}
+              profile={selected}
+              busy={busy}
+              onNotice={onNotice}
             />
             <div className="profile-devices-head">
               <div>

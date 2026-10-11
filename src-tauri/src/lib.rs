@@ -431,6 +431,20 @@ fn virtual_profile_mapping(
 }
 
 #[tauri::command]
+fn saved_virtual_layout(state: State<'_, AppState>) -> Result<Vec<VirtualActionSummary>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    Ok(store
+        .settings
+        .virtual_layout
+        .iter()
+        .map(|entry| VirtualActionSummary {
+            action: entry.logical_action.clone(),
+            virtual_button: entry.virtual_button,
+        })
+        .collect())
+}
+
+#[tauri::command]
 fn import_profile_virtual_mapping(
     profile_id: Uuid,
     state: State<'_, AppState>,
@@ -1632,6 +1646,7 @@ pub fn run() {
             preview_virtual_layout,
             import_virtual_layout,
             virtual_profile_mapping,
+            saved_virtual_layout,
             import_profile_virtual_mapping,
             learn_virtual_profile_button,
             remove_virtual_profile_button,

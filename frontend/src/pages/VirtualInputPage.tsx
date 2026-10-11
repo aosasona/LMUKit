@@ -10,8 +10,6 @@ import {
   RefreshCw,
   Send,
   Square,
-  Trash2,
-  WandSparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type {
@@ -20,7 +18,6 @@ import type {
   VirtualBindingDevice,
   VirtualButtonPulse,
   VirtualProfileMapping,
-  VirtualMappingImport,
   VirtualRoutingStatus,
   VirtualSetupEvent,
   VirtualSetupStatus,
@@ -54,8 +51,6 @@ export function VirtualInputPage({
   const [profileMappings, setProfileMappings] = useState<
     VirtualProfileMapping[]
   >([]);
-  const [learningAction, setLearningAction] = useState<string | null>(null);
-  const [migratingProfile, setMigratingProfile] = useState(false);
   const [routingBusy, setRoutingBusy] = useState(false);
   const [routing, setRouting] = useState<VirtualRoutingStatus>({
     active: false,
@@ -260,85 +255,6 @@ export function VirtualInputPage({
     }
   };
 
-  const learnMapping = async (action: string) => {
-    if (!selectedProfileId || routing.active) return;
-    setLearningAction(action);
-    setError(null);
-    onNotice(`Press the physical button for ${action}.`);
-    try {
-      const next = await invoke<VirtualProfileMapping[]>(
-        "learn_virtual_profile_button",
-        { profileId: selectedProfileId, logicalAction: action },
-      );
-      setProfileMappings(next);
-      onNotice(`${action} mapped to the pressed physical button.`);
-    } catch (reason) {
-      const message = String(reason);
-      if (!message.toLowerCase().includes("cancelled")) {
-        setError(message);
-        onNotice(message);
-      }
-    } finally {
-      setLearningAction(null);
-    }
-  };
-
-  const cancelLearning = async () => {
-    await invoke("cancel_binding_lookup");
-    setLearningAction(null);
-    onNotice("Button learning cancelled.");
-  };
-
-  const removeMapping = async (mapping: VirtualProfileMapping) => {
-    if (!selectedProfileId || routing.active) return;
-    try {
-      setProfileMappings(
-        await invoke<VirtualProfileMapping[]>("remove_virtual_profile_button", {
-          profileId: selectedProfileId,
-          deviceId: mapping.deviceId,
-          physicalButton: mapping.physicalButton,
-        }),
-      );
-      onNotice("Physical button mapping removed.");
-    } catch (reason) {
-      setError(String(reason));
-      onNotice(String(reason));
-    }
-  };
-
-  const migrateProfileBindings = async () => {
-    if (!selectedProfileId || routing.active) return;
-    setMigratingProfile(true);
-    setError(null);
-    try {
-      const report = await invoke<VirtualMappingImport>(
-        "import_profile_virtual_mapping",
-        { profileId: selectedProfileId },
-      );
-      setProfileMappings(report.mappings);
-      const warnings = [
-        report.conflictingControls
-          ? `${report.conflictingControls} conflicting control${report.conflictingControls === 1 ? "" : "s"} need manual assignment`
-          : "",
-        report.skippedUnknownDevice
-          ? `${report.skippedUnknownDevice} binding${report.skippedUnknownDevice === 1 ? " has" : "s have"} no usable device ID`
-          : "",
-      ].filter(Boolean);
-      onNotice(
-        report.added
-          ? `Reused ${report.added} existing LMU button${report.added === 1 ? "" : "s"}.${warnings.length ? ` ${warnings.join("; ")}.` : ""}`
-          : warnings.length
-            ? `No buttons were added. ${warnings.join("; ")}.`
-            : "This profile's matching LMU buttons are already assigned.",
-      );
-    } catch (reason) {
-      setError(String(reason));
-      onNotice(String(reason));
-    } finally {
-      setMigratingProfile(false);
-    }
-  };
-
   const startRouting = async () => {
     if (!selectedProfileId) return;
     setRoutingBusy(true);
@@ -379,8 +295,8 @@ export function VirtualInputPage({
           <span className="eyebrow">Experimental · button-only</span>
           <strong>Use different wheel buttons for the same LMU actions</strong>
           <p>
-            Pick a profile, assign its physical buttons, and enable remapping
-            while LMUKit is open.
+            Assign buttons from each profile in Profiles, then enable its live
+            remapping here while LMUKit is open.
           </p>
         </div>
         <div className="virtual-mode-guard">
@@ -518,7 +434,7 @@ export function VirtualInputPage({
 
       <section className="virtual-router panel">
         <div className="virtual-router-copy">
-          <span className="eyebrow">Step 1 · Wheel remapping</span>
+          <span className="eyebrow">Live wheel remapping</span>
           <h2>
             {routing.active
               ? "Wheel remapping is on"
@@ -577,104 +493,6 @@ export function VirtualInputPage({
           >
             {routingBusy ? <LoaderCircle className="spin" /> : <Play />}
             Enable remapping
-          </button>
-        )}
-      </section>
-
-      <section className="virtual-profile-mappings panel">
-        <div className="virtual-mapping-heading">
-          <div>
-            <span className="eyebrow">Step 2</span>
-            <h2>Assign wheel buttons</h2>
-            <p>
-              Reuse this profile&apos;s existing LMU buttons, then adjust any
-              action by pressing a different button.
-            </p>
-          </div>
-          <div className="virtual-mapping-heading-actions">
-            <span>{profileMappings.length} assigned</span>
-            <button
-              type="button"
-              className="secondary"
-              disabled={
-                routing.active ||
-                migratingProfile ||
-                !selectedProfileId ||
-                !actions.length
-              }
-              onClick={() => void migrateProfileBindings()}
-            >
-              {migratingProfile ? (
-                <LoaderCircle className="spin" />
-              ) : (
-                <WandSparkles />
-              )}
-              Reuse existing bindings
-            </button>
-          </div>
-        </div>
-        {error && <div className="virtual-error">{error}</div>}
-        {actions.map((action) => {
-          const assigned = profileMappings.filter(
-            (mapping) => mapping.logicalAction === action.action,
-          );
-          return (
-            <div className="virtual-mapping-row" key={action.action}>
-              <span>
-                <strong>{action.action}</strong>
-                <small>LMU virtual button B{action.virtualButton}</small>
-              </span>
-              <div className="virtual-mapping-sources">
-                {assigned.map((mapping) => (
-                  <span key={`${mapping.deviceId}-${mapping.physicalButton}`}>
-                    {mapping.deviceName || "Physical controller"} · Button{" "}
-                    {mapping.physicalButton}
-                    <button
-                      type="button"
-                      aria-label={`Remove ${action.action} mapping`}
-                      disabled={routing.active}
-                      onClick={() => void removeMapping(mapping)}
-                    >
-                      <Trash2 />
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <button
-                type="button"
-                className="secondary"
-                disabled={
-                  routing.active ||
-                  learningAction !== null ||
-                  !selectedProfileId
-                }
-                onClick={() => void learnMapping(action.action)}
-              >
-                {learningAction === action.action ? (
-                  <>
-                    <Radio className="spin" /> Press a wheel button…
-                  </>
-                ) : assigned.length ? (
-                  "Assign another"
-                ) : (
-                  "Assign button"
-                )}
-              </button>
-            </div>
-          );
-        })}
-        {!actions.length && !loading && (
-          <p className="virtual-empty">
-            No LMU actions are ready yet. Open the one-time setup below first.
-          </p>
-        )}
-        {learningAction && (
-          <button
-            type="button"
-            className="ghost virtual-cancel-learning"
-            onClick={() => void cancelLearning()}
-          >
-            <Square /> Cancel
           </button>
         )}
       </section>

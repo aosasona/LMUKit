@@ -9,7 +9,7 @@ LMUKit is a native Windows toolkit for focused, dependable Le Mans Ultimate util
 ## Architecture
 
 - `frontend/src/App.tsx` composes the desktop shell and coordinates Tauri-backed workspace actions.
-- `frontend/src/pages/` contains one component per workspace page, `frontend/src/components/` contains shared shell and editor controls, and `frontend/src/models.ts` owns the frontend command payload types. Keep page-specific presentation out of `App.tsx`. The profile editor composes binding capture, device-grouped FFB controls, and the read-only JSON preview.
+- `frontend/src/pages/` contains one component per workspace page, `frontend/src/components/` contains shared shell and editor controls, and `frontend/src/models.ts` owns the frontend command payload types. Keep page-specific presentation out of `App.tsx`. The profile editor composes binding capture, device-grouped FFB controls, and the read-only JSON preview. Virtual button assignment belongs to the selected profile's detail pane through `ProfileVirtualMappings`; the Virtual Input page owns only shared vJoy setup and live routing controls.
 - `frontend/src/styles.css` owns the shared visual system. Format TypeScript, JSX, and CSS with Prettier after UI changes.
 - `src-tauri/` owns the Tauri desktop shell and narrow command adapters. It must not duplicate storage rules.
 - `crates/lmukit-core/` exposes compatibility-sensitive Rust behavior independently of the UI runtime.
