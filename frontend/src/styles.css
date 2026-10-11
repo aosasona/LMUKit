@@ -3519,6 +3519,35 @@ textarea,
 .encoder-actions-step input,
 .encoder-actions-step select {
   width: 100%;
+  height: 42px;
+  min-width: 0;
+  padding: 0 12px;
+  border: 1px solid #343832;
+  outline: 0;
+  background: #111210;
+  color: var(--text);
+  caret-color: var(--teal);
+}
+.encoder-actions-step select {
+  padding-right: 34px;
+  color-scheme: dark;
+  cursor: pointer;
+}
+.encoder-details-step input:hover,
+.encoder-actions-step input:hover,
+.encoder-actions-step select:hover {
+  border-color: #4a5046;
+}
+.encoder-details-step input:focus,
+.encoder-actions-step input:focus,
+.encoder-actions-step select:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 2px rgba(198, 243, 107, 0.12);
+}
+.encoder-details-step input::selection,
+.encoder-actions-step input::selection {
+  background: rgba(198, 243, 107, 0.28);
+  color: #ffffff;
 }
 .encoder-next {
   margin-top: 18px;
