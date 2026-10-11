@@ -12,9 +12,10 @@ use anyhow::{Context, Result, ensure};
 use windows::{
     Win32::{
         Devices::HumanInterfaceDevice::{
-            DI8DEVCLASS_GAMECTRL, DIDATAFORMAT, DIDEVCAPS, DIDEVICEINSTANCEW, DIEDFL_ATTACHEDONLY,
-            DIENUM_CONTINUE, DIJOYSTATE2, DIRECTINPUT_VERSION, DISCL_BACKGROUND,
-            DISCL_NONEXCLUSIVE, DirectInput8Create, IDirectInput8W, IDirectInputDevice8W,
+            DI8DEVCLASS_GAMECTRL, DIDATAFORMAT, DIDEVCAPS, DIDEVICEINSTANCEW, DIDEVICEOBJECTDATA,
+            DIEDFL_ATTACHEDONLY, DIENUM_CONTINUE, DIJOYSTATE2, DIPH_DEVICE, DIPROP_BUFFERSIZE,
+            DIPROPDWORD, DIRECTINPUT_VERSION, DISCL_BACKGROUND, DISCL_NONEXCLUSIVE,
+            DirectInput8Create, IDirectInput8W, IDirectInputDevice8W,
         },
         Foundation::{BOOL, HINSTANCE},
         System::{Console::GetConsoleWindow, LibraryLoader::GetModuleHandleW},
@@ -22,6 +23,12 @@ use windows::{
     },
     core::{GUID, Interface},
 };
+
+const DIRECT_INPUT_BUFFER_SIZE: u32 = 256;
+const DIRECT_INPUT_EVENT_BATCH_SIZE: usize = 64;
+// DIJOYSTATE2 stores its 128 button bytes immediately after six axes, two
+// sliders, and four POV values. DirectInput buffered events use these offsets.
+const DIJOFS_BUTTON0: u32 = 48;
 
 #[link(name = "dinput8", kind = "static")]
 unsafe extern "system" {
@@ -116,6 +123,20 @@ impl DirectInputButtonReader {
             device
                 .SetCooperativeLevel(window, DISCL_BACKGROUND | DISCL_NONEXCLUSIVE)
                 .context("setting the DirectInput cooperative level")?;
+            let mut buffer_size = DIPROPDWORD {
+                diph: windows::Win32::Devices::HumanInterfaceDevice::DIPROPHEADER {
+                    dwSize: size_of::<DIPROPDWORD>() as u32,
+                    dwHeaderSize: size_of::<
+                        windows::Win32::Devices::HumanInterfaceDevice::DIPROPHEADER,
+                    >() as u32,
+                    dwObj: 0,
+                    dwHow: DIPH_DEVICE,
+                },
+                dwData: DIRECT_INPUT_BUFFER_SIZE,
+            };
+            device
+                .SetProperty(&DIPROP_BUFFERSIZE, &mut buffer_size.diph)
+                .context("enabling the DirectInput event buffer")?;
             device
                 .Acquire()
                 .context("acquiring the DirectInput device")?;
@@ -175,6 +196,49 @@ impl DirectInputButtonReader {
                 .collect(),
         )
     }
+
+    fn buffered_button_events(&self) -> Result<Vec<(usize, bool)>> {
+        let mut events = Vec::new();
+        loop {
+            let mut batch = [DIDEVICEOBJECTDATA::default(); DIRECT_INPUT_EVENT_BATCH_SIZE];
+            let mut count = batch.len() as u32;
+            // SAFETY: the device is configured for buffered input, batch is a
+            // writable array of the advertised element size, and count points
+            // to the number of available entries on return.
+            let read = unsafe {
+                let _ = self.device.Poll();
+                self.device.GetDeviceData(
+                    size_of::<DIDEVICEOBJECTDATA>() as u32,
+                    batch.as_mut_ptr(),
+                    &mut count,
+                    0,
+                )
+            };
+            if read.is_err() {
+                // Input can be lost while Windows re-enumerates a controller.
+                // Reacquire once and let the final state snapshot reconcile
+                // any transition that was not retained by DirectInput.
+                unsafe {
+                    self.device
+                        .Acquire()
+                        .context("reacquiring the DirectInput device")?;
+                }
+                break;
+            }
+            for event in &batch[..count as usize] {
+                let Some(button_index) = event.dwOfs.checked_sub(DIJOFS_BUTTON0) else {
+                    continue;
+                };
+                if button_index < self.summary.button_count.min(128) {
+                    events.push((button_index as usize, event.dwData & 0x80 != 0));
+                }
+            }
+            if count < batch.len() as u32 {
+                break;
+            }
+        }
+        Ok(events)
+    }
 }
 
 impl DirectInputButtonMonitor {
@@ -196,6 +260,32 @@ impl DirectInputButtonMonitor {
         let mut events = std::mem::take(&mut self.pending_events);
         let mut failed = Vec::new();
         for (device_id, reader) in &self.readers {
+            let buffered = match reader.buffered_button_events() {
+                Ok(buffered) => buffered,
+                Err(_) => {
+                    failed.push(device_id.clone());
+                    continue;
+                }
+            };
+            let previous = self.previous.entry(device_id.clone()).or_default();
+            for (index, pressed) in buffered {
+                let Some(was_pressed) = previous.get_mut(index) else {
+                    continue;
+                };
+                if pressed != *was_pressed {
+                    events.push(DirectInputButtonEvent {
+                        device_id: device_id.clone(),
+                        device_name: reader.summary.product_name.clone(),
+                        button_id: index as u32 + 1,
+                        pressed,
+                    });
+                    *was_pressed = pressed;
+                }
+            }
+
+            // A state snapshot recovers cleanly after acquisition loss or the
+            // unlikely event-buffer overflow. Buffered press/release pairs are
+            // emitted first, so short inputs are not erased by this snapshot.
             let buttons = match reader.buttons() {
                 Ok(buttons) => buttons,
                 Err(_) => {
@@ -203,11 +293,9 @@ impl DirectInputButtonMonitor {
                     continue;
                 }
             };
-            let previous = self
-                .previous
-                .entry(device_id.clone())
-                .or_insert_with(|| buttons.clone());
-            for (index, (pressed, was_pressed)) in buttons.iter().zip(previous.iter()).enumerate() {
+            for (index, (pressed, was_pressed)) in
+                buttons.iter().zip(previous.iter_mut()).enumerate()
+            {
                 if pressed != was_pressed {
                     events.push(DirectInputButtonEvent {
                         device_id: device_id.clone(),
@@ -215,9 +303,9 @@ impl DirectInputButtonMonitor {
                         button_id: index as u32 + 1,
                         pressed: *pressed,
                     });
+                    *was_pressed = *pressed;
                 }
             }
-            *previous = buttons;
         }
         for device_id in failed {
             self.release_and_remove(&device_id, &mut events);
