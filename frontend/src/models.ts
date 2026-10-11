@@ -66,6 +66,21 @@ export type VirtualBindingDevice = {
   likelyVirtual: boolean;
 };
 export type VirtualAction = { action: string; virtualButton: number };
+export type VirtualProfileMapping = {
+  deviceId: string;
+  deviceName: string;
+  physicalButton: number;
+  logicalAction: string;
+};
+export type VirtualRoutingStatus = {
+  active: boolean;
+  profileId: string | null;
+  profileName: string | null;
+  identity: string | null;
+  routedEventCount: number;
+  lastEvent: string | null;
+  error: string | null;
+};
 export type VirtualSetupStatus = {
   identity: string;
   buttonCount: number;

@@ -5,25 +5,34 @@ import {
   Check,
   Gamepad2,
   LoaderCircle,
+  Play,
   Radio,
   RefreshCw,
   Send,
   Square,
+  Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type {
+  Profile,
   VirtualAction,
   VirtualBindingDevice,
   VirtualButtonPulse,
+  VirtualProfileMapping,
+  VirtualRoutingStatus,
   VirtualSetupEvent,
   VirtualSetupStatus,
 } from "../models";
 
 export function VirtualInputPage({
   busy,
+  profiles,
+  activeProfileId,
   onNotice,
 }: {
   busy: boolean;
+  profiles: Profile[];
+  activeProfileId: string | null;
   onNotice: (message: string) => void;
 }) {
   const [devices, setDevices] = useState<VirtualBindingDevice[]>([]);
@@ -37,6 +46,52 @@ export function VirtualInputPage({
   const [setupBusy, setSetupBusy] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [lastPulse, setLastPulse] = useState<VirtualButtonPulse | null>(null);
+  const [selectedProfileId, setSelectedProfileId] = useState(
+    activeProfileId ?? profiles[0]?.id ?? "",
+  );
+  const [profileMappings, setProfileMappings] = useState<
+    VirtualProfileMapping[]
+  >([]);
+  const [learningAction, setLearningAction] = useState<string | null>(null);
+  const [routingBusy, setRoutingBusy] = useState(false);
+  const [routing, setRouting] = useState<VirtualRoutingStatus>({
+    active: false,
+    profileId: null,
+    profileName: null,
+    identity: null,
+    routedEventCount: 0,
+    lastEvent: null,
+    error: null,
+  });
+
+  useEffect(() => {
+    if (!selectedProfileId && profiles.length) {
+      setSelectedProfileId(activeProfileId ?? profiles[0].id);
+    }
+  }, [activeProfileId, profiles, selectedProfileId]);
+
+  useEffect(() => {
+    if (!selectedProfileId) {
+      setProfileMappings([]);
+      return;
+    }
+    void invoke<VirtualProfileMapping[]>("virtual_profile_mapping", {
+      profileId: selectedProfileId,
+    })
+      .then(setProfileMappings)
+      .catch((reason) => setError(String(reason)));
+  }, [selectedProfileId]);
+
+  useEffect(() => {
+    const refresh = () => {
+      void invoke<VirtualRoutingStatus>("virtual_routing_status")
+        .then(setRouting)
+        .catch(() => undefined);
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 500);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const recordPulse = useCallback(
     (pulse: VirtualButtonPulse, announce = true) => {
@@ -192,13 +247,91 @@ export function VirtualInputPage({
       setActions(imported);
       setSaved(true);
       onNotice(
-        `${imported.length} named virtual actions imported. Virtual routing is still disabled.`,
+        `${imported.length} named LMU actions saved for profile mapping.`,
       );
     } catch (reason) {
       setError(String(reason));
       onNotice(String(reason));
     } finally {
       setImporting(false);
+    }
+  };
+
+  const learnMapping = async (action: string) => {
+    if (!selectedProfileId || routing.active) return;
+    setLearningAction(action);
+    setError(null);
+    onNotice(`Press the physical button for ${action}.`);
+    try {
+      const next = await invoke<VirtualProfileMapping[]>(
+        "learn_virtual_profile_button",
+        { profileId: selectedProfileId, logicalAction: action },
+      );
+      setProfileMappings(next);
+      onNotice(`${action} mapped to the pressed physical button.`);
+    } catch (reason) {
+      const message = String(reason);
+      if (!message.toLowerCase().includes("cancelled")) {
+        setError(message);
+        onNotice(message);
+      }
+    } finally {
+      setLearningAction(null);
+    }
+  };
+
+  const cancelLearning = async () => {
+    await invoke("cancel_binding_lookup");
+    setLearningAction(null);
+    onNotice("Button learning cancelled.");
+  };
+
+  const removeMapping = async (mapping: VirtualProfileMapping) => {
+    if (!selectedProfileId || routing.active) return;
+    try {
+      setProfileMappings(
+        await invoke<VirtualProfileMapping[]>("remove_virtual_profile_button", {
+          profileId: selectedProfileId,
+          deviceId: mapping.deviceId,
+          physicalButton: mapping.physicalButton,
+        }),
+      );
+      onNotice("Physical button mapping removed.");
+    } catch (reason) {
+      setError(String(reason));
+      onNotice(String(reason));
+    }
+  };
+
+  const startRouting = async () => {
+    if (!selectedProfileId) return;
+    setRoutingBusy(true);
+    setError(null);
+    try {
+      const next = await invoke<VirtualRoutingStatus>("start_virtual_routing", {
+        profileId: selectedProfileId,
+      });
+      setRouting(next);
+      onNotice(`Virtual routing started for ${next.profileName}.`);
+    } catch (reason) {
+      setError(String(reason));
+      onNotice(String(reason));
+    } finally {
+      setRoutingBusy(false);
+    }
+  };
+
+  const stopRouting = async () => {
+    setRoutingBusy(true);
+    try {
+      const next = await invoke<VirtualRoutingStatus>("stop_virtual_routing");
+      setRouting(next);
+      onNotice("Virtual routing stopped and all outputs were released.");
+    } catch (reason) {
+      setError(String(reason));
+      onNotice(String(reason));
+    } finally {
+      setRoutingBusy(false);
     }
   };
 
@@ -329,7 +462,7 @@ export function VirtualInputPage({
               <button
                 type="button"
                 className="primary virtual-start-button"
-                disabled={busy || setupBusy}
+                disabled={busy || setupBusy || routing.active}
                 onClick={() => void startSetup()}
               >
                 {setupBusy && <LoaderCircle className="spin" />}
@@ -338,6 +471,71 @@ export function VirtualInputPage({
             </>
           )}
         </div>
+      </section>
+
+      <section className="virtual-router panel">
+        <div className="virtual-router-copy">
+          <span className="eyebrow">Live routing</span>
+          <h2>
+            {routing.active ? "Physical buttons are routed" : "Route a profile"}
+          </h2>
+          <p>
+            {routing.active
+              ? `${routing.profileName} is connected to ${routing.identity}.`
+              : "Choose a profile, learn its buttons, then start the button-only router."}
+          </p>
+        </div>
+        <label>
+          <span>Profile</span>
+          <select
+            value={selectedProfileId}
+            disabled={routing.active || routingBusy || !profiles.length}
+            onChange={(event) => setSelectedProfileId(event.target.value)}
+          >
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="virtual-router-health">
+          <i className={routing.active ? "active" : ""} />
+          <span>
+            <strong>
+              {routing.active ? "Routing active" : "Routing stopped"}
+            </strong>
+            <small>
+              {routing.lastEvent ??
+                `${profileMappings.length} physical mappings`}
+            </small>
+          </span>
+        </div>
+        {routing.active ? (
+          <button
+            type="button"
+            className="secondary"
+            disabled={routingBusy}
+            onClick={() => void stopRouting()}
+          >
+            <Square /> Stop &amp; release
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="primary"
+            disabled={
+              routingBusy ||
+              !selectedProfileId ||
+              !profileMappings.length ||
+              setup !== null
+            }
+            onClick={() => void startRouting()}
+          >
+            {routingBusy ? <LoaderCircle className="spin" /> : <Play />}
+            Start routing
+          </button>
+        )}
       </section>
 
       <div className="virtual-setup-grid">
@@ -428,12 +626,85 @@ export function VirtualInputPage({
             <button
               type="button"
               className="primary"
-              disabled={busy || loading || importing || !actions.length}
+              disabled={
+                busy ||
+                loading ||
+                importing ||
+                routing.active ||
+                !actions.length
+              }
               onClick={() => void importLayout()}
             >
               {importing && <LoaderCircle className="spin" />}
-              Use this layout
+              Save LMU button layout
             </button>
+          </div>
+          <div className="virtual-profile-mappings">
+            <div className="virtual-mapping-heading">
+              <div>
+                <span className="eyebrow">Selected profile</span>
+                <h3>Physical button mappings</h3>
+              </div>
+              <span>{profileMappings.length} mapped</span>
+            </div>
+            {actions.map((action) => {
+              const assigned = profileMappings.filter(
+                (mapping) => mapping.logicalAction === action.action,
+              );
+              return (
+                <div className="virtual-mapping-row" key={action.action}>
+                  <span>
+                    <strong>{action.action}</strong>
+                    <small>LMU receives B{action.virtualButton}</small>
+                  </span>
+                  <div className="virtual-mapping-sources">
+                    {assigned.map((mapping) => (
+                      <span
+                        key={`${mapping.deviceId}-${mapping.physicalButton}`}
+                      >
+                        {mapping.deviceName || "Physical controller"} · Button{" "}
+                        {mapping.physicalButton}
+                        <button
+                          type="button"
+                          aria-label={`Remove ${action.action} mapping`}
+                          disabled={routing.active}
+                          onClick={() => void removeMapping(mapping)}
+                        >
+                          <Trash2 />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={
+                      routing.active ||
+                      learningAction !== null ||
+                      !selectedProfileId
+                    }
+                    onClick={() => void learnMapping(action.action)}
+                  >
+                    {learningAction === action.action ? (
+                      <>
+                        <Radio className="spin" /> Listening…
+                      </>
+                    ) : (
+                      "Learn button"
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+            {learningAction && (
+              <button
+                type="button"
+                className="ghost virtual-cancel-learning"
+                onClick={() => void cancelLearning()}
+              >
+                <Square /> Cancel learning
+              </button>
+            )}
           </div>
         </section>
       </div>

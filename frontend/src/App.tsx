@@ -667,7 +667,12 @@ export default function App() {
               />
             )}
             {page === "virtual" && (
-              <VirtualInputPage busy={busy} onNotice={setNotice} />
+              <VirtualInputPage
+                busy={busy}
+                profiles={snapshot.profiles}
+                activeProfileId={snapshot.activeProfile}
+                onNotice={setNotice}
+              />
             )}
             {page === "game" && (
               <GameSettingsPage
