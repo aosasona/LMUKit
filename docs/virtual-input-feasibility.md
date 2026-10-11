@@ -25,13 +25,13 @@ The repository now has an experimental continuous DirectInput press/release moni
 
 The stored IDs remain the existing `GT3`, `GTE`, `LMP3`, `LMP2`, and `HY` values, while the UI presents `GT3` as the technically correct current class name `LMGT3`. A context provider may compare a conservative alias to those IDs, but must not rewrite a profile's stored tags merely because an alias was observed.
 
-| Observed value            | Existing class ID | Rule                                                                                       |
-| ------------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
-| `GT3`, `LMGT3`            | `GT3`             | Presented as `LMGT3`; `GT3` remains the stable stored ID.                                  |
-| `GTE`                     | `GTE`             | Kept distinct from GT3 for saved historic/content profiles.                                |
-| `LMP3`, `LMP 3`           | `LMP3`            | Whitespace-only spelling alias.                                                            |
-| `LMP2`, `LMP 2`           | `LMP2`            | Whitespace-only spelling alias.                                                            |
-| `HY`, `Hyper`, `Hypercar` | `HY`              | LMU reports `Hyper` for the observed Hypercar entry; the others remain accepted aliases.   |
+| Observed value                 | Existing class ID | Rule                                                                                     |
+| ------------------------------ | ----------------- | ---------------------------------------------------------------------------------------- |
+| `GT3`, `LMGT3`                 | `GT3`             | Presented as `LMGT3`; `GT3` remains the stable stored ID.                                |
+| `GTE`                          | `GTE`             | Kept distinct from GT3 for saved historic/content profiles.                              |
+| `LMP3`, `LMP 3`                | `LMP3`            | Whitespace-only spelling alias.                                                          |
+| `LMP2`, `LMP 2`, `LMP2_ELMS`  | `LMP2`            | LMU reports `LMP2_ELMS` for the observed ELMS LMP2 entry.                                |
+| `HY`, `Hyper`, `Hypercar`      | `HY`              | LMU reports `Hyper` for the observed Hypercar entry; the others remain accepted aliases. |
 
 Matching should be case-insensitive and trim surrounding whitespace. Values such as `LMH`, `LMDh`, `GTP`, manufacturer names, and model identifiers remain **unknown** until actual LMU payloads establish their semantics; they must not be guessed into `HY`. Unknown or ambiguous values never cause an automatic profile change.
 
