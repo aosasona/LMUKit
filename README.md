@@ -13,6 +13,17 @@ Closing the main window hides LMUKit in the Windows notification area so live re
 
 _The screenshot uses isolated synthetic profile data; no personal LMU files are included in the repository._
 
+## Why use LMUKit?
+
+- Keep several wheel and car-class profiles without manually copying LMU configuration files.
+- Reuse one stable set of LMU actions across interchangeable physical rims with Virtual Input Mode.
+- Change button and encoder mappings per profile without rebinding every action in LMU.
+- Use modifier combinations for actions such as VR recentering while preserving ordinary single-button actions.
+- Find, test, and diagnose physical controls by their LMU action names instead of memorising virtual button numbers.
+- Keep steering, pedals, and force feedback directly connected to LMU; virtual routing is deliberately button-only.
+- Protect live and saved configuration with validation, explicit confirmation, and recovery backups.
+- Launch LMU in Desktop or OpenXR mode together with the companion applications you choose.
+
 ## Current features
 
 - Capture LMU's live `direct input.json` as a named profile.
@@ -29,12 +40,13 @@ _The screenshot uses isolated synthetic profile data; no personal LMU files are 
 - Configure Desktop or native OpenXR (`+XR`) launching and start LMUKit, LMUFFB, Crew Chief, RaceLab, or custom companion applications through one explicit Steam launch option.
 - Autosave LMU paths, launch mode, and companion-app setup.
 - Scale the entire interface from Settings.
+- Hide to the Windows notification area while live remapping continues, with explicit **Show LMUKit** and confirmed **Exit LMUKit** tray actions.
 - Inspect virtual-input health and attached controllers, open rotating local logs, and export a privacy-redacted diagnostic report from Settings.
-- Guide one-time vJoy binding setup, save LMU's named button layout, learn physical buttons and modifier combinations per profile, assign wheel/class defaults, and switch experimental live DirectInput-to-vJoy routing without recreating the virtual controller.
+- Guide one-time vJoy binding setup, save LMU's named action layout, learn and test physical buttons and modifier combinations per profile, warn before replacing conflicting mappings, configure digital encoder modes, assign wheel/class defaults, and switch experimental live DirectInput-to-vJoy routing without recreating the virtual controller.
 
 LMUKit stores profiles, managed wheel images, settings, and timestamped recovery backups in the current Windows user's application-data directory. Use the **Folder** button on Profiles to open the exact location.
 
-Virtual Input Mode is optional and requires the user to install and configure [vJoy](https://github.com/BrunnerInnovation/vJoy) separately. LMUKit does not bundle, install, or update vJoy. Legacy JSON profile switching does not require it.
+Virtual Input Mode is optional and requires the user to install and configure [vJoy](https://github.com/BrunnerInnovation/vJoy) separately. LMUKit does not bundle, install, update, or silently reconfigure vJoy. Legacy JSON profile switching and the rest of LMUKit remain usable without it.
 
 ## Using LMUKit
 
@@ -76,11 +88,33 @@ Press `Ctrl+Alt+Space` anywhere in Windows to open the compact profile switcher.
 
 ### Virtual input setup
 
-Virtual Input Mode requires vJoy device 1 to be installed and configured separately. Open **Configure vJoy**, select device 1, set **Buttons** to **128**, and apply the change before opening LMU and LMUKit. The common eight-button configuration is not enough for a useful LMU action layout; LMUKit reports the device's actual capacity and warns when it is below 128. Changing the capacity alters the HID descriptor and may cause Windows to re-enumerate the controller, requiring existing LMU vJoy assignments to be registered again once. Restart both apps after applying the change and then leave the device at 128 buttons.
+#### vJoy requirement and configuration
+
+vJoy is required only for **Virtual Input Mode**. Install the signed Windows driver from the [BrunnerInnovation vJoy releases](https://github.com/BrunnerInnovation/vJoy/releases) and accept any administrator or restart prompts from its installer. LMUKit deliberately does not bundle or install a controller driver.
+
+Configure the virtual device before assigning it in LMU:
+
+1. Close LMU and LMUKit.
+2. Open **Configure vJoy** from the Windows Start menu.
+3. Select **device 1** and ensure that device is enabled.
+4. Set **Buttons** to **128** and apply the configuration. LMUKit does not require virtual axes or force feedback; it emits buttons only.
+5. Restart Windows if requested, then open LMUKit and check **Virtual input**. It should report vJoy device 1 with 128 buttons.
+
+vJoy supports up to 128 buttons per device, and **128 is strongly recommended** so the shared action layout has room to grow. A smaller configuration still works, but LMUKit can use only `B1` through the configured maximum: a 32-button device, for example, cannot route an action assigned to `B33`. LMUKit reports the detected capacity, warns below 128, and rejects mappings outside it. The common eight-button default is therefore suitable only for a very small test layout.
+
+Choose the button count once, before binding vJoy in LMU. Changing it alters the controller's HID descriptor, so Windows and LMU may enumerate it as a different device and the vJoy actions may need to be registered again. If the count is changed later, restart LMU and LMUKit, rebind the affected actions once, and then keep the capacity fixed.
+
+Steering, throttle, brake, clutch, and force feedback must stay bound directly to the physical wheelbase and pedals. LMUKit neither routes nor suppresses axes or FFB. Avoid binding the same physical wheel buttons directly in LMU when LMUKit is intended to route them, or both the physical and virtual devices may trigger actions.
+
+#### Register LMU actions
 
 Open **Virtual input**, start the guided binding setup, and leave LMU listening for the action you want to assign. Press `Ctrl+Alt+V` to send the next unused virtual button, or use the on-screen fallback. The shortcut is registered only while that setup session is active.
 
 LMUKit reserves each successfully emitted button for the rest of the session, so it advances safely even before LMU writes `direct input.json`. After assigning and saving the actions in LMU, choose **Finish & rescan**. LMUKit validates and automatically saves the named layout when exactly one vJoy device has bindings. If LMU retains multiple vJoy incarnations after a device reconfiguration, LMUKit asks the user to select the current device instead of guessing. Emitting a pulse is not treated as proof that LMU accepted it; the resulting action must appear in LMU's saved bindings.
+
+This is a one-time LMU-side setup for each action: LMU learns that, for example, vJoy `B1` means Pit Limiter. LMUKit records that action name, so daily profile editing is expressed as **physical control → Pit Limiter → B1**. Different profiles and rims can map different physical controls to Pit Limiter while LMU keeps the same `B1` assignment.
+
+#### Map and use profiles
 
 Select a profile under **Profiles** and use the visible **Edit button mappings** action in its Virtual Input section. The dedicated mapping workspace can search or filter actions and convert saved LMU button assignments into virtual mappings by matching the LMU action name. Search accepts partial words in any order and also finds physical buttons, vJoy outputs, and device names. LMUKit leaves manual mappings untouched and reports ambiguous controls for review. Choose **Bind control**, then press and release one button for a normal binding, or keep the first button held and press another to create a modifier combination. A normal and modified action may share the same trigger; the modified mapping takes precedence while its modifier is held.
 
@@ -177,7 +211,7 @@ The human maintainer directs the product, reviews changes, runs the required che
 
 ## Planned work
 
-- Develop an experimental [Virtual Input Mode](docs/virtual-input-mode.md) without replacing the existing, backed-up JSON profile workflow. The repository audit, candidate-driver constraints, LMU compatibility gate, and phased plan are documented in the [feasibility report](docs/virtual-input-feasibility.md).
+- Continue hardware acceptance and recovery testing for the experimental [Virtual Input Mode](docs/virtual-input-mode.md). The tested compatibility scope and remaining gates are documented in the [feasibility report](docs/virtual-input-feasibility.md).
 - Verify LMU's current native shared-memory contract from the header shipped with an installed game build before implementing automatic vehicle/class detection; no REST endpoint or memory layout is assumed.
 
 ## License
