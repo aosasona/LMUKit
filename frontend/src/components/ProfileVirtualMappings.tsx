@@ -3,9 +3,12 @@ import {
   Gamepad2,
   LoaderCircle,
   Radio,
+  Search,
+  SlidersHorizontal,
   Square,
   Trash2,
   WandSparkles,
+  X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {
@@ -15,6 +18,15 @@ import type {
   VirtualProfileMapping,
   VirtualRoutingStatus,
 } from "../models";
+
+function searchTokens(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
 
 export function ProfileVirtualMappings({
   profile,
@@ -31,6 +43,11 @@ export function ProfileVirtualMappings({
   const [migrating, setMigrating] = useState(false);
   const [learningAction, setLearningAction] = useState<string | null>(null);
   const [routingBusy, setRoutingBusy] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "assigned" | "unassigned">(
+    "all",
+  );
   const [routing, setRouting] = useState<VirtualRoutingStatus>({
     active: false,
     profileId: null,
@@ -42,6 +59,36 @@ export function ProfileVirtualMappings({
   });
   const [error, setError] = useState<string | null>(null);
   const routingActive = routing.active;
+  const assignedActions = new Set(
+    mappings.map((mapping) => mapping.logicalAction),
+  );
+  const queryTokens = searchTokens(query);
+  const visibleActions = actions.filter((action) => {
+    const assigned = assignedActions.has(action.action);
+    const actionMappings = mappings.filter(
+      (mapping) => mapping.logicalAction === action.action,
+    );
+    const candidateTokens = searchTokens(
+      [
+        action.action,
+        `vjoy b${action.virtualButton}`,
+        ...actionMappings.flatMap((mapping) => [
+          mapping.deviceName,
+          mapping.deviceId,
+          `button ${mapping.physicalButton}`,
+          `b${mapping.physicalButton}`,
+        ]),
+      ].join(" "),
+    );
+    return (
+      queryTokens.every((queryToken) =>
+        candidateTokens.some((candidate) => candidate.includes(queryToken)),
+      ) &&
+      (filter === "all" ||
+        (filter === "assigned" && assigned) ||
+        (filter === "unassigned" && !assigned))
+    );
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +129,17 @@ export function ProfileVirtualMappings({
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!editorOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      void closeEditor();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  });
+
   const learn = async (action: string) => {
     if (routingActive) return;
     setLearningAction(action);
@@ -109,6 +167,12 @@ export function ProfileVirtualMappings({
     await invoke("cancel_binding_lookup");
     setLearningAction(null);
     onNotice("Button learning cancelled.");
+  };
+
+  const closeEditor = async () => {
+    if (learningAction) await invoke("cancel_binding_lookup");
+    setLearningAction(null);
+    setEditorOpen(false);
   };
 
   const remove = async (mapping: VirtualProfileMapping) => {
@@ -200,86 +264,22 @@ export function ProfileVirtualMappings({
           <span className="eyebrow">Virtual input</span>
           <h4>Wheel button mappings</h4>
           <p>
-            Map this profile&apos;s physical controls to the actions already
-            bound through vJoy in LMU.
+            {loading
+              ? "Loading this profile's mappings…"
+              : `${mappings.length} physical mapping${mappings.length === 1 ? "" : "s"} across ${assignedActions.size} of ${actions.length} LMU actions.`}
           </p>
         </div>
-        <span>{mappings.length} assigned</span>
-      </header>
-
-      {routingActive && (
-        <div className="profile-mapping-notice">
-          Disable wheel remapping on the Virtual Input page before editing
-          mappings.
-        </div>
-      )}
-      {error && <div className="virtual-error">{error}</div>}
-
-      {!loading && actions.length > 0 && (
         <button
           type="button"
-          className="secondary compact profile-mapping-import"
-          disabled={
-            busy || routingActive || migrating || learningAction !== null
-          }
-          onClick={() => void migrate()}
+          className="secondary compact"
+          disabled={loading || !actions.length}
+          onClick={() => setEditorOpen(true)}
         >
-          {migrating ? <LoaderCircle className="spin" /> : <WandSparkles />}
-          Reuse this profile&apos;s existing bindings
+          <SlidersHorizontal /> Manage mappings
         </button>
-      )}
+      </header>
 
-      <div className="profile-mapping-list">
-        {actions.map((action) => {
-          const assigned = mappings.filter(
-            (mapping) => mapping.logicalAction === action.action,
-          );
-          return (
-            <div className="profile-mapping-row" key={action.action}>
-              <span>
-                <strong>{action.action}</strong>
-                <small>vJoy B{action.virtualButton}</small>
-              </span>
-              <div className="profile-mapping-sources">
-                {assigned.map((mapping) => (
-                  <span key={`${mapping.deviceId}-${mapping.physicalButton}`}>
-                    {mapping.deviceName || "Physical controller"} · Button{" "}
-                    {mapping.physicalButton}
-                    <button
-                      type="button"
-                      aria-label={`Remove ${action.action} mapping`}
-                      disabled={routingActive}
-                      onClick={() => void remove(mapping)}
-                    >
-                      <Trash2 />
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <button
-                type="button"
-                className="secondary compact"
-                disabled={
-                  busy || routingActive || learningAction !== null || migrating
-                }
-                onClick={() => void learn(action.action)}
-              >
-                {learningAction === action.action ? (
-                  <>
-                    <Radio className="spin" /> Press a button…
-                  </>
-                ) : assigned.length ? (
-                  "Add another"
-                ) : (
-                  "Assign"
-                )}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
-      {loading && <p className="virtual-empty">Loading button mappings…</p>}
+      {error && <div className="virtual-error">{error}</div>}
       {!loading && !actions.length && (
         <div className="profile-mapping-empty">
           <Gamepad2 />
@@ -290,15 +290,6 @@ export function ProfileVirtualMappings({
             </small>
           </span>
         </div>
-      )}
-      {learningAction && (
-        <button
-          type="button"
-          className="ghost compact profile-mapping-cancel"
-          onClick={() => void cancelLearning()}
-        >
-          <Square /> Cancel button capture
-        </button>
       )}
       <div className="profile-remapping-bar">
         <span>
@@ -341,6 +332,173 @@ export function ProfileVirtualMappings({
           </button>
         )}
       </div>
+
+      {editorOpen && (
+        <div
+          className="dialog-backdrop profile-mapping-backdrop"
+          role="presentation"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) void closeEditor();
+          }}
+        >
+          <section
+            className="profile-mapping-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profile-mapping-title"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div>
+                <span className="eyebrow">{profile.name}</span>
+                <h2 id="profile-mapping-title">Wheel button mappings</h2>
+                <p>
+                  Pick an LMU action, then press the physical control that
+                  should trigger it for this profile.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="dialog-close"
+                aria-label="Close mapping editor"
+                onClick={() => void closeEditor()}
+              >
+                <X />
+              </button>
+            </header>
+
+            {routingActive && (
+              <div className="profile-mapping-notice">
+                Disable live remapping before changing button assignments.
+              </div>
+            )}
+            {error && <div className="virtual-error">{error}</div>}
+
+            <div className="profile-mapping-toolbar">
+              <label className="profile-mapping-search">
+                <Search />
+                <input
+                  autoFocus
+                  value={query}
+                  placeholder="Search actions, buttons, or devices"
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </label>
+              <div className="profile-mapping-filters">
+                {(["all", "unassigned", "assigned"] as const).map((option) => (
+                  <button
+                    type="button"
+                    className={filter === option ? "active" : ""}
+                    key={option}
+                    onClick={() => setFilter(option)}
+                  >
+                    {option[0].toUpperCase() + option.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="secondary compact"
+                disabled={
+                  busy || routingActive || migrating || learningAction !== null
+                }
+                onClick={() => void migrate()}
+              >
+                {migrating ? (
+                  <LoaderCircle className="spin" />
+                ) : (
+                  <WandSparkles />
+                )}
+                Reuse existing bindings
+              </button>
+            </div>
+
+            <div className="profile-mapping-dialog-list">
+              {visibleActions.map((action) => {
+                const assigned = mappings.filter(
+                  (mapping) => mapping.logicalAction === action.action,
+                );
+                return (
+                  <div className="profile-mapping-row" key={action.action}>
+                    <span>
+                      <strong>{action.action}</strong>
+                      <small>vJoy B{action.virtualButton}</small>
+                    </span>
+                    <div className="profile-mapping-sources">
+                      {assigned.map((mapping) => (
+                        <span
+                          key={`${mapping.deviceId}-${mapping.physicalButton}`}
+                        >
+                          {mapping.deviceName || "Physical controller"} · Button{" "}
+                          {mapping.physicalButton}
+                          <button
+                            type="button"
+                            aria-label={`Remove ${action.action} mapping`}
+                            disabled={routingActive}
+                            onClick={() => void remove(mapping)}
+                          >
+                            <Trash2 />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      className="secondary compact"
+                      disabled={
+                        busy ||
+                        routingActive ||
+                        learningAction !== null ||
+                        migrating
+                      }
+                      onClick={() => void learn(action.action)}
+                    >
+                      {learningAction === action.action ? (
+                        <>
+                          <Radio className="spin" /> Press a button…
+                        </>
+                      ) : assigned.length ? (
+                        "Add another"
+                      ) : (
+                        "Assign"
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+              {!visibleActions.length && (
+                <div className="profile-mapping-no-results">
+                  No actions match this search and filter.
+                </div>
+              )}
+            </div>
+
+            <footer>
+              <span>
+                {visibleActions.length} of {actions.length} actions ·{" "}
+                {mappings.length} physical mappings
+              </span>
+              {learningAction ? (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => void cancelLearning()}
+                >
+                  <Square /> Cancel button capture
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => void closeEditor()}
+                >
+                  Done
+                </button>
+              )}
+            </footer>
+          </section>
+        </div>
+      )}
     </section>
   );
 }
