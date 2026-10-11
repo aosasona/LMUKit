@@ -138,7 +138,8 @@ The human maintainer directs the product, reviews changes, runs the required che
 
 ## Planned work
 
-- Read LMU's `Local\\LMUSharedMem` data to identify the active vehicle and class, while respecting that LMU does not hot-reload binding profiles.
+- Develop an experimental Virtual Input Mode without replacing the existing, backed-up JSON profile workflow. The repository audit, candidate-driver constraints, LMU compatibility gate, and phased plan are documented in [Virtual Input Mode: audit and feasibility gate](docs/virtual-input-feasibility.md).
+- Verify LMU's current native shared-memory contract from the header shipped with an installed game build before implementing automatic vehicle/class detection; no REST endpoint or memory layout is assumed.
 
 ## License
 
