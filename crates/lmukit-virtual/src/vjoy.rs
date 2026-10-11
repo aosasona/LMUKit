@@ -1,4 +1,4 @@
-use std::{env, path::PathBuf};
+use std::{env, path::PathBuf, sync::OnceLock};
 
 use anyhow::{Context, Result, bail, ensure};
 use libloading::Library;
@@ -34,7 +34,16 @@ struct VJoyApi {
     set_button: SetBtn,
 }
 
+static VJOY_API: OnceLock<Result<VJoyApi, String>> = OnceLock::new();
+
 impl VJoyApi {
+    fn shared() -> Result<&'static Self> {
+        VJOY_API
+            .get_or_init(|| Self::load().map_err(|error| format!("{error:#}")))
+            .as_ref()
+            .map_err(|error| anyhow::anyhow!(error.clone()))
+    }
+
     fn load() -> Result<Self> {
         let candidates = dll_candidates();
         let mut errors = Vec::new();
@@ -99,7 +108,10 @@ fn dll_candidates() -> Vec<PathBuf> {
 
 /// Runtime-loaded vJoy backend. LMUKit does not bundle or install the driver.
 pub struct VJoyBackend {
-    api: VJoyApi,
+    // vJoyInterface.dll must remain loaded for the process lifetime. The DLL
+    // can retain native work after a device is relinquished; unloading it with
+    // a short-lived backend causes that work to jump into an unloaded module.
+    api: &'static VJoyApi,
     device_id: u32,
     connected: bool,
     capabilities: Option<VirtualCapabilities>,
@@ -112,7 +124,7 @@ impl VJoyBackend {
             "vJoy device ID must be 1..=16"
         );
         Ok(Self {
-            api: VJoyApi::load()?,
+            api: VJoyApi::shared()?,
             device_id,
             connected: false,
             capabilities: None,
