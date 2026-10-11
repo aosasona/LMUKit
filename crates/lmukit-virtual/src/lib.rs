@@ -5,10 +5,14 @@
 
 use anyhow::Result;
 
+mod engine;
+
 #[cfg(target_os = "windows")]
 pub mod direct_input;
 #[cfg(target_os = "windows")]
 pub mod vjoy;
+
+pub use engine::{LogicalAction, MappingEngine, PhysicalButton, ProfileMapping, VirtualLayout};
 
 /// Stable information about the virtual device acquired by a backend.
 #[derive(Clone, Debug, Eq, PartialEq)]

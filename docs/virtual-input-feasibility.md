@@ -119,7 +119,7 @@ The first context phase will therefore remain manual. Automatic class selection 
 ## Phased implementation
 
 1. **Feasibility:** isolated vJoy adapter, mock backend, two-button pulse/mirror probe, explicit hardware checklist. No persisted or production-UI changes.
-2. **Core routing:** continuous physical events, source-owned outputs, safe reconciliation, manual wheel/profile selection, and a minimal persisted virtual mapping behind an experimental setting.
+2. **Core routing:** the platform-independent logical-action engine, source-owned outputs, output-range validation, and safe profile-change/shutdown reconciliation are implemented with a mock backend. Continuous Windows input, manual wheel/profile selection, and minimal persisted virtual mappings remain to be integrated behind an experimental setting.
 3. **Class-aware resolution:** wheel/class default references and wheel fallback using existing class tags, with referential-integrity and migration tests.
 4. **Advanced controls:** modifiers, layers, serialised encoder pulses, conflict diagnostics, and learn-input editing.
 5. **Verified car context:** provider backed only by observed LMU data, debounced selection, manual override, Resume Auto, and stale/conflict diagnostics.
