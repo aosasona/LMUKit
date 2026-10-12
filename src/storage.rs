@@ -175,6 +175,8 @@ pub struct Settings {
     #[serde(default)]
     pub virtual_layout: Vec<VirtualLayoutEntry>,
     #[serde(default)]
+    pub manual_virtual_actions: Vec<String>,
+    #[serde(default)]
     pub virtual_device_key: Option<String>,
     #[serde(default = "default_virtual_device_id")]
     pub virtual_device_id: u32,
@@ -243,6 +245,7 @@ impl Default for Settings {
             auto_profile_selection: false,
             last_virtual_profile: None,
             virtual_layout: Vec::new(),
+            manual_virtual_actions: Vec::new(),
             virtual_device_key: None,
             virtual_device_id: default_virtual_device_id(),
             virtual_profile_defaults: Vec::new(),
@@ -335,6 +338,10 @@ impl Store {
 
     pub fn save_settings(&self) -> Result<()> {
         validate_virtual_layout(&self.settings.virtual_layout)?;
+        validate_manual_virtual_actions(
+            &self.settings.virtual_layout,
+            &self.settings.manual_virtual_actions,
+        )?;
         self.validate_virtual_profile_defaults()?;
         ensure!(
             (1..=16).contains(&self.settings.virtual_device_id),
@@ -1190,7 +1197,7 @@ impl Store {
     pub fn save_virtual_layout(
         &mut self,
         device_key: String,
-        layout: Vec<VirtualLayoutEntry>,
+        mut layout: Vec<VirtualLayoutEntry>,
     ) -> Result<()> {
         validate_virtual_label(&device_key, "Virtual device key")?;
         validate_virtual_layout(&layout)?;
@@ -1198,8 +1205,144 @@ impl Store {
             !layout.is_empty(),
             "No virtual button bindings were found for that LMU device."
         );
+        let manual_actions = self
+            .settings
+            .manual_virtual_actions
+            .iter()
+            .map(|action| action.to_lowercase())
+            .collect::<BTreeSet<_>>();
+        layout.extend(
+            self.settings
+                .virtual_layout
+                .iter()
+                .filter(|entry| manual_actions.contains(&entry.logical_action.to_lowercase()))
+                .cloned(),
+        );
+        validate_virtual_layout(&layout)
+            .context("LMU's saved bindings conflict with a manually named virtual action")?;
         self.settings.virtual_device_key = Some(device_key);
         self.settings.virtual_layout = layout;
+        self.save_settings()
+    }
+
+    pub fn manual_virtual_layout(&self) -> Vec<VirtualLayoutEntry> {
+        let manual_actions = self
+            .settings
+            .manual_virtual_actions
+            .iter()
+            .map(|action| action.to_lowercase())
+            .collect::<BTreeSet<_>>();
+        self.settings
+            .virtual_layout
+            .iter()
+            .filter(|entry| manual_actions.contains(&entry.logical_action.to_lowercase()))
+            .cloned()
+            .collect()
+    }
+
+    pub fn next_manual_virtual_button(
+        &self,
+        logical_action: &str,
+        button_count: u32,
+    ) -> Result<u32> {
+        validate_virtual_label(logical_action, "Action name")?;
+        ensure!(
+            button_count > 0,
+            "The configured virtual controller has no buttons."
+        );
+        ensure!(
+            !self
+                .settings
+                .virtual_layout
+                .iter()
+                .any(|entry| entry.logical_action.eq_ignore_ascii_case(logical_action)),
+            "An action named '{logical_action}' already exists."
+        );
+        let used = self
+            .settings
+            .virtual_layout
+            .iter()
+            .map(|entry| entry.virtual_button)
+            .collect::<BTreeSet<_>>();
+        (1..=button_count.min(128))
+            .find(|button| !used.contains(button))
+            .ok_or_else(|| anyhow::anyhow!("All available virtual buttons are already named."))
+    }
+
+    pub fn add_manual_virtual_action(
+        &mut self,
+        logical_action: String,
+        virtual_button: u32,
+    ) -> Result<()> {
+        validate_virtual_label(&logical_action, "Action name")?;
+        ensure!(
+            !self
+                .settings
+                .virtual_layout
+                .iter()
+                .any(|entry| entry.logical_action.eq_ignore_ascii_case(&logical_action)),
+            "An action named '{logical_action}' already exists."
+        );
+        ensure!(
+            (1..=128).contains(&virtual_button),
+            "Virtual button B{virtual_button} is outside the supported range."
+        );
+        ensure!(
+            !self
+                .settings
+                .virtual_layout
+                .iter()
+                .any(|entry| entry.virtual_button == virtual_button),
+            "Virtual button B{virtual_button} is already assigned."
+        );
+        self.settings.virtual_layout.push(VirtualLayoutEntry {
+            logical_action: logical_action.clone(),
+            virtual_button,
+        });
+        self.settings.manual_virtual_actions.push(logical_action);
+        self.save_settings()
+    }
+
+    pub fn remove_manual_virtual_action(&mut self, logical_action: &str) -> Result<()> {
+        ensure!(
+            self.settings
+                .manual_virtual_actions
+                .iter()
+                .any(|action| action.eq_ignore_ascii_case(logical_action)),
+            "That manually named action no longer exists."
+        );
+        let referencing_profiles = self
+            .profiles()?
+            .into_iter()
+            .filter(|profile| {
+                profile.virtual_mapping.as_ref().is_some_and(|mapping| {
+                    mapping
+                        .buttons
+                        .iter()
+                        .any(|entry| entry.logical_action.eq_ignore_ascii_case(logical_action))
+                        || mapping.encoder_groups.iter().any(|group| {
+                            group.modes.iter().any(|mode| {
+                                mode.clockwise_action.eq_ignore_ascii_case(logical_action)
+                                    || mode
+                                        .counterclockwise_action
+                                        .eq_ignore_ascii_case(logical_action)
+                            })
+                        })
+                })
+            })
+            .map(|profile| profile.name)
+            .collect::<Vec<_>>();
+        ensure!(
+            referencing_profiles.is_empty(),
+            "Remove this action from these profiles first: {}.",
+            referencing_profiles.join(", ")
+        );
+        self.settings
+            .virtual_layout
+            .retain(|entry| !entry.logical_action.eq_ignore_ascii_case(logical_action));
+        self.settings
+            .manual_virtual_actions
+            .retain(|action| !action.eq_ignore_ascii_case(logical_action));
         self.save_settings()
     }
 
@@ -1847,6 +1990,30 @@ fn validate_virtual_layout(layout: &[VirtualLayoutEntry]) -> Result<()> {
             buttons.insert(entry.virtual_button),
             "Virtual button {} is assigned more than once.",
             entry.virtual_button
+        );
+    }
+    Ok(())
+}
+
+fn validate_manual_virtual_actions(
+    layout: &[VirtualLayoutEntry],
+    manual_actions: &[String],
+) -> Result<()> {
+    let layout_actions = layout
+        .iter()
+        .map(|entry| entry.logical_action.to_lowercase())
+        .collect::<BTreeSet<_>>();
+    let mut seen = BTreeSet::new();
+    for action in manual_actions {
+        validate_virtual_label(action, "Manually named action")?;
+        let normalized = action.to_lowercase();
+        ensure!(
+            seen.insert(normalized.clone()),
+            "Manually named action '{action}' appears more than once."
+        );
+        ensure!(
+            layout_actions.contains(&normalized),
+            "Manually named action '{action}' has no virtual button."
         );
     }
     Ok(())
@@ -2682,6 +2849,7 @@ mod tests {
         assert!(!store.settings.auto_profile_selection);
         assert_eq!(store.settings.last_virtual_profile, None);
         assert!(store.settings.virtual_layout.is_empty());
+        assert!(store.settings.manual_virtual_actions.is_empty());
         assert_eq!(store.settings.virtual_device_key, None);
         assert_eq!(store.settings.virtual_device_id, 1);
     }
@@ -2797,6 +2965,92 @@ mod tests {
         assert_eq!(saved_mapping.encoder_groups.len(), 1);
         assert_eq!(saved_mapping.encoder_groups[0].name, "Encoder 1");
         assert_eq!(saved_mapping.encoder_groups[0].modes[0].name, "Race");
+    }
+
+    #[test]
+    fn preserves_manually_named_actions_when_lmu_layout_is_rescanned() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("lmukit");
+        let mut store = Store::open_at(root.clone()).unwrap();
+        store.settings.virtual_layout = vec![VirtualLayoutEntry {
+            logical_action: "Pit Limiter".into(),
+            virtual_button: 1,
+        }];
+        store
+            .add_manual_virtual_action("RaceLab — Recenter VR".into(), 2)
+            .unwrap();
+
+        store
+            .save_virtual_layout(
+                "vJoy-1".into(),
+                vec![VirtualLayoutEntry {
+                    logical_action: "Headlights".into(),
+                    virtual_button: 3,
+                }],
+            )
+            .unwrap();
+
+        assert_eq!(
+            store.settings.virtual_layout,
+            vec![
+                VirtualLayoutEntry {
+                    logical_action: "Headlights".into(),
+                    virtual_button: 3,
+                },
+                VirtualLayoutEntry {
+                    logical_action: "RaceLab — Recenter VR".into(),
+                    virtual_button: 2,
+                },
+            ]
+        );
+        assert_eq!(
+            store.manual_virtual_layout(),
+            vec![VirtualLayoutEntry {
+                logical_action: "RaceLab — Recenter VR".into(),
+                virtual_button: 2,
+            }]
+        );
+        drop(store);
+
+        let reopened = Store::open_at(root).unwrap();
+        assert_eq!(
+            reopened.settings.manual_virtual_actions,
+            vec!["RaceLab — Recenter VR"]
+        );
+    }
+
+    #[test]
+    fn refuses_to_remove_a_manually_named_action_used_by_a_profile() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let profile = store
+            .import_profile_bytes("GT Neo", br#"{"Input":{}}"#)
+            .unwrap();
+        store
+            .add_manual_virtual_action("RaceLab — Toggle overlay".into(), 1)
+            .unwrap();
+        store
+            .set_profile_virtual_mapping(
+                profile.id,
+                Some(VirtualProfileMapping {
+                    buttons: vec![VirtualButtonMapping {
+                        device_id: "wheel".into(),
+                        device_name: "Wheel".into(),
+                        physical_button: 7,
+                        modifiers: Vec::new(),
+                        logical_action: "RaceLab — Toggle overlay".into(),
+                    }],
+                    encoder_groups: Vec::new(),
+                }),
+            )
+            .unwrap();
+
+        let error = store
+            .remove_manual_virtual_action("RaceLab — Toggle overlay")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("GT Neo"));
+        assert_eq!(store.manual_virtual_layout().len(), 1);
     }
 
     #[test]

@@ -419,7 +419,7 @@ export function ProfileVirtualMappings({
           <p>
             {loading
               ? "Loading this profile's mappings…"
-              : `${mappings.length} physical mapping${mappings.length === 1 ? "" : "s"} across ${assignedActions.size} of ${actions.length} LMU actions.`}
+              : `${mappings.length} physical mapping${mappings.length === 1 ? "" : "s"} across ${assignedActions.size} of ${actions.length} named actions.`}
           </p>
         </div>
         <div className="profile-virtual-mapping-actions">
@@ -578,7 +578,7 @@ export function ProfileVirtualMappings({
                 <span className="eyebrow">{profile.name}</span>
                 <h2 id="profile-mapping-title">Wheel button mappings</h2>
                 <p>
-                  Pick an LMU action, then press the physical control that
+                  Pick a named action, then press the physical control that
                   should trigger it for this profile.
                 </p>
               </div>

@@ -47,6 +47,7 @@ _The screenshot uses isolated synthetic profile data; no personal LMU files are 
 - Inspect virtual-input health and attached controllers, open rotating local logs, and export a privacy-redacted diagnostic report from Settings.
 - Observe LMU's current player car, normalized class, session state, data source, and freshness on Overview through the game's read-only shared-memory interface.
 - Guide one-time vJoy binding setup, save LMU's named action layout, learn and test physical buttons and modifier combinations per profile, warn before replacing conflicting mappings, configure digital encoder modes, assign one automatic default profile per car class, and switch experimental live DirectInput-to-vJoy routing without recreating the virtual controller.
+- Name and pulse unused vJoy buttons for external tools such as RaceLab, then map those shared actions—with the same modifier support—independently in every profile.
 
 LMUKit stores profiles, managed wheel images, settings, and timestamped recovery backups in the current Windows user's application-data directory. Use the **Folder** button on Profiles to open the exact location.
 
@@ -119,6 +120,12 @@ Open **Virtual input**, start the guided binding setup, and leave LMU listening 
 LMUKit reserves each successfully emitted button for the rest of the session, so it advances safely even before LMU writes `direct input.json`. After assigning and saving the actions in LMU, choose **Finish & rescan**. LMUKit validates and automatically saves the named layout when exactly one vJoy device has bindings. If LMU retains multiple vJoy incarnations after a device reconfiguration, LMUKit asks the user to select the current device instead of guessing. Emitting a pulse is not treated as proof that LMU accepted it; the resulting action must appear in LMU's saved bindings.
 
 This is a one-time LMU-side setup for each action: LMU learns that, for example, vJoy `B1` means Pit Limiter. LMUKit records that action name, so daily profile editing is expressed as **physical control → Pit Limiter → B1**. Different profiles and rims can map different physical controls to Pit Limiter while LMU keeps the same `B1` assignment.
+
+#### Register actions in other applications
+
+The shared virtual layout can also contain user-named actions that do not belong to LMU. Under **Virtual input → External app actions**, make RaceLab or another application listen for a controller input, enter a descriptive name such as `RaceLab — Recenter VR`, and choose **Send & save action**. LMUKit selects the next unused vJoy button, sends a test pulse, and adds that name to every profile mapping editor. A saved action can be tested again later. It cannot be removed while a profile still references it.
+
+External actions use the same per-profile physical controls and modifier combinations as LMU actions. Live remapping must be stopped while registering or testing one because the routing engine owns the vJoy device. Only leave the intended target application listening—the vJoy button remains visible to LMU and other applications even when they have no binding for it.
 
 #### Map and use profiles
 

@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Send,
   Square,
+  Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { displayClassTag } from "../lib/classTags";
@@ -49,6 +50,10 @@ export function VirtualInputPage({
   const [setupBusy, setSetupBusy] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [lastPulse, setLastPulse] = useState<VirtualButtonPulse | null>(null);
+  const [manualActions, setManualActions] = useState<VirtualAction[]>([]);
+  const [manualActionName, setManualActionName] = useState("");
+  const [manualBusy, setManualBusy] = useState<string | null>(null);
+  const [manualError, setManualError] = useState<string | null>(null);
   const [routingBusy, setRoutingBusy] = useState(false);
   const [selectedClass, setSelectedClass] = useState("");
   const [routing, setRouting] = useState<VirtualRoutingStatus>({
@@ -201,6 +206,12 @@ export function VirtualInputPage({
   }, [scan]);
 
   useEffect(() => {
+    void invoke<VirtualAction[]>("manual_virtual_actions")
+      .then(setManualActions)
+      .catch((reason) => setManualError(String(reason)));
+  }, []);
+
+  useEffect(() => {
     const result = listen<VirtualSetupEvent>(
       "virtual-setup-result",
       (event) => {
@@ -294,6 +305,68 @@ export function VirtualInputPage({
     }
   };
 
+  const createManualAction = async () => {
+    const action = manualActionName.trim();
+    if (!action) return;
+    setManualBusy("create");
+    setManualError(null);
+    try {
+      const created = await invoke<VirtualAction>(
+        "create_manual_virtual_action",
+        { action },
+      );
+      setManualActions((current) => [...current, created]);
+      setManualActionName("");
+      onNotice(`Saved ${created.action} as vJoy B${created.virtualButton}.`);
+    } catch (reason) {
+      setManualError(String(reason));
+      onNotice(String(reason));
+    } finally {
+      setManualBusy(null);
+    }
+  };
+
+  const testManualAction = async (action: VirtualAction) => {
+    setManualBusy(action.action);
+    setManualError(null);
+    try {
+      await invoke<VirtualButtonPulse>("test_manual_virtual_action", {
+        action: action.action,
+      });
+      onNotice(`Sent ${action.action} on vJoy B${action.virtualButton}.`);
+    } catch (reason) {
+      setManualError(String(reason));
+      onNotice(String(reason));
+    } finally {
+      setManualBusy(null);
+    }
+  };
+
+  const removeManualAction = async (action: VirtualAction) => {
+    if (
+      !window.confirm(
+        `Remove “${action.action}” from the shared virtual layout?`,
+      )
+    ) {
+      return;
+    }
+    setManualBusy(action.action);
+    setManualError(null);
+    try {
+      setManualActions(
+        await invoke<VirtualAction[]>("remove_manual_virtual_action", {
+          action: action.action,
+        }),
+      );
+      onNotice(`${action.action} removed from the shared virtual layout.`);
+    } catch (reason) {
+      setManualError(String(reason));
+      onNotice(String(reason));
+    } finally {
+      setManualBusy(null);
+    }
+  };
+
   const stopRouting = async () => {
     setRoutingBusy(true);
     try {
@@ -335,10 +408,10 @@ export function VirtualInputPage({
         <Gamepad2 />
         <div>
           <span className="eyebrow">Experimental · button-only</span>
-          <strong>Use different wheel buttons for the same LMU actions</strong>
+          <strong>Route wheel buttons to LMU and companion apps</strong>
           <p>
-            Assign buttons from each profile in Profiles, then enable its live
-            remapping here while LMUKit is open.
+            Name virtual actions once, assign buttons from each profile, then
+            enable live remapping while LMUKit is open.
           </p>
           {!!routing.activeEncoderModes.length && (
             <div className="active-encoder-modes">
@@ -514,7 +587,7 @@ export function VirtualInputPage({
           </h2>
           <p>
             {routing.active
-              ? `${routing.selectionReason ?? "Selected manually"}. Its assigned buttons are being sent to LMU.`
+              ? `${routing.selectionReason ?? "Selected manually"}. Its assigned buttons are being sent through vJoy.`
               : inputMode === "virtual"
                 ? "Select and configure a profile in Profiles, then start it from the same detail pane."
                 : "Select Virtual Input in the global input-method switch before starting live remapping."}
@@ -583,6 +656,131 @@ export function VirtualInputPage({
             {routingBusy ? <LoaderCircle className="spin" /> : <RefreshCw />}
             {routing.active ? "Switch profile" : "Use class default"}
           </button>
+        </div>
+      </section>
+
+      <section className="virtual-manual-actions panel">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">External app actions</span>
+            <h2>Name and send a virtual button</h2>
+            <p>
+              Use the same profile mappings and modifiers for RaceLab, overlay
+              tools, or any application that accepts vJoy buttons.
+            </p>
+          </div>
+          <strong>{manualActions.length}</strong>
+        </div>
+
+        <div className="virtual-manual-flow">
+          <div>
+            <b>1</b>
+            <span>
+              <strong>Make the other app listen</strong>
+              <small>Open its binding field before sending.</small>
+            </span>
+          </div>
+          <div>
+            <b>2</b>
+            <span>
+              <strong>Name the action</strong>
+              <small>For example, RaceLab — Recenter VR.</small>
+            </span>
+          </div>
+          <div>
+            <b>3</b>
+            <span>
+              <strong>Map it in Profiles</strong>
+              <small>
+                Choose any button or modifier combination per profile.
+              </small>
+            </span>
+          </div>
+        </div>
+
+        <div className="virtual-manual-create">
+          <label>
+            <span>Action name</span>
+            <input
+              type="text"
+              maxLength={120}
+              value={manualActionName}
+              placeholder="RaceLab — Toggle overlay"
+              disabled={manualBusy !== null}
+              onChange={(event) => setManualActionName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void createManualAction();
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="primary"
+            disabled={
+              busy ||
+              manualBusy !== null ||
+              setup !== null ||
+              routing.active ||
+              !manualActionName.trim()
+            }
+            onClick={() => void createManualAction()}
+          >
+            {manualBusy === "create" ? (
+              <LoaderCircle className="spin" />
+            ) : (
+              <Send />
+            )}
+            Send &amp; save action
+          </button>
+        </div>
+
+        {routing.active && (
+          <div className="virtual-manual-note">
+            Disable live remapping before sending or testing a virtual button.
+          </div>
+        )}
+        {manualError && <div className="virtual-error">{manualError}</div>}
+
+        <div className="virtual-manual-list">
+          {manualActions.map((action) => (
+            <div key={action.action}>
+              <span>
+                <strong>{action.action}</strong>
+                <small>Available in every profile mapping editor</small>
+              </span>
+              <code>B{action.virtualButton}</code>
+              <button
+                type="button"
+                className="secondary"
+                disabled={
+                  manualBusy !== null || setup !== null || routing.active
+                }
+                onClick={() => void testManualAction(action)}
+              >
+                {manualBusy === action.action ? (
+                  <LoaderCircle className="spin" />
+                ) : (
+                  <Send />
+                )}
+                Test
+              </button>
+              <button
+                type="button"
+                className="icon-button virtual-manual-remove"
+                aria-label={`Remove ${action.action}`}
+                disabled={manualBusy !== null}
+                onClick={() => void removeManualAction(action)}
+              >
+                <Trash2 />
+              </button>
+            </div>
+          ))}
+          {!manualActions.length && (
+            <p>
+              No external-app actions yet. The next unused vJoy button will be
+              selected automatically.
+            </p>
+          )}
         </div>
       </section>
 

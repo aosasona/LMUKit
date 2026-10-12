@@ -44,6 +44,13 @@ const virtualSteps: GuideStep[] = [
     page: "virtual",
   },
   {
+    title: "Add actions for other apps (optional)",
+    detail:
+      "Make RaceLab or another tool listen for a controller button, then name and send an unused vJoy button under External app actions. The name becomes available to every profile.",
+    action: "Open external actions",
+    page: "virtual",
+  },
+  {
     title: "Create or import a profile",
     detail:
       "Keep one profile for each control layout you use and give it the appropriate car-class tags. Wheel users can optionally associate reusable wheel details for presentation.",
@@ -53,7 +60,7 @@ const virtualSteps: GuideStep[] = [
   {
     title: "Map and test physical controls",
     detail:
-      "Choose a named LMU action, press the physical button, and confirm it. Hold one button and press another for a modifier. Stop live remapping before using Test a control.",
+      "Choose a named LMU or external-app action, press the physical button, and confirm it. Hold one button and press another for a modifier. Stop live remapping before using Test a control.",
     action: "Choose a profile",
     page: "profiles",
   },
@@ -115,7 +122,7 @@ export function HelpPage({
         </div>
         <div>
           <span className="eyebrow">Start here</span>
-          <h2>From physical control to LMU action</h2>
+          <h2>From physical control to named action</h2>
           <p>
             Set up a wheel, controller, button box, or mixed rig without
             memorising device numbers. Pick the workflow you want and follow it
@@ -230,8 +237,8 @@ export function HelpPage({
             <h4>Button boxes and mixed rigs</h4>
             <p>
               A profile can map controls from several detected devices to the
-              same stable LMU action layout. Multiple controls may target one
-              action safely.
+              same stable virtual action layout. Multiple controls may target
+              one action safely.
             </p>
           </article>
         </div>

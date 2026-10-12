@@ -5218,6 +5218,169 @@ textarea,
 .virtual-router > button svg {
   width: 16px;
 }
+.virtual-manual-actions {
+  padding: 20px;
+}
+.virtual-manual-actions .section-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.virtual-manual-actions .section-heading h2 {
+  margin: 4px 0 0;
+  font-size: calc(18px * var(--font-scale));
+}
+.virtual-manual-actions .section-heading p {
+  max-width: 720px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+  line-height: 1.5;
+}
+.virtual-manual-actions .section-heading > strong {
+  min-width: 34px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  color: var(--teal);
+  text-align: center;
+}
+.virtual-manual-flow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  background: #101110;
+}
+.virtual-manual-flow > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 14px;
+  border-right: 1px solid var(--line);
+}
+.virtual-manual-flow > div:last-child {
+  border-right: 0;
+}
+.virtual-manual-flow b {
+  width: 25px;
+  height: 25px;
+  flex: 0 0 25px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(198, 243, 107, 0.3);
+  color: var(--teal);
+  font-size: calc(11px * var(--font-scale));
+}
+.virtual-manual-flow strong,
+.virtual-manual-flow small {
+  display: block;
+}
+.virtual-manual-flow strong {
+  font-size: calc(12px * var(--font-scale));
+}
+.virtual-manual-flow small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: calc(11px * var(--font-scale));
+  line-height: 1.4;
+}
+.virtual-manual-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  margin-top: 14px;
+}
+.virtual-manual-create label > span {
+  display: block;
+  margin-bottom: 6px;
+  color: #8c9891;
+  font-size: calc(11px * var(--font-scale));
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.virtual-manual-create input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #303630;
+  outline: 0;
+  background: #0f100f;
+  color: #e1e8e3;
+}
+.virtual-manual-create input:focus {
+  border-color: #96b84e;
+  box-shadow: 0 0 0 2px rgba(198, 243, 107, 0.14);
+}
+.virtual-manual-create button {
+  min-height: 40px;
+}
+.virtual-manual-note {
+  margin-top: 12px;
+  color: #d7b477;
+  font-size: calc(12px * var(--font-scale));
+}
+.virtual-manual-list {
+  display: grid;
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  background: #101110;
+}
+.virtual-manual-list > div {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px auto 38px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 13px;
+  border-bottom: 1px solid var(--line);
+}
+.virtual-manual-list > div:last-child {
+  border-bottom: 0;
+}
+.virtual-manual-list strong,
+.virtual-manual-list small {
+  display: block;
+}
+.virtual-manual-list strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(13px * var(--font-scale));
+}
+.virtual-manual-list small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: calc(11px * var(--font-scale));
+}
+.virtual-manual-list code {
+  color: #93a098;
+  font-family: "Cascadia Mono", monospace;
+}
+.virtual-manual-list button svg {
+  width: 15px;
+}
+.virtual-manual-list .virtual-manual-remove {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-color: rgba(255, 101, 87, 0.2);
+  background: rgba(196, 43, 28, 0.08);
+  color: #c68078;
+}
+.virtual-manual-list .virtual-manual-remove:hover {
+  border-color: rgba(255, 101, 87, 0.45);
+  background: rgba(196, 43, 28, 0.16);
+  color: #ff9b91;
+}
+.virtual-manual-list > p {
+  margin: 0;
+  padding: 17px;
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+}
 .virtual-default-switcher {
   grid-column: 1 / -1;
   display: grid;
@@ -5669,7 +5832,9 @@ textarea,
     border-left: 0;
   }
   .virtual-wizard-steps,
-  .virtual-wizard-console {
+  .virtual-wizard-console,
+  .virtual-manual-flow,
+  .virtual-manual-create {
     grid-template-columns: 1fr;
   }
   .virtual-wizard-steps > div {
@@ -5677,6 +5842,13 @@ textarea,
     border-bottom: 1px solid var(--line);
   }
   .virtual-wizard-steps > div:last-child {
+    border-bottom: 0;
+  }
+  .virtual-manual-flow > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .virtual-manual-flow > div:last-child {
     border-bottom: 0;
   }
   .virtual-next-button {

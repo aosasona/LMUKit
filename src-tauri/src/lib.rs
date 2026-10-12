@@ -816,6 +816,159 @@ fn saved_virtual_layout(state: State<'_, AppState>) -> Result<Vec<VirtualActionS
 }
 
 #[tauri::command]
+fn manual_virtual_actions(state: State<'_, AppState>) -> Result<Vec<VirtualActionSummary>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    Ok(store
+        .manual_virtual_layout()
+        .into_iter()
+        .map(|entry| VirtualActionSummary {
+            action: entry.logical_action,
+            virtual_button: entry.virtual_button,
+        })
+        .collect())
+}
+
+fn ensure_manual_pulse_available(
+    routing_state: &VirtualRoutingState,
+    setup_state: &VirtualSetupState,
+) -> Result<(), String> {
+    let active = routing_state
+        .status
+        .lock()
+        .map_err(|error| error.to_string())?
+        .active;
+    if active
+        || routing_state
+            .session
+            .lock()
+            .map_err(|error| error.to_string())?
+            .is_some()
+    {
+        return Err("Disable live remapping before sending a manual virtual button.".to_owned());
+    }
+    if setup_state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())?
+        .active
+    {
+        return Err("Stop the LMU binding setup before sending a manual action.".to_owned());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn create_manual_virtual_action(
+    action: String,
+    state: State<'_, AppState>,
+    routing_state: State<'_, VirtualRoutingState>,
+    setup_state: State<'_, VirtualSetupState>,
+) -> Result<VirtualActionSummary, String> {
+    ensure_manual_pulse_available(&routing_state, &setup_state)?;
+    let device_id = state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())?
+        .settings
+        .virtual_device_id;
+    let capabilities =
+        tauri::async_runtime::spawn_blocking(move || inspect_virtual_device(device_id))
+            .await
+            .map_err(|error| format!("Virtual button worker stopped unexpectedly: {error}"))??;
+    let virtual_button = state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())?
+        .next_manual_virtual_button(&action, capabilities.button_count)
+        .map_err(|error| error.to_string())?;
+    state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())?
+        .add_manual_virtual_action(action.clone(), virtual_button)
+        .map_err(|error| error.to_string())?;
+    let pulse_result = match tauri::async_runtime::spawn_blocking(move || {
+        pulse_virtual_button(device_id, virtual_button)
+    })
+    .await
+    {
+        Ok(result) => result,
+        Err(error) => Err(format!(
+            "Virtual button worker stopped unexpectedly: {error}"
+        )),
+    };
+    if let Err(error) = pulse_result {
+        let rollback = state
+            .0
+            .lock()
+            .map_err(|lock_error| lock_error.to_string())?
+            .remove_manual_virtual_action(&action);
+        return match rollback {
+            Ok(()) => Err(error),
+            Err(rollback_error) => Err(format!(
+                "{error} The saved action could not be rolled back: {rollback_error}"
+            )),
+        };
+    }
+    diagnostics::info(
+        "virtual.manual.created",
+        format!("Created manually named virtual action on B{virtual_button}"),
+    );
+    Ok(VirtualActionSummary {
+        action,
+        virtual_button,
+    })
+}
+
+#[tauri::command]
+async fn test_manual_virtual_action(
+    action: String,
+    state: State<'_, AppState>,
+    routing_state: State<'_, VirtualRoutingState>,
+    setup_state: State<'_, VirtualSetupState>,
+) -> Result<VirtualButtonPulse, String> {
+    ensure_manual_pulse_available(&routing_state, &setup_state)?;
+    let (device_id, virtual_button) = {
+        let store = state.0.lock().map_err(|error| error.to_string())?;
+        let entry = store
+            .manual_virtual_layout()
+            .into_iter()
+            .find(|entry| entry.logical_action.eq_ignore_ascii_case(&action))
+            .ok_or_else(|| "That manually named action no longer exists.".to_owned())?;
+        (store.settings.virtual_device_id, entry.virtual_button)
+    };
+    let identity = tauri::async_runtime::spawn_blocking(move || {
+        pulse_virtual_button(device_id, virtual_button)
+    })
+    .await
+    .map_err(|error| format!("Virtual button worker stopped unexpectedly: {error}"))??;
+    Ok(VirtualButtonPulse {
+        virtual_button,
+        identity,
+        next_virtual_button: None,
+    })
+}
+
+#[tauri::command]
+fn remove_manual_virtual_action(
+    action: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualActionSummary>, String> {
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .remove_manual_virtual_action(&action)
+        .map_err(|error| error.to_string())?;
+    Ok(store
+        .manual_virtual_layout()
+        .into_iter()
+        .map(|entry| VirtualActionSummary {
+            action: entry.logical_action,
+            virtual_button: entry.virtual_button,
+        })
+        .collect())
+}
+
+#[tauri::command]
 fn import_profile_virtual_mapping(
     profile_id: Uuid,
     state: State<'_, AppState>,
@@ -1837,11 +1990,20 @@ fn existing_vjoy_buttons(store: &Store) -> Result<Vec<u32>, String> {
             .then_some(key.as_str())
         })
     });
-    match configured.or(detected) {
+    let mut used = match configured.or(detected) {
         Some(device_key) => Store::used_virtual_buttons_from_document(&document, device_key)
             .map_err(|error| error.to_string()),
         None => Ok(Vec::new()),
-    }
+    }?;
+    used.extend(
+        store
+            .manual_virtual_layout()
+            .into_iter()
+            .map(|entry| entry.virtual_button),
+    );
+    used.sort_unstable();
+    used.dedup();
+    Ok(used)
 }
 
 fn reserve_virtual_setup_button(
@@ -2910,6 +3072,10 @@ pub fn run() {
             saved_virtual_layout,
             import_profile_virtual_mapping,
             virtual_profile_defaults,
+            manual_virtual_actions,
+            create_manual_virtual_action,
+            test_manual_virtual_action,
+            remove_manual_virtual_action,
             set_virtual_profile_default,
             clear_virtual_profile_default,
             learn_virtual_encoder_control,
