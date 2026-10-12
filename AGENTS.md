@@ -48,6 +48,7 @@ Keep filesystem and parsing behavior in `lmukit-core`; keep platform input detai
 - Use the `LMUKIT_DATA_DIR` environment override with synthetic data for screenshots and isolated manual testing.
 - Keep non-Windows tests and checks functional even when adding Windows-only behavior.
 - Do not silently edit Steam configuration. Generate and copy an explicit launch option for the user.
+- Generated companion launchers must start LMUKit and every companion executable with that executable's parent directory as its Windows working directory. Some apps, including LMUFFB, otherwise resolve profiles relative to Steam or LMU and appear unconfigured.
 - VR launch mode must append LMU's native `+XR` argument so it uses OpenXR.
 - LMU does not hot-reload `direct input.json`. Profile activation while LMU is closed prepares the next launch; do not present file replacement as an in-session switch.
 - Check whether LMU is running before every live `direct input.json` or `Settings.JSON` write. A failed check must be visible and cancel the operation. Global Legacy shortcuts have no confirmation surface and therefore must refuse while LMU runs.

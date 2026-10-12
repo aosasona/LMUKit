@@ -707,10 +707,15 @@ impl Store {
         }
         let launcher = self.root.join("launch-lmu-with-companions.cmd");
         let lmukit = batch_path(lmukit_exe);
+        let lmukit_working_dir = batch_path(
+            lmukit_exe
+                .parent()
+                .context("LMUKit's executable has no parent directory")?,
+        );
         let mut script = format!(
             "@echo off\r\n\
              tasklist /FI \"IMAGENAME eq lmukit.exe\" 2>NUL | find /I \"lmukit.exe\" >NUL\r\n\
-             if errorlevel 1 start \"\" \"{lmukit}\"\r\n"
+             if errorlevel 1 start \"\" /D \"{lmukit_working_dir}\" \"{lmukit}\"\r\n"
         );
         for app in self
             .settings
@@ -724,9 +729,14 @@ impl Store {
                 .and_then(|name| name.to_str())
                 .context("a companion app has no usable executable name")?;
             let path = batch_path(&app.path);
+            let working_dir = batch_path(
+                app.path
+                    .parent()
+                    .context("a companion app has no parent directory")?,
+            );
             script.push_str(&format!(
                 "tasklist /FI \"IMAGENAME eq {executable}\" 2>NUL | find /I \"{executable}\" >NUL\r\n\
-                 if errorlevel 1 start \"\" \"{path}\"\r\n"
+                 if errorlevel 1 start \"\" /D \"{working_dir}\" \"{path}\"\r\n"
             ));
         }
         script.push_str(match self.settings.lmu_launch_mode {
@@ -3161,11 +3171,13 @@ mod tests {
     fn creates_a_steam_companion_launcher() {
         let temp = tempfile::tempdir().unwrap();
         let lmukit = temp.path().join("lmukit.exe");
-        let lmuffb = temp.path().join("LMUFFB.exe");
+        let lmuffb_dir = temp.path().join("LMUFFB");
+        let lmuffb = lmuffb_dir.join("LMUFFB.exe");
+        fs::create_dir(&lmuffb_dir).unwrap();
         fs::write(&lmukit, []).unwrap();
         fs::write(&lmuffb, []).unwrap();
         let mut store = Store::open_at(temp.path().join("data")).unwrap();
-        store.settings.companion_apps[0].path = lmuffb;
+        store.settings.companion_apps[0].path = lmuffb.clone();
 
         let option = store.companion_launch_option(&lmukit).unwrap();
         let launcher = store.root.join("launch-lmu-with-companions.cmd");
@@ -3176,6 +3188,11 @@ mod tests {
         assert!(script.contains("LMUFFB.exe"));
         assert!(script.contains("lmukit.exe"));
         assert!(script.contains("%*"));
+        assert!(script.contains(&format!(
+            "start \"\" /D \"{}\" \"{}\"",
+            batch_path(&lmuffb_dir),
+            batch_path(&lmuffb)
+        )));
     }
 
     #[test]
