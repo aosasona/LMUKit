@@ -222,7 +222,7 @@ struct BindingInput {
 /// Physical chord to logical-action mapping owned by one profile.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ProfileMapping {
-    actions: BTreeMap<BindingInput, LogicalAction>,
+    actions: BTreeMap<BindingInput, BTreeSet<LogicalAction>>,
     encoder_groups: BTreeMap<String, EncoderGroup>,
 }
 
@@ -244,12 +244,12 @@ impl ProfileMapping {
                 modifiers: binding.modifiers,
             };
             ensure!(
-                !actions.contains_key(&input),
-                "physical chord ending with button {} on '{}' is mapped more than once",
-                input.trigger.button_id(),
-                input.trigger.device_id()
+                actions
+                    .entry(input)
+                    .or_insert_with(BTreeSet::new)
+                    .insert(binding.action),
+                "a physical chord cannot target the same action more than once"
             );
-            actions.insert(input, binding.action);
         }
         Ok(Self {
             actions,
@@ -302,9 +302,9 @@ impl ProfileMapping {
     fn active_bindings(
         &self,
         pressed: &BTreeSet<PhysicalButton>,
-    ) -> BTreeMap<BindingInput, LogicalAction> {
-        let mut selected = BTreeMap::<PhysicalButton, (BindingInput, LogicalAction)>::new();
-        for (input, action) in &self.actions {
+    ) -> BTreeMap<BindingInput, BTreeSet<LogicalAction>> {
+        let mut selected = BTreeMap::<PhysicalButton, BindingInput>::new();
+        for input in self.actions.keys() {
             if !pressed.contains(&input.trigger)
                 || !input
                     .modifiers
@@ -313,15 +313,25 @@ impl ProfileMapping {
             {
                 continue;
             }
-            let replace = selected.get(&input.trigger).is_none_or(|(current, _)| {
+            let replace = selected.get(&input.trigger).is_none_or(|current| {
                 input.modifiers.len() > current.modifiers.len()
                     || (input.modifiers.len() == current.modifiers.len() && input > current)
             });
             if replace {
-                selected.insert(input.trigger.clone(), (input.clone(), action.clone()));
+                selected.insert(input.trigger.clone(), input.clone());
             }
         }
-        selected.into_values().collect()
+        selected
+            .into_values()
+            .map(|input| {
+                let actions = self
+                    .actions
+                    .get(&input)
+                    .expect("selected input belongs to this profile")
+                    .clone();
+                (input, actions)
+            })
+            .collect()
     }
 
     fn encoder_action_for(
@@ -343,12 +353,14 @@ impl ProfileMapping {
     }
 
     fn validate_layout(&self, layout: &VirtualLayout) -> Result<()> {
-        for action in self.actions.values() {
-            ensure!(
-                layout.button_for(action).is_some(),
-                "profile action '{}' is missing from the virtual layout",
-                action.as_str()
-            );
+        for actions in self.actions.values() {
+            for action in actions {
+                ensure!(
+                    layout.button_for(action).is_some(),
+                    "profile action '{}' is missing from the virtual layout",
+                    action.as_str()
+                );
+            }
         }
         for mode in self
             .encoder_groups
@@ -378,7 +390,7 @@ pub struct MappingEngine<B: VirtualInputBackend> {
     layout: VirtualLayout,
     profile: ProfileMapping,
     pressed_sources: BTreeSet<PhysicalButton>,
-    active_bindings: BTreeMap<BindingInput, u32>,
+    active_bindings: BTreeMap<BindingInput, BTreeSet<u32>>,
     output_owners: BTreeMap<u32, BTreeSet<BindingInput>>,
     regular_output_pressed_at: BTreeMap<u32, Instant>,
     pending_regular_releases: BTreeMap<u32, Instant>,
@@ -526,20 +538,26 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
             .profile
             .active_bindings(&self.pressed_sources)
             .into_iter()
-            .map(|(input, action)| {
-                let button = self
-                    .layout
-                    .button_for(&action)
-                    .expect("profile mappings are validated against the layout");
-                (input, button)
+            .map(|(input, actions)| {
+                let buttons = actions
+                    .into_iter()
+                    .map(|action| {
+                        self.layout
+                            .button_for(&action)
+                            .expect("profile mappings are validated against the layout")
+                    })
+                    .collect::<BTreeSet<u32>>();
+                (input, buttons)
             })
             .collect::<BTreeMap<_, _>>();
         let mut desired_owners = BTreeMap::<u32, BTreeSet<BindingInput>>::new();
-        for (input, button) in &desired_bindings {
-            desired_owners
-                .entry(*button)
-                .or_default()
-                .insert(input.clone());
+        for (input, buttons) in &desired_bindings {
+            for button in buttons {
+                desired_owners
+                    .entry(*button)
+                    .or_default()
+                    .insert(input.clone());
+            }
         }
         let mut release_now = Vec::new();
         let mut schedule_release = Vec::new();
@@ -716,6 +734,32 @@ mod tests {
         engine.tick_at(now + MINIMUM_BUTTON_PRESS_DURATION).unwrap();
 
         assert_eq!(engine.backend().events(), [(1, true), (1, false)]);
+    }
+
+    #[test]
+    fn one_physical_chord_can_trigger_multiple_virtual_actions() {
+        let modifier = button("gt-neo", 4);
+        let trigger = button("gt-neo", 5);
+        let mapping = ProfileMapping::from_bindings([
+            ProfileBinding::new(trigger.clone(), [modifier.clone()], action("pit_limiter"))
+                .unwrap(),
+            ProfileBinding::new(trigger.clone(), [modifier.clone()], action("headlights")).unwrap(),
+        ])
+        .unwrap();
+        let mut engine =
+            MappingEngine::connect(MockVirtualBackend::new(8), layout(), mapping).unwrap();
+        let now = Instant::now();
+
+        engine.handle_button_at(&modifier, true, now).unwrap();
+        engine.handle_button_at(&trigger, true, now).unwrap();
+        engine.handle_button_at(&trigger, false, now).unwrap();
+        engine.handle_button_at(&modifier, false, now).unwrap();
+        engine.tick_at(now + MINIMUM_BUTTON_PRESS_DURATION).unwrap();
+
+        assert_eq!(
+            engine.backend().events(),
+            [(1, true), (2, true), (1, false), (2, false)]
+        );
     }
 
     #[test]

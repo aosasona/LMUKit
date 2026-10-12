@@ -192,6 +192,7 @@ export function ProfileVirtualMappings({
   const saveCapturedMapping = async (
     capture: VirtualButtonCapture,
     replaceConflict: boolean,
+    alsoTrigger = false,
   ) => {
     setSavingMapping(true);
     setError(null);
@@ -202,6 +203,7 @@ export function ProfileVirtualMappings({
           profileId: profile.id,
           proposed: capture.mapping,
           replaceConflict,
+          alsoTrigger,
         },
       );
       setMappings(next);
@@ -231,16 +233,21 @@ export function ProfileVirtualMappings({
         "capture_virtual_profile_button",
         { profileId: profile.id, logicalAction: action },
       );
-      if (capture.conflictingAction) {
+      if (capture.conflictingActions.length) {
         const control = describeControl(capture.mapping);
+        const existing = capture.conflictingActions
+          .map((item) => `“${item}”`)
+          .join(", ");
         setConfirmation({
-          title: "Replace this button mapping?",
-          description: `${control} currently triggers “${capture.conflictingAction}”. Replace it with “${action}”?`,
-          confirmLabel: "Replace mapping",
-          onConfirm: () => void saveCapturedMapping(capture, true),
+          title: "What should this control trigger?",
+          description: `${control} currently triggers ${existing}. It can trigger those actions together with “${action}”, or replace them.`,
+          confirmLabel: "Trigger both",
+          onConfirm: () => void saveCapturedMapping(capture, false, true),
+          alternateLabel: "Replace mapping",
+          onAlternate: () => void saveCapturedMapping(capture, true),
         });
         onNotice(
-          `${control} is already mapped to ${capture.conflictingAction}. Confirm before replacing it.`,
+          `${control} already triggers ${capture.conflictingActions.join(", ")}. Choose whether to trigger both or replace it.`,
         );
       } else {
         await saveCapturedMapping(capture, false);
@@ -312,6 +319,7 @@ export function ProfileVirtualMappings({
           deviceId: mapping.deviceId,
           physicalButton: mapping.physicalButton,
           modifiers: mapping.modifiers,
+          logicalAction: mapping.logicalAction,
         }),
       );
       onNotice("Physical button mapping removed.");

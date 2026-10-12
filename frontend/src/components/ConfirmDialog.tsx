@@ -4,8 +4,10 @@ export type Confirmation = {
   title: string;
   description: string;
   confirmLabel: string;
+  alternateLabel?: string;
   danger?: boolean;
   onConfirm: () => void;
+  onAlternate?: () => void;
 };
 
 export function ConfirmDialog({
@@ -48,6 +50,15 @@ export function ConfirmDialog({
           <button className="secondary" disabled={busy} onClick={onClose}>
             Cancel
           </button>
+          {confirmation.alternateLabel && confirmation.onAlternate && (
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={confirmation.onAlternate}
+            >
+              {confirmation.alternateLabel}
+            </button>
+          )}
           <button
             className={confirmation.danger ? "danger" : "primary"}
             disabled={busy}

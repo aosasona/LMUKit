@@ -82,7 +82,7 @@ export type VirtualButtonModifier = {
 };
 export type VirtualButtonCapture = {
   mapping: VirtualProfileMapping;
-  conflictingAction: string | null;
+  conflictingActions: string[];
 };
 export type VirtualControlInspection = {
   control: string;

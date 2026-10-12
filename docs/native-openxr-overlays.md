@@ -92,12 +92,12 @@ verified consistency contract so the UI never consumes a torn scoring frame.
 
 Suggested initial budgets:
 
-| Data | Source | Target processing rate |
-| --- | --- | --- |
-| Pedal controls | `LMU_Data` vehicle telemetry | up to 60 Hz |
-| Standings | `LMU_Data` scoring | about 5 Hz |
-| Current environment | `LMU_Data` scoring | about 1 Hz |
-| Session forecast | `GET /rest/sessions/weather` | once per session/configuration change |
+| Data                | Source                       | Target processing rate                |
+| ------------------- | ---------------------------- | ------------------------------------- |
+| Pedal controls      | `LMU_Data` vehicle telemetry | up to 60 Hz                           |
+| Standings           | `LMU_Data` scoring           | about 5 Hz                            |
+| Current environment | `LMU_Data` scoring           | about 1 Hz                            |
+| Session forecast    | `GET /rest/sessions/weather` | once per session/configuration change |
 
 These are ceilings, not reasons to repaint every frame. Stop or reduce work
 when the corresponding overlay is hidden.
@@ -165,4 +165,3 @@ and make steering optional. React state must not be updated for every sample.
 - [LunarG OpenXR OverlayLayer](https://github.com/LunarG/OpenXR-OverlayLayer),
   an experimental Windows/D3D11 API-layer and remote-overlay proof of concept;
   it is prior art, not a production dependency decision.
-

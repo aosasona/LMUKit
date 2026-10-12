@@ -82,13 +82,13 @@ pub struct VirtualButtonMapping {
     pub logical_action: String,
 }
 
-pub fn resolve_virtual_button_mapping<'a>(
+pub fn resolve_virtual_button_mappings<'a>(
     mapping: &'a VirtualProfileMapping,
     device_id: &str,
     physical_button: u32,
     held_modifiers: &[(String, u32)],
-) -> Option<&'a VirtualButtonMapping> {
-    mapping
+) -> Vec<&'a VirtualButtonMapping> {
+    let matches = mapping
         .buttons
         .iter()
         .filter(|entry| {
@@ -101,7 +101,21 @@ pub fn resolve_virtual_button_mapping<'a>(
                     })
                 })
         })
-        .max_by_key(|entry| entry.modifiers.len())
+        .collect::<Vec<_>>();
+    let Some(specificity) = matches.iter().map(|entry| entry.modifiers.len()).max() else {
+        return Vec::new();
+    };
+    matches
+        .into_iter()
+        .filter(|entry| entry.modifiers.len() == specificity)
+        .collect()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VirtualButtonConflictResolution {
+    Reject,
+    Replace,
+    AlsoTrigger,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -498,31 +512,38 @@ impl Store {
         self.save_profile_metadata(&profile)
     }
 
-    pub fn virtual_button_conflict(
+    pub fn virtual_button_conflicts(
         &self,
         profile_id: Uuid,
         proposed: &VirtualButtonMapping,
-    ) -> Result<Option<String>> {
+    ) -> Result<Vec<String>> {
         let profile = self
             .profiles()?
             .into_iter()
             .find(|profile| profile.id == profile_id)
             .context("That profile no longer exists.")?;
-        Ok(profile.virtual_mapping.as_ref().and_then(|mapping| {
-            mapping
-                .buttons
-                .iter()
-                .find(|entry| same_virtual_button_control(entry, proposed))
-                .filter(|entry| entry.logical_action != proposed.logical_action)
-                .map(|entry| entry.logical_action.clone())
-        }))
+        Ok(profile
+            .virtual_mapping
+            .as_ref()
+            .map(|mapping| {
+                mapping
+                    .buttons
+                    .iter()
+                    .filter(|entry| same_virtual_button_control(entry, proposed))
+                    .filter(|entry| entry.logical_action != proposed.logical_action)
+                    .map(|entry| entry.logical_action.clone())
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect()
+            })
+            .unwrap_or_default())
     }
 
     pub fn assign_profile_virtual_button(
         &self,
         profile_id: Uuid,
         proposed: VirtualButtonMapping,
-        replace_conflict: bool,
+        conflict_resolution: VirtualButtonConflictResolution,
     ) -> Result<VirtualProfileMapping> {
         let profile = self
             .profiles()?
@@ -530,21 +551,31 @@ impl Store {
             .find(|profile| profile.id == profile_id)
             .context("That profile no longer exists.")?;
         let mut mapping = profile.virtual_mapping.unwrap_or_default();
-        if let Some(existing) = mapping
+        let conflicting_actions = mapping
             .buttons
             .iter()
-            .find(|entry| same_virtual_button_control(entry, &proposed))
-            && existing.logical_action != proposed.logical_action
-        {
+            .filter(|entry| same_virtual_button_control(entry, &proposed))
+            .filter(|entry| entry.logical_action != proposed.logical_action)
+            .map(|entry| entry.logical_action.clone())
+            .collect::<BTreeSet<_>>();
+        if !conflicting_actions.is_empty() {
             ensure!(
-                replace_conflict,
-                "That control is already mapped to '{}'. Confirm replacement before changing it.",
-                existing.logical_action
+                conflict_resolution != VirtualButtonConflictResolution::Reject,
+                "That control is already mapped to {}. Choose whether to also trigger or replace the existing mapping.",
+                conflicting_actions
+                    .into_iter()
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
         }
-        mapping
-            .buttons
-            .retain(|entry| !same_virtual_button_control(entry, &proposed));
+        mapping.buttons.retain(|entry| {
+            let same_control = same_virtual_button_control(entry, &proposed);
+            if conflict_resolution == VirtualButtonConflictResolution::Replace {
+                !same_control
+            } else {
+                !(same_control && entry.logical_action == proposed.logical_action)
+            }
+        });
         mapping.buttons.push(proposed);
         self.set_profile_virtual_mapping(profile_id, Some(mapping.clone()))?;
         Ok(mapping)
@@ -2117,7 +2148,7 @@ fn validate_virtual_mapping(
         .iter()
         .map(|entry| entry.logical_action.as_str())
         .collect::<BTreeSet<_>>();
-    let mut sources = BTreeSet::new();
+    let mut sources = BTreeMap::<_, BTreeSet<_>>::new();
     let mut occupied_controls = BTreeSet::new();
     for entry in &mapping.buttons {
         validate_virtual_label(&entry.device_id, "Input device ID")?;
@@ -2149,13 +2180,19 @@ fn validate_virtual_mapping(
                 "The same modifier button cannot appear twice."
             );
         }
+        let source = (
+            entry.device_id.clone(),
+            entry.physical_button,
+            modifiers.into_iter().collect::<Vec<_>>(),
+        );
+        let source_actions = sources.entry(source).or_default();
         ensure!(
-            sources.insert((
-                entry.device_id.clone(),
-                entry.physical_button,
-                modifiers.into_iter().collect::<Vec<_>>()
-            )),
-            "The same physical button chord is mapped more than once."
+            source_actions.insert(entry.logical_action.to_lowercase()),
+            "The same physical button chord cannot target the same action more than once."
+        );
+        ensure!(
+            source_actions.len() <= 8,
+            "A physical button chord cannot trigger more than eight actions."
         );
         ensure!(
             actions.contains(entry.logical_action.as_str()),
@@ -2310,17 +2347,17 @@ mod tests {
             encoder_groups: Vec::new(),
         };
 
-        let base = resolve_virtual_button_mapping(&mapping, "wheel", 5, &[]).unwrap();
-        assert_eq!(base.logical_action, "pit_limiter");
+        let base = resolve_virtual_button_mappings(&mapping, "wheel", 5, &[]);
+        assert_eq!(base[0].logical_action, "pit_limiter");
 
         let modified =
-            resolve_virtual_button_mapping(&mapping, "wheel", 5, &[("wheel".into(), 1)]).unwrap();
-        assert_eq!(modified.logical_action, "recenter_vr");
+            resolve_virtual_button_mappings(&mapping, "wheel", 5, &[("wheel".into(), 1)]);
+        assert_eq!(modified[0].logical_action, "recenter_vr");
 
         let unrelated =
-            resolve_virtual_button_mapping(&mapping, "wheel", 5, &[("wheel".into(), 9)]).unwrap();
-        assert_eq!(unrelated.logical_action, "pit_limiter");
-        assert!(resolve_virtual_button_mapping(&mapping, "wheel", 8, &[]).is_none());
+            resolve_virtual_button_mappings(&mapping, "wheel", 5, &[("wheel".into(), 9)]);
+        assert_eq!(unrelated[0].logical_action, "pit_limiter");
+        assert!(resolve_virtual_button_mappings(&mapping, "wheel", 8, &[]).is_empty());
     }
 
     #[test]
@@ -2349,17 +2386,25 @@ mod tests {
         };
 
         store
-            .assign_profile_virtual_button(profile.id, mapping("pit_limiter"), false)
+            .assign_profile_virtual_button(
+                profile.id,
+                mapping("pit_limiter"),
+                VirtualButtonConflictResolution::Reject,
+            )
             .unwrap();
         assert_eq!(
             store
-                .virtual_button_conflict(profile.id, &mapping("headlights"))
+                .virtual_button_conflicts(profile.id, &mapping("headlights"))
                 .unwrap(),
-            Some("pit_limiter".into())
+            vec!["pit_limiter"]
         );
         assert!(
             store
-                .assign_profile_virtual_button(profile.id, mapping("headlights"), false)
+                .assign_profile_virtual_button(
+                    profile.id,
+                    mapping("headlights"),
+                    VirtualButtonConflictResolution::Reject,
+                )
                 .is_err()
         );
         let unchanged = store
@@ -2373,10 +2418,68 @@ mod tests {
         assert_eq!(unchanged.buttons[0].logical_action, "pit_limiter");
 
         let replaced = store
-            .assign_profile_virtual_button(profile.id, mapping("headlights"), true)
+            .assign_profile_virtual_button(
+                profile.id,
+                mapping("headlights"),
+                VirtualButtonConflictResolution::Replace,
+            )
             .unwrap();
         assert_eq!(replaced.buttons.len(), 1);
         assert_eq!(replaced.buttons[0].logical_action, "headlights");
+    }
+
+    #[test]
+    fn allows_a_control_to_explicitly_trigger_multiple_actions() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let profile = store
+            .import_profile_bytes("GT Neo", br#"{"Input":{}}"#)
+            .unwrap();
+        store.settings.virtual_layout = vec![
+            VirtualLayoutEntry {
+                logical_action: "Recenter VR".into(),
+                virtual_button: 1,
+            },
+            VirtualLayoutEntry {
+                logical_action: "RaceLab — Recenter VR".into(),
+                virtual_button: 2,
+            },
+        ];
+        let mapping = |logical_action: &str| VirtualButtonMapping {
+            device_id: "wheel".into(),
+            device_name: "Test wheel".into(),
+            physical_button: 5,
+            modifiers: vec![VirtualButtonModifier {
+                device_id: "wheel".into(),
+                device_name: "Test wheel".into(),
+                physical_button: 4,
+            }],
+            logical_action: logical_action.into(),
+        };
+
+        store
+            .assign_profile_virtual_button(
+                profile.id,
+                mapping("Recenter VR"),
+                VirtualButtonConflictResolution::Reject,
+            )
+            .unwrap();
+        let shared = store
+            .assign_profile_virtual_button(
+                profile.id,
+                mapping("RaceLab — Recenter VR"),
+                VirtualButtonConflictResolution::AlsoTrigger,
+            )
+            .unwrap();
+
+        assert_eq!(shared.buttons.len(), 2);
+        assert_eq!(
+            resolve_virtual_button_mappings(&shared, "wheel", 5, &[("wheel".into(), 4)])
+                .into_iter()
+                .map(|entry| entry.logical_action.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["RaceLab — Recenter VR", "Recenter VR"])
+        );
     }
 
     #[test]

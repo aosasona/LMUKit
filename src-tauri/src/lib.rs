@@ -3,10 +3,10 @@ use lmukit_core::car_context::{
     LmuSessionState, display_existing_class,
 };
 use lmukit_core::storage::{
-    CompanionApp, CompanionAppIssue, InputMode, LaunchMode, Profile, Store, VirtualButtonMapping,
-    VirtualButtonModifier, VirtualEncoderControl, VirtualEncoderGroup,
-    VirtualEncoderMode as StoredEncoderMode, VirtualProfileMapping, Wheel,
-    resolve_virtual_button_mapping, validate_companion_apps,
+    CompanionApp, CompanionAppIssue, InputMode, LaunchMode, Profile, Store,
+    VirtualButtonConflictResolution, VirtualButtonMapping, VirtualButtonModifier,
+    VirtualEncoderControl, VirtualEncoderGroup, VirtualEncoderMode as StoredEncoderMode,
+    VirtualProfileMapping, Wheel, resolve_virtual_button_mappings, validate_companion_apps,
 };
 use lmukit_virtual::{
     EncoderGroup, EncoderMode, LogicalAction, PhysicalButton, ProfileBinding, ProfileMapping,
@@ -274,7 +274,7 @@ struct VirtualProfileMappingSummary {
 #[serde(rename_all = "camelCase")]
 struct VirtualButtonCaptureSummary {
     mapping: VirtualProfileMappingSummary,
-    conflicting_action: Option<String>,
+    conflicting_actions: Vec<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -1132,12 +1132,12 @@ async fn capture_virtual_profile_button(
         modifiers,
         logical_action,
     };
-    let conflicting_action = store
-        .virtual_button_conflict(profile_id, &proposed)
+    let conflicting_actions = store
+        .virtual_button_conflicts(profile_id, &proposed)
         .map_err(|error| error.to_string())?;
     Ok(VirtualButtonCaptureSummary {
         mapping: mapping_summary(&proposed),
-        conflicting_action,
+        conflicting_actions,
     })
 }
 
@@ -1146,6 +1146,7 @@ fn save_virtual_profile_button(
     profile_id: Uuid,
     proposed: VirtualProfileMappingSummary,
     replace_conflict: bool,
+    also_trigger: bool,
     state: State<'_, AppState>,
 ) -> Result<Vec<VirtualProfileMappingSummary>, String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
@@ -1158,8 +1159,18 @@ fn save_virtual_profile_button(
         return Err("That action is not in the saved LMU button layout.".to_owned());
     }
     let proposed = stored_button_mapping(proposed);
+    if replace_conflict && also_trigger {
+        return Err("Choose either replace or also trigger, not both.".to_owned());
+    }
+    let conflict_resolution = if replace_conflict {
+        VirtualButtonConflictResolution::Replace
+    } else if also_trigger {
+        VirtualButtonConflictResolution::AlsoTrigger
+    } else {
+        VirtualButtonConflictResolution::Reject
+    };
     store
-        .assign_profile_virtual_button(profile_id, proposed, replace_conflict)
+        .assign_profile_virtual_button(profile_id, proposed, conflict_resolution)
         .map(|mapping| mapping_summaries(Some(&mapping)))
         .map_err(|error| error.to_string())
 }
@@ -1189,16 +1200,20 @@ async fn inspect_virtual_profile_button(
         .collect::<Vec<_>>();
     let store = state.0.lock().map_err(|error| error.to_string())?;
     let profile = find_profile(&store, profile_id)?;
-    let matched = profile.virtual_mapping.as_ref().and_then(|mapping| {
-        resolve_virtual_button_mapping(
-            mapping,
-            &trigger.device_id,
-            trigger.button_id,
-            &held_modifiers,
-        )
-    });
+    let matched = profile
+        .virtual_mapping
+        .as_ref()
+        .map_or_else(Vec::new, |mapping| {
+            resolve_virtual_button_mappings(
+                mapping,
+                &trigger.device_id,
+                trigger.button_id,
+                &held_modifiers,
+            )
+        });
     let matches = matched
-        .and_then(|mapping| {
+        .into_iter()
+        .filter_map(|mapping| {
             store
                 .settings
                 .virtual_layout
@@ -1209,7 +1224,6 @@ async fn inspect_virtual_profile_button(
                     virtual_button: layout.virtual_button,
                 })
         })
-        .into_iter()
         .collect();
     Ok(VirtualControlInspection { control, matches })
 }
@@ -1220,6 +1234,7 @@ fn remove_virtual_profile_button(
     device_id: String,
     physical_button: u32,
     modifiers: Vec<VirtualButtonModifierSummary>,
+    logical_action: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<VirtualProfileMappingSummary>, String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
@@ -1236,7 +1251,8 @@ fn remove_virtual_profile_button(
     mapping.buttons.retain(|entry| {
         !(entry.device_id == device_id
             && entry.physical_button == physical_button
-            && entry.modifiers == modifiers)
+            && entry.modifiers == modifiers
+            && entry.logical_action == logical_action)
     });
     let saved = (!mapping.buttons.is_empty() || !mapping.encoder_groups.is_empty())
         .then_some(mapping.clone());

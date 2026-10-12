@@ -48,6 +48,7 @@ _The screenshot uses isolated synthetic profile data; no personal LMU files are 
 - Observe LMU's current player car, normalized class, session state, data source, and freshness on Overview through the game's read-only shared-memory interface.
 - Guide one-time vJoy binding setup, save LMU's named action layout, learn and test physical buttons and modifier combinations per profile, warn before replacing conflicting mappings, configure digital encoder modes, assign one automatic default profile per car class, and switch experimental live DirectInput-to-vJoy routing without recreating the virtual controller.
 - Name and pulse unused vJoy buttons for external tools such as RaceLab, then map those shared actions—with the same modifier support—independently in every profile.
+- Deliberately make one physical button or modifier combination trigger several named actions—for example, recentering VR in both LMU and RaceLab—while retaining replacement warnings for accidental conflicts.
 
 LMUKit stores profiles, managed wheel images, settings, and timestamped recovery backups in the current Windows user's application-data directory. Use the **Folder** button on Profiles to open the exact location.
 
@@ -131,7 +132,7 @@ External actions use the same per-profile physical controls and modifier combina
 
 Select a profile under **Profiles** and use the visible **Edit button mappings** action in its Virtual Input section. The dedicated mapping workspace can search or filter actions and convert saved LMU button assignments into virtual mappings by matching the LMU action name. Search accepts partial words in any order and also finds physical buttons, vJoy outputs, and device names. LMUKit leaves manual mappings untouched and reports ambiguous controls for review. Choose **Bind control**, then press and release one button for a normal binding, or keep the first button held and press another to create a modifier combination. A normal and modified action may share the same trigger; the modified mapping takes precedence while its modifier is held.
 
-Use **Test a control** in the same workspace to press a button or modifier combination and see the effective named action and vJoy output without changing the profile. The matching action row is highlighted; unmapped controls are reported explicitly. Disable live remapping before testing so inspection cannot trigger an LMU action. Assigning a control that already belongs to another action shows both actions and requires explicit confirmation before replacing the existing mapping.
+Use **Test a control** in the same workspace to press a button or modifier combination and see every effective named action and vJoy output without changing the profile. The matching action rows are highlighted; unmapped controls are reported explicitly. Disable live remapping before testing so inspection cannot trigger an LMU action. Assigning a control that already belongs to another action shows the existing targets and asks whether to trigger both or replace the previous mapping.
 
 Switch the global input method to **Virtual Input**, then choose **Use this profile live**. Profile keyboard shortcuts and the quick switcher follow the selected method: they prepare LMU's JSON in Legacy mode and switch live routing in Virtual mode. Virtual mode remains selected after restarting LMUKit. Live routing stays stopped by default, or **Settings → Live profile startup** can explicitly restore the most recently used live profile when LMUKit opens. Automatic startup never runs in Legacy JSON mode.
 
@@ -180,8 +181,8 @@ mise run dev
 | ---------------- | -------------------------------------------------------- |
 | `mise run dev`   | Cross-build and launch the Windows debug app from WSL    |
 | `mise run build` | Build the frontend and Windows x86-64 release executable |
-| `mise run test`  | Run context, core, and virtual-backend tests              |
-| `mise run check` | Check context, core, and virtual-backend crates           |
+| `mise run test`  | Run context, core, and virtual-backend tests             |
+| `mise run check` | Check context, core, and virtual-backend crates          |
 | `mise run fmt`   | Check Rust formatting                                    |
 | `mise run lint`  | Run Clippy with warnings denied                          |
 | `pnpm build`     | Type-check and build the React interface                 |
