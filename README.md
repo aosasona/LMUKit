@@ -190,6 +190,8 @@ mise run dev
 
 `mise run build-context-probe` cross-builds the read-only LMU car-context probe. It opens LMU's built-in `LMU_Data` mapping under the official shared lock and prints the confirmed player vehicle, raw and normalized class, session state, provenance, and observation time. It does not install a legacy rFactor 2 plugin or write to the game.
 
+Research for future native VR widgets—including standings, session weather forecasts, and pedal traces—is recorded in the [native OpenXR overlay design note](docs/native-openxr-overlays.md). The proposed path is an LMUKit-owned OpenXR API layer and native renderer, with no OpenKneeboard or browser-overlay dependency. It remains gated on an in-game static-quad, runtime, performance, and anti-cheat feasibility test and is not a current feature.
+
 Use `LMUKIT_DATA_DIR` with an isolated directory for screenshots and manual tests. Never test development builds against personal profiles or live Windows application data.
 
 Before handing off a code change, run:
