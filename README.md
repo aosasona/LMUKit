@@ -39,7 +39,7 @@ _The screenshot uses isolated synthetic profile data; no personal LMU files are 
 - Remove obsolete devices and all of their bindings from a saved profile after confirmation.
 - Browse and edit LMU's `Settings.JSON`, including descriptions from matching `Option#` fields, while preserving unsupported JSON values.
 - Assign `Ctrl+Alt+1` through `Ctrl+Alt+9` to profiles, open the compact switcher with `Ctrl+Alt+Space`, or search profiles with `Ctrl+K`.
-- Configure Desktop or native OpenXR (`+XR`) launching and start LMUKit, LMUFFB, Crew Chief, RaceLab, or custom companion applications through one explicit Steam launch option. Each app starts in its own installation folder so relative profile and configuration files continue to work.
+- Configure Desktop or native OpenXR (`+XR`) launching and start LMUKit, LMUFFB, Crew Chief, RaceLab, or custom companion applications through one explicit Steam launch option. LMUKit validates enabled app entries before generating it, and each app starts in its own installation folder so relative profile and configuration files continue to work.
 - Autosave LMU paths, launch mode, and companion-app setup.
 - Follow an in-app Help & Setup guide for wheels, DirectInput-visible controllers, button boxes, Legacy JSON, Virtual Input, and common recovery steps.
 - Scale the entire interface from Settings.

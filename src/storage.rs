@@ -229,6 +229,13 @@ pub struct CompanionApp {
     pub enabled: bool,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CompanionAppIssue {
+    pub index: usize,
+    pub message: String,
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -705,6 +712,17 @@ impl Store {
                 lmukit_exe.display()
             );
         }
+        let issues = validate_companion_apps(&self.settings.companion_apps);
+        if !issues.is_empty() {
+            bail!(
+                "Companion app setup is invalid: {}",
+                issues
+                    .iter()
+                    .map(|issue| format!("app {}: {}", issue.index + 1, issue.message))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            );
+        }
         let launcher = self.root.join("launch-lmu-with-companions.cmd");
         let lmukit = batch_path(lmukit_exe);
         let lmukit_working_dir = batch_path(
@@ -721,7 +739,7 @@ impl Store {
             .settings
             .companion_apps
             .iter()
-            .filter(|app| app.enabled && app.path.is_file())
+            .filter(|app| app.enabled)
         {
             let executable = app
                 .path
@@ -1796,6 +1814,63 @@ impl Store {
     fn profile_dir(&self, id: Uuid) -> PathBuf {
         self.root.join("profiles").join(id.to_string())
     }
+}
+
+pub fn validate_companion_apps(apps: &[CompanionApp]) -> Vec<CompanionAppIssue> {
+    let mut issues = Vec::new();
+    let mut paths = BTreeMap::<String, usize>::new();
+
+    for (index, app) in apps.iter().enumerate().filter(|(_, app)| app.enabled) {
+        if app.name.trim().is_empty() {
+            issues.push(CompanionAppIssue {
+                index,
+                message: "Enter an app name.".to_owned(),
+            });
+        }
+
+        if app.path.as_os_str().is_empty() {
+            issues.push(CompanionAppIssue {
+                index,
+                message: "Choose the app's executable.".to_owned(),
+            });
+            continue;
+        }
+
+        let normalized_path = app
+            .path
+            .to_string_lossy()
+            .trim()
+            .replace('/', "\\")
+            .to_lowercase();
+        if let Some(first_index) = paths.insert(normalized_path, index) {
+            issues.push(CompanionAppIssue {
+                index,
+                message: format!(
+                    "This executable is already used by app {}.",
+                    first_index + 1
+                ),
+            });
+        }
+
+        if !app.path.is_file() {
+            issues.push(CompanionAppIssue {
+                index,
+                message: "The executable could not be found.".to_owned(),
+            });
+        } else if !app
+            .path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+        {
+            issues.push(CompanionAppIssue {
+                index,
+                message: "Choose a Windows .exe file.".to_owned(),
+            });
+        }
+    }
+
+    issues
 }
 
 fn binding_section_mut(
@@ -3201,6 +3276,7 @@ mod tests {
         let lmukit = temp.path().join("lmukit.exe");
         fs::write(&lmukit, []).unwrap();
         let mut store = Store::open_at(temp.path().join("data")).unwrap();
+        store.settings.companion_apps.clear();
         store.settings.lmu_launch_mode = LaunchMode::Vr;
 
         store.companion_launch_option(&lmukit).unwrap();
@@ -3400,11 +3476,83 @@ mod tests {
         fs::write(&lmukit, []).unwrap();
         fs::write(&crew_chief, []).unwrap();
         let mut store = Store::open_at(temp.path().join("data")).unwrap();
-        store.settings.companion_apps[1].path = crew_chief;
-        store.settings.companion_apps[1].enabled = false;
+        store.settings.companion_apps = vec![CompanionApp {
+            name: "Crew Chief".into(),
+            path: crew_chief,
+            enabled: false,
+        }];
 
         store.companion_launch_option(&lmukit).unwrap();
         let script = fs::read_to_string(store.root.join("launch-lmu-with-companions.cmd")).unwrap();
         assert!(!script.contains("CrewChiefV4.exe"));
+    }
+
+    #[test]
+    fn validates_enabled_companion_apps_before_creating_a_launcher() {
+        let temp = tempfile::tempdir().unwrap();
+        let valid = temp.path().join("RaceLab.exe");
+        let wrong_type = temp.path().join("helper.cmd");
+        fs::write(&valid, []).unwrap();
+        fs::write(&wrong_type, []).unwrap();
+        let apps = vec![
+            CompanionApp {
+                name: " ".into(),
+                path: PathBuf::new(),
+                enabled: true,
+            },
+            CompanionApp {
+                name: "RaceLab".into(),
+                path: valid.clone(),
+                enabled: true,
+            },
+            CompanionApp {
+                name: "RaceLab duplicate".into(),
+                path: valid,
+                enabled: true,
+            },
+            CompanionApp {
+                name: "Helper".into(),
+                path: wrong_type,
+                enabled: true,
+            },
+            CompanionApp {
+                name: "Disabled draft".into(),
+                path: temp.path().join("missing.exe"),
+                enabled: false,
+            },
+        ];
+
+        let issues = validate_companion_apps(&apps);
+
+        assert_eq!(issues.iter().filter(|issue| issue.index == 0).count(), 2);
+        assert!(
+            issues.iter().any(|issue| {
+                issue.index == 2 && issue.message.contains("already used by app 2")
+            })
+        );
+        assert!(
+            issues
+                .iter()
+                .any(|issue| { issue.index == 3 && issue.message.contains("Windows .exe") })
+        );
+        assert!(!issues.iter().any(|issue| issue.index == 4));
+    }
+
+    #[test]
+    fn refuses_to_generate_a_launcher_for_an_invalid_enabled_app() {
+        let temp = tempfile::tempdir().unwrap();
+        let lmukit = temp.path().join("lmukit.exe");
+        fs::write(&lmukit, []).unwrap();
+        let mut store = Store::open_at(temp.path().join("data")).unwrap();
+        store.settings.companion_apps = vec![CompanionApp {
+            name: "LMUFFB".into(),
+            path: temp.path().join("missing.exe"),
+            enabled: true,
+        }];
+
+        let error = store.companion_launch_option(&lmukit).unwrap_err();
+
+        assert!(error.to_string().contains("executable could not be found"));
+        assert!(!store.root.join("launch-lmu-with-companions.cmd").exists());
     }
 }

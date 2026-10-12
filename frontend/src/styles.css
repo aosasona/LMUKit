@@ -3193,6 +3193,9 @@ textarea,
   gap: 7px;
   margin-top: 13px;
 }
+.companion-entry {
+  min-width: 0;
+}
 .companion-row {
   display: grid;
   grid-template-columns:
@@ -3201,6 +3204,9 @@ textarea,
   align-items: center;
   border: 1px solid var(--line);
   background: #141414;
+}
+.companion-row.invalid {
+  border-color: rgba(230, 140, 130, 0.72);
 }
 .companion-row > input[type="checkbox"] {
   margin: auto;
@@ -3224,6 +3230,23 @@ textarea,
 }
 .companion-row > .icon-button svg {
   width: 15px;
+}
+.companion-errors {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid rgba(230, 140, 130, 0.32);
+  border-top: 0;
+  background: rgba(84, 35, 31, 0.22);
+  color: #e9a098;
+  font-size: calc(12px * var(--font-scale));
+  line-height: 1.4;
+}
+.companion-errors svg {
+  width: 15px;
+  min-width: 15px;
+  margin-top: 1px;
 }
 .settings-actions,
 .settings-actions > div {

@@ -3,10 +3,10 @@ use lmukit_core::car_context::{
     LmuSessionState, display_existing_class,
 };
 use lmukit_core::storage::{
-    CompanionApp, InputMode, LaunchMode, Profile, Store, VirtualButtonMapping,
+    CompanionApp, CompanionAppIssue, InputMode, LaunchMode, Profile, Store, VirtualButtonMapping,
     VirtualButtonModifier, VirtualEncoderControl, VirtualEncoderGroup,
     VirtualEncoderMode as StoredEncoderMode, VirtualProfileMapping, Wheel,
-    resolve_virtual_button_mapping,
+    resolve_virtual_button_mapping, validate_companion_apps,
 };
 use lmukit_virtual::{
     EncoderGroup, EncoderMode, LogicalAction, PhysicalButton, ProfileBinding, ProfileMapping,
@@ -653,6 +653,11 @@ fn companion_launch_option(state: State<'_, AppState>) -> Result<String, String>
     store
         .companion_launch_option(&executable)
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn validate_companion_launch_setup(companion_apps: Vec<CompanionApp>) -> Vec<CompanionAppIssue> {
+    validate_companion_apps(&companion_apps)
 }
 
 #[tauri::command]
@@ -3061,6 +3066,7 @@ pub fn run() {
             save_app_settings,
             set_profile_hotkey,
             companion_launch_option,
+            validate_companion_launch_setup,
             pick_file,
             load_game_settings,
             save_game_settings,

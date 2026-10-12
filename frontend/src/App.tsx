@@ -709,9 +709,7 @@ export default function App() {
       });
       const option = await invoke<string>("companion_launch_option");
       await refresh();
-      setNotice(
-        "Steam launch option copied. Paste it into LMU's Launch Options.",
-      );
+      setNotice("Steam launch option regenerated.");
       return option;
     } catch (error) {
       setNotice(String(error));

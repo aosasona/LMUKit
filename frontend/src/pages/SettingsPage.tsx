@@ -65,6 +65,11 @@ type Props = {
   ) => Promise<string | null>;
 };
 
+type CompanionAppIssue = {
+  index: number;
+  message: string;
+};
+
 export function SettingsPage(props: Props) {
   const {
     fontScale,
@@ -90,6 +95,12 @@ export function SettingsPage(props: Props) {
   const [saveState, setSaveState] = useState<
     "saved" | "pending" | "saving" | "error"
   >("saved");
+  const [launchIssues, setLaunchIssues] = useState<Record<number, string[]>>(
+    {},
+  );
+  const [launchCopyState, setLaunchCopyState] = useState<
+    "idle" | "copying" | "copied" | "error"
+  >("idle");
   const [diagnostics, setDiagnostics] = useState<DiagnosticStatus | null>(null);
   const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
   const [diagnosticsMessage, setDiagnosticsMessage] = useState<string | null>(
@@ -224,10 +235,56 @@ export function SettingsPage(props: Props) {
       normalized.toString(),
     );
   };
-  const updateApp = (index: number, update: Partial<CompanionApp>) =>
+  const updateApp = (index: number, update: Partial<CompanionApp>) => {
     setApps((current) =>
       current.map((app, i) => (i === index ? { ...app, ...update } : app)),
     );
+    setLaunchIssues((current) => {
+      if (!(index in current)) return current;
+      const next = { ...current };
+      delete next[index];
+      return next;
+    });
+    setLaunchCopyState("idle");
+  };
+
+  const copyLaunchOption = async () => {
+    setLaunchCopyState("copying");
+    try {
+      const issues = await invoke<CompanionAppIssue[]>(
+        "validate_companion_launch_setup",
+        { companionApps: apps },
+      );
+      if (issues.length) {
+        setLaunchIssues(
+          issues.reduce<Record<number, string[]>>((grouped, issue) => {
+            (grouped[issue.index] ??= []).push(issue.message);
+            return grouped;
+          }, {}),
+        );
+        setLaunchCopyState("error");
+        return;
+      }
+
+      setLaunchIssues({});
+      const option = await onCreateLaunchOption(
+        bindings,
+        gameSettings,
+        apps,
+        mode,
+      );
+      if (!option) {
+        setLaunchCopyState("error");
+        return;
+      }
+
+      await navigator.clipboard.writeText(option);
+      setLaunchCopyState("copied");
+      window.setTimeout(() => setLaunchCopyState("idle"), 3500);
+    } catch {
+      setLaunchCopyState("error");
+    }
+  };
 
   return (
     <section className="settings-page settings-stack">
@@ -392,51 +449,73 @@ export function SettingsPage(props: Props) {
           </button>
         </div>
         <div className="companion-list">
-          {apps.map((app, index) => (
-            <div className="companion-row" key={index}>
-              <input
-                type="checkbox"
-                checked={app.enabled}
-                onChange={(event) =>
-                  updateApp(index, { enabled: event.target.checked })
-                }
-                aria-label={`Enable ${app.name}`}
-              />
-              <input
-                value={app.name}
-                onChange={(event) =>
-                  updateApp(index, { name: event.target.value })
-                }
-              />
-              <input
-                value={app.path}
-                placeholder="Executable path"
-                onChange={(event) =>
-                  updateApp(index, { path: event.target.value })
-                }
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  void onBrowse("executable").then(
-                    (path) => path && updateApp(index, { path, enabled: true }),
-                  )
-                }
-              >
-                Browse
-              </button>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={`Remove ${app.name}`}
-                onClick={() =>
-                  setApps((current) => current.filter((_, i) => i !== index))
-                }
-              >
-                <Trash2 />
-              </button>
-            </div>
-          ))}
+          {apps.map((app, index) => {
+            const errors = launchIssues[index] ?? [];
+            return (
+              <div className="companion-entry" key={index}>
+                <div
+                  className={`companion-row ${errors.length ? "invalid" : ""}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={app.enabled}
+                    onChange={(event) =>
+                      updateApp(index, { enabled: event.target.checked })
+                    }
+                    aria-label={`Enable ${app.name}`}
+                  />
+                  <input
+                    value={app.name}
+                    aria-label="Companion app name"
+                    aria-invalid={errors.length > 0}
+                    onChange={(event) =>
+                      updateApp(index, { name: event.target.value })
+                    }
+                  />
+                  <input
+                    value={app.path}
+                    placeholder="Executable path"
+                    aria-label={`${app.name || "Companion app"} executable path`}
+                    aria-invalid={errors.length > 0}
+                    onChange={(event) =>
+                      updateApp(index, { path: event.target.value })
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void onBrowse("executable").then(
+                        (path) =>
+                          path && updateApp(index, { path, enabled: true }),
+                      )
+                    }
+                  >
+                    Browse
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`Remove ${app.name}`}
+                    onClick={() => {
+                      setApps((current) =>
+                        current.filter((_, i) => i !== index),
+                      );
+                      setLaunchIssues({});
+                      setLaunchCopyState("idle");
+                    }}
+                  >
+                    <Trash2 />
+                  </button>
+                </div>
+                {errors.length > 0 && (
+                  <div className="companion-errors" role="alert">
+                    <AlertCircle />
+                    <span>{errors.join(" ")}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
         <div className="settings-actions split-actions">
           <button
@@ -469,19 +548,19 @@ export function SettingsPage(props: Props) {
             <button
               type="button"
               className="primary"
-              disabled={busy}
-              onClick={() =>
-                void onCreateLaunchOption(
-                  bindings,
-                  gameSettings,
-                  apps,
-                  mode,
-                ).then(async (option) => {
-                  if (option) await navigator.clipboard.writeText(option);
-                })
-              }
+              disabled={busy || launchCopyState === "copying"}
+              onClick={() => void copyLaunchOption()}
             >
-              <Copy /> Copy Steam launch option
+              {launchCopyState === "copied" ? <Check /> : <Copy />}
+              {launchCopyState === "copying"
+                ? "Checking setup…"
+                : launchCopyState === "copied"
+                  ? "Copied to clipboard"
+                  : launchCopyState === "error"
+                    ? Object.keys(launchIssues).length
+                      ? "Fix highlighted apps"
+                      : "Try copying again"
+                    : "Copy Steam launch option"}
             </button>
           </div>
         </div>
