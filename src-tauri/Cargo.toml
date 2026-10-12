@@ -24,6 +24,7 @@ lmukit-virtual = { path = "../crates/lmukit-virtual" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-single-instance = "2"
 uuid = { version = "1.16", features = ["v4", "serde"] }
 
 [target.'cfg(windows)'.dependencies]

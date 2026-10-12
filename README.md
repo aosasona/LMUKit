@@ -7,6 +7,8 @@ LMUKit is a modern Windows toolkit for Le Mans Ultimate. It brings binding profi
 
 Closing the main window hides LMUKit in the Windows notification area so live remapping can continue without a taskbar button. Right-click the tray icon for **Show LMUKit** or **Exit LMUKit**. Exit always requires confirmation, stops routing, and releases virtual buttons before shutdown.
 
+LMUKit runs as a single instance. Launching it again restores the existing window instead of starting another input-routing process or tray icon.
+
 <img src="assets/icon/lmukit.png" alt="LMUKit icon" width="112">
 
 ![LMUKit overview showing the active Hypercar profile, wheel image, garage, and quick actions](assets/lmukit-overview.png)

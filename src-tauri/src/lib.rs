@@ -2779,6 +2779,13 @@ pub fn run() {
     #[cfg(target_os = "windows")]
     let context_worker_stop = Arc::clone(&car_context_stop);
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            diagnostics::info(
+                "app.second-instance",
+                "A second launch restored the existing LMUKit window",
+            );
+            show_main_window(app);
+        }))
         .manage(AppState(Mutex::new(store)))
         .manage(HotkeyState(hotkey_tx))
         .manage(VirtualSetupState(
