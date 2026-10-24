@@ -82,7 +82,7 @@ Each profile has one searchable tag picker. Select any combination of `LMGT3`, `
 
 ### Profile editor
 
-The **Profile editor** provides device-grouped binding management, force-feedback tuning, a read-only JSON preview, and live control lookup. Open a binding's action menu to replace it or add its missing primary or alternate mapping, then press or move the desired control. **Add binding** can search action names found across your saved and live LMU files or accept an exact LMU action name. LMUKit names any conflicts before applying the change and creates a recovery backup when saving.
+The **Profile editor** opens on the current Virtual Input mapping system, where each profile maps its physical buttons and modifiers to the stable named vJoy actions taught to LMU and other applications. The older saved-file workflow remains available under **LMU file tools** for Legacy mode: it includes device-grouped DirectInput binding management, force-feedback tuning, a read-only JSON preview, and live control lookup. Open a file binding's action menu to replace it or add its missing primary or alternate mapping, then press or move the desired control. **Add binding** can search action names found across your saved and live LMU files or accept an exact LMU action name. LMUKit names any conflicts before applying the change and creates a recovery backup when saving.
 
 **Find a wheel control** waits for a button, POV, or axis movement and then shows the matching action for each saved profile; the operation can be cancelled at any time. For safety, assignment only accepts devices already represented in that profile.
 

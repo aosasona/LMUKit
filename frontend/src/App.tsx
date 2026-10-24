@@ -903,11 +903,13 @@ export default function App() {
                 baseline={profileDocumentBaseline}
                 loading={profileDocumentLoading}
                 busy={busy}
+                inputMode={snapshot.inputMode}
                 wheelImageRevision={wheelImageRevision}
                 onClear={clearBinding}
                 onAssign={assignBinding}
                 onChange={setProfileDocument}
                 onSave={saveProfileDocument}
+                onNotice={setNotice}
               />
             )}
             {page === "wheels" && (

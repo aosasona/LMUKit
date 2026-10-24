@@ -54,13 +54,15 @@ export function ProfileVirtualMappings({
   onNotice,
   editorOpen,
   onEditorOpenChange,
+  presentation = "card",
 }: {
   profile: Profile;
   busy: boolean;
   inputMode: InputMode;
   onNotice: (message: string) => void;
-  editorOpen: boolean;
-  onEditorOpenChange: (open: boolean) => void;
+  editorOpen?: boolean;
+  onEditorOpenChange?: (open: boolean) => void;
+  presentation?: "card" | "workspace";
 }) {
   const [actions, setActions] = useState<VirtualAction[]>([]);
   const [mappings, setMappings] = useState<VirtualProfileMapping[]>([]);
@@ -175,7 +177,7 @@ export function ProfileVirtualMappings({
   }, []);
 
   useEffect(() => {
-    if (!editorOpen) return;
+    if (!editorOpen || presentation === "workspace") return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -307,7 +309,7 @@ export function ProfileVirtualMappings({
     setLearning(null);
     setTesting(false);
     setConfirmation(null);
-    onEditorOpenChange(false);
+    onEditorOpenChange?.(false);
   };
 
   const remove = async (mapping: VirtualProfileMapping) => {
@@ -438,14 +440,16 @@ export function ProfileVirtualMappings({
             routingActive={routingActive}
             onNotice={onNotice}
           />
-          <button
-            type="button"
-            className="secondary compact"
-            disabled={busy || loading || !actions.length}
-            onClick={() => onEditorOpenChange(true)}
-          >
-            <SlidersHorizontal /> Edit button mappings
-          </button>
+          {presentation === "card" && (
+            <button
+              type="button"
+              className="secondary compact"
+              disabled={busy || loading || !actions.length}
+              onClick={() => onEditorOpenChange?.(true)}
+            >
+              <SlidersHorizontal /> Edit button mappings
+            </button>
+          )}
         </div>
       </header>
 
@@ -566,18 +570,27 @@ export function ProfileVirtualMappings({
           </div>
         )}
 
-      {editorOpen && (
+      {(editorOpen || presentation === "workspace") && (
         <div
-          className="dialog-backdrop profile-mapping-backdrop"
+          className={
+            presentation === "workspace"
+              ? "profile-mapping-inline"
+              : "dialog-backdrop profile-mapping-backdrop"
+          }
           role="presentation"
           onPointerDown={(event) => {
-            if (event.target === event.currentTarget) void closeEditor();
+            if (presentation === "card" && event.target === event.currentTarget)
+              void closeEditor();
           }}
         >
           <section
-            className="profile-mapping-dialog"
-            role="dialog"
-            aria-modal="true"
+            className={
+              presentation === "workspace"
+                ? "profile-mapping-dialog inline"
+                : "profile-mapping-dialog"
+            }
+            role={presentation === "card" ? "dialog" : undefined}
+            aria-modal={presentation === "card" ? "true" : undefined}
             aria-labelledby="profile-mapping-title"
             onPointerDown={(event) => event.stopPropagation()}
           >
@@ -590,14 +603,16 @@ export function ProfileVirtualMappings({
                   should trigger it for this profile.
                 </p>
               </div>
-              <button
-                type="button"
-                className="dialog-close"
-                aria-label="Close mapping editor"
-                onClick={() => void closeEditor()}
-              >
-                <X />
-              </button>
+              {presentation === "card" && (
+                <button
+                  type="button"
+                  className="dialog-close"
+                  aria-label="Close mapping editor"
+                  onClick={() => void closeEditor()}
+                >
+                  <X />
+                </button>
+              )}
             </header>
 
             {routingActive && (
@@ -611,7 +626,7 @@ export function ProfileVirtualMappings({
               <label className="profile-mapping-search">
                 <Search />
                 <input
-                  autoFocus
+                  autoFocus={presentation === "card"}
                   value={query}
                   placeholder="Search actions, buttons, or devices"
                   onChange={(event) => setQuery(event.target.value)}
@@ -800,7 +815,7 @@ export function ProfileVirtualMappings({
                 >
                   <Square /> Cancel control capture
                 </button>
-              ) : (
+              ) : presentation === "card" ? (
                 <button
                   type="button"
                   className="primary"
@@ -809,7 +824,7 @@ export function ProfileVirtualMappings({
                 >
                   Done
                 </button>
-              )}
+              ) : null}
             </footer>
           </section>
         </div>

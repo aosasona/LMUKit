@@ -1954,6 +1954,11 @@ img.profile-card-icon {
   border-color: rgba(198, 243, 107, 0.22);
   color: var(--lime);
 }
+.profile-editor-tabs > button.legacy {
+  margin-left: 5px;
+  border-left-color: var(--line);
+  color: #8b948f;
+}
 .profile-editor-save {
   display: flex;
   align-items: center;
@@ -1967,6 +1972,69 @@ img.profile-card-icon {
 }
 .profile-editor-save button {
   height: 34px;
+}
+.profile-editor-virtual {
+  display: grid;
+  gap: 12px;
+}
+.profile-editor-intro,
+.profile-editor-legacy-head {
+  padding: 15px 17px;
+  border: 1px solid var(--line);
+  background: #151515;
+}
+.profile-editor-intro h3,
+.profile-editor-legacy-head h3 {
+  margin: 4px 0 5px;
+  color: #e1e8e4;
+  font-size: calc(19px * var(--font-scale));
+}
+.profile-editor-intro p,
+.profile-editor-legacy-head p {
+  max-width: 760px;
+  margin: 0;
+  color: #7f8a84;
+  font-size: calc(12px * var(--font-scale));
+  line-height: 1.55;
+}
+.profile-editor-legacy {
+  display: grid;
+  gap: 14px;
+}
+.profile-editor-legacy-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+}
+.profile-editor-legacy-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+}
+.profile-editor-legacy-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 11px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: #121212;
+  color: #7f8a84;
+  cursor: pointer;
+  font-size: calc(12px * var(--font-scale));
+}
+.profile-editor-legacy-tabs button:last-child {
+  border-right: 0;
+}
+.profile-editor-legacy-tabs button:hover,
+.profile-editor-legacy-tabs button.active {
+  background: #20211b;
+  color: var(--lime);
+}
+.profile-editor-legacy-tabs svg {
+  width: 15px;
 }
 .ffb-editor h2,
 .json-preview h2 {
@@ -4414,6 +4482,15 @@ textarea,
   background: #121211;
   box-shadow: 0 25px 70px rgba(0, 0, 0, 0.68);
 }
+.profile-mapping-inline {
+  min-width: 0;
+}
+.profile-mapping-dialog.inline {
+  width: 100%;
+  height: min(720px, calc(100vh - 270px));
+  min-height: 520px;
+  box-shadow: none;
+}
 .profile-mapping-dialog > header {
   flex: 0 0 auto;
   padding: 22px 58px 17px 22px;
@@ -5907,6 +5984,14 @@ textarea,
   }
 }
 @media (max-width: 1080px) {
+  .profile-editor-legacy-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .profile-editor-legacy-tabs {
+    align-self: flex-start;
+    flex-wrap: wrap;
+  }
   .settings-group > div {
     grid-template-columns: 1fr;
   }
