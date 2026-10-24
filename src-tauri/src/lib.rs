@@ -38,6 +38,7 @@ mod input;
 struct AppState(Mutex<Store>);
 struct HotkeyState(std::sync::mpsc::Sender<HotkeyUpdate>);
 struct VirtualSetupState(Mutex<VirtualSetupSession>);
+struct ManualPulseState(Arc<AtomicU64>);
 struct VirtualRoutingState {
     operation: Mutex<()>,
     session: Mutex<Option<VirtualRoutingSession>>,
@@ -928,10 +929,15 @@ async fn create_manual_virtual_action(
 #[tauri::command]
 async fn test_manual_virtual_action(
     action: String,
+    delay_ms: u64,
     state: State<'_, AppState>,
     routing_state: State<'_, VirtualRoutingState>,
     setup_state: State<'_, VirtualSetupState>,
+    pulse_state: State<'_, ManualPulseState>,
 ) -> Result<VirtualButtonPulse, String> {
+    if delay_ms != 0 && !(1_000..=15_000).contains(&delay_ms) {
+        return Err("A test delay must be zero or between 1 and 15 seconds.".to_owned());
+    }
     ensure_manual_pulse_available(&routing_state, &setup_state)?;
     let (device_id, virtual_button) = {
         let store = state.0.lock().map_err(|error| error.to_string())?;
@@ -942,7 +948,30 @@ async fn test_manual_virtual_action(
             .ok_or_else(|| "That manually named action no longer exists.".to_owned())?;
         (store.settings.virtual_device_id, entry.virtual_button)
     };
+    let generation = pulse_state.0.fetch_add(1, Ordering::AcqRel) + 1;
+    let delay_generation = Arc::clone(&pulse_state.0);
+    let completed = tauri::async_runtime::spawn_blocking(move || {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(delay_ms);
+        while std::time::Instant::now() < deadline {
+            if delay_generation.load(Ordering::Acquire) != generation {
+                return false;
+            }
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            std::thread::sleep(remaining.min(std::time::Duration::from_millis(50)));
+        }
+        delay_generation.load(Ordering::Acquire) == generation
+    })
+    .await
+    .map_err(|error| format!("Virtual button worker stopped unexpectedly: {error}"))?;
+    if !completed {
+        return Err("Delayed virtual button test cancelled.".to_owned());
+    }
+    ensure_manual_pulse_available(&routing_state, &setup_state)?;
+    let pulse_generation = Arc::clone(&pulse_state.0);
     let identity = tauri::async_runtime::spawn_blocking(move || {
+        if pulse_generation.load(Ordering::Acquire) != generation {
+            return Err("Delayed virtual button test cancelled.".to_owned());
+        }
         pulse_virtual_button(device_id, virtual_button)
     })
     .await
@@ -952,6 +981,11 @@ async fn test_manual_virtual_action(
         identity,
         next_virtual_button: None,
     })
+}
+
+#[tauri::command]
+fn cancel_manual_virtual_action_test(pulse_state: State<'_, ManualPulseState>) {
+    pulse_state.0.fetch_add(1, Ordering::AcqRel);
 }
 
 #[tauri::command]
@@ -2974,6 +3008,7 @@ pub fn run() {
         .manage(VirtualSetupState(
             Mutex::new(VirtualSetupSession::default()),
         ))
+        .manage(ManualPulseState(Arc::new(AtomicU64::new(0))))
         .manage(VirtualRoutingState {
             operation: Mutex::new(()),
             session: Mutex::new(None),
@@ -3097,6 +3132,7 @@ pub fn run() {
             manual_virtual_actions,
             create_manual_virtual_action,
             test_manual_virtual_action,
+            cancel_manual_virtual_action_test,
             remove_manual_virtual_action,
             set_virtual_profile_default,
             clear_virtual_profile_default,

@@ -25,6 +25,7 @@ import type {
 import type { InputMode } from "../components/InputModeSwitch";
 
 const RECOMMENDED_VJOY_BUTTON_COUNT = 128;
+const MANUAL_TEST_DELAY_MS = 5_000;
 
 export function VirtualInputPage({
   busy,
@@ -53,6 +54,10 @@ export function VirtualInputPage({
   const [manualActions, setManualActions] = useState<VirtualAction[]>([]);
   const [manualActionName, setManualActionName] = useState("");
   const [manualBusy, setManualBusy] = useState<string | null>(null);
+  const [manualTest, setManualTest] = useState<{
+    action: string;
+    remaining: number;
+  } | null>(null);
   const [manualError, setManualError] = useState<string | null>(null);
   const [routingBusy, setRoutingBusy] = useState(false);
   const [selectedClass, setSelectedClass] = useState("");
@@ -209,6 +214,9 @@ export function VirtualInputPage({
     void invoke<VirtualAction[]>("manual_virtual_actions")
       .then(setManualActions)
       .catch((reason) => setManualError(String(reason)));
+    return () => {
+      void invoke("cancel_manual_virtual_action_test");
+    };
   }, []);
 
   useEffect(() => {
@@ -326,20 +334,54 @@ export function VirtualInputPage({
     }
   };
 
-  const testManualAction = async (action: VirtualAction) => {
+  const testManualAction = async (action: VirtualAction, delayMs: number) => {
     setManualBusy(action.action);
+    if (delayMs) {
+      setManualTest({
+        action: action.action,
+        remaining: delayMs / 1_000,
+      });
+    }
     setManualError(null);
+    const countdown = delayMs
+      ? window.setInterval(() => {
+          setManualTest((current) =>
+            current?.action === action.action
+              ? { ...current, remaining: Math.max(1, current.remaining - 1) }
+              : current,
+          );
+        }, 1_000)
+      : null;
+    if (delayMs) {
+      onNotice(
+        `${action.action} will send vJoy B${action.virtualButton} in 5 seconds. Switch to Discord and open Edit Keybind now.`,
+      );
+    }
     try {
       await invoke<VirtualButtonPulse>("test_manual_virtual_action", {
         action: action.action,
+        delayMs,
       });
       onNotice(`Sent ${action.action} on vJoy B${action.virtualButton}.`);
     } catch (reason) {
-      setManualError(String(reason));
-      onNotice(String(reason));
+      const message = String(reason);
+      if (!message.toLowerCase().includes("cancelled")) {
+        setManualError(message);
+        onNotice(message);
+      }
     } finally {
+      if (countdown !== null) window.clearInterval(countdown);
+      setManualTest((current) =>
+        current?.action === action.action ? null : current,
+      );
       setManualBusy(null);
     }
+  };
+
+  const cancelManualTest = async (action: VirtualAction) => {
+    await invoke("cancel_manual_virtual_action_test");
+    setManualTest(null);
+    onNotice(`Cancelled the delayed test for ${action.action}.`);
   };
 
   const removeManualAction = async (action: VirtualAction) => {
@@ -676,15 +718,15 @@ export function VirtualInputPage({
           <div>
             <b>1</b>
             <span>
-              <strong>Make the other app listen</strong>
-              <small>Open its binding field before sending.</small>
+              <strong>Name and save the action</strong>
+              <small>For example, RaceLab — Recenter VR.</small>
             </span>
           </div>
           <div>
             <b>2</b>
             <span>
-              <strong>Name the action</strong>
-              <small>For example, RaceLab — Recenter VR.</small>
+              <strong>Test it with a delay</strong>
+              <small>Start the test, then make the other app listen.</small>
             </span>
           </div>
           <div>
@@ -749,21 +791,43 @@ export function VirtualInputPage({
                 <small>Available in every profile mapping editor</small>
               </span>
               <code>B{action.virtualButton}</code>
-              <button
-                type="button"
-                className="secondary"
-                disabled={
-                  manualBusy !== null || setup !== null || routing.active
-                }
-                onClick={() => void testManualAction(action)}
-              >
-                {manualBusy === action.action ? (
-                  <LoaderCircle className="spin" />
-                ) : (
-                  <Send />
-                )}
-                Test
-              </button>
+              <div className="virtual-manual-test-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={
+                    manualBusy !== null || setup !== null || routing.active
+                  }
+                  onClick={() => void testManualAction(action, 0)}
+                >
+                  {manualBusy === action.action && !manualTest ? (
+                    <LoaderCircle className="spin" />
+                  ) : (
+                    <Send />
+                  )}
+                  Send now
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={
+                    (manualBusy !== null &&
+                      manualTest?.action !== action.action) ||
+                    setup !== null ||
+                    routing.active
+                  }
+                  onClick={() =>
+                    void (manualTest?.action === action.action
+                      ? cancelManualTest(action)
+                      : testManualAction(action, MANUAL_TEST_DELAY_MS))
+                  }
+                >
+                  {manualTest?.action === action.action ? <Square /> : <Send />}
+                  {manualTest?.action === action.action
+                    ? `Cancel · ${manualTest.remaining}s`
+                    : "In 5s"}
+                </button>
+              </div>
               <button
                 type="button"
                 className="icon-button virtual-manual-remove"

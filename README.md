@@ -124,7 +124,7 @@ This is a one-time LMU-side setup for each action: LMU learns that, for example,
 
 #### Register actions in other applications
 
-The shared virtual layout can also contain user-named actions that do not belong to LMU. Under **Virtual input → External app actions**, make RaceLab or another application listen for a controller input, enter a descriptive name such as `RaceLab — Recenter VR`, and choose **Send & save action**. LMUKit selects the next unused vJoy button, sends a test pulse, and adds that name to every profile mapping editor. A saved action can be tested again later. It cannot be removed while a profile still references it.
+The shared virtual layout can also contain user-named actions that do not belong to LMU. Under **Virtual input → External app actions**, enter a descriptive name such as `RaceLab — Recenter VR` and choose **Send & save action**. LMUKit selects the next unused vJoy button, sends an initial test pulse, and adds that name to every profile mapping editor. Saved actions offer **Send now** for an already-open listener and a cancellable **In 5s** pulse for focus-sensitive applications: start the countdown, switch to Discord, and open Edit Keybind before it finishes. The delay runs outside the UI thread, so changing window focus does not stop it. An action cannot be removed while a profile still references it.
 
 External actions use the same per-profile physical controls and modifier combinations as LMU actions. Live remapping must be stopped while registering or testing one because the routing engine owns the vJoy device. Only leave the intended target application listening—the vJoy button remains visible to LMU and other applications even when they have no binding for it.
 

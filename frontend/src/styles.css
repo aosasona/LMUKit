@@ -5385,6 +5385,15 @@ textarea,
 .virtual-manual-list button svg {
   width: 15px;
 }
+.virtual-manual-test-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.virtual-manual-test-actions button {
+  min-height: 36px;
+  white-space: nowrap;
+}
 .virtual-manual-list .virtual-manual-remove {
   width: 38px;
   height: 38px;

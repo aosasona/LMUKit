@@ -46,7 +46,7 @@ const virtualSteps: GuideStep[] = [
   {
     title: "Add actions for other apps (optional)",
     detail:
-      "Make RaceLab or another tool listen for a controller button, then name and send an unused vJoy button under External app actions. The name becomes available to every profile.",
+      "Name and save an unused vJoy button under External app actions. Use Send now when another app is already listening, or In 5s when Discord or another app must remain focused while opening its binding field.",
     action: "Open external actions",
     page: "virtual",
   },
@@ -292,6 +292,17 @@ export function HelpPage({
               Check the profile's class tags and its global class default.
               Choose a profile manually to pause automation, or select Resume
               Auto on Overview after correcting the default.
+            </p>
+          </details>
+          <details>
+            <summary>
+              <Radio /> Discord stops listening when I click LMUKit
+            </summary>
+            <p>
+              Create the external action first, then choose In 5s. Switch to
+              Discord and click Edit Keybind before the countdown finishes.
+              LMUKit sends the vJoy pulse from its background worker, so Discord
+              can remain focused when the input arrives.
             </p>
           </details>
           <details>
