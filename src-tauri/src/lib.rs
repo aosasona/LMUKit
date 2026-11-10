@@ -6,7 +6,8 @@ use lmukit_core::storage::{
     CompanionApp, CompanionAppIssue, InputMode, LaunchMode, Profile, Store,
     VirtualButtonConflictResolution, VirtualButtonMapping, VirtualButtonModifier,
     VirtualEncoderControl, VirtualEncoderGroup, VirtualEncoderMode as StoredEncoderMode,
-    VirtualProfileMapping, Wheel, resolve_virtual_button_mappings, validate_companion_apps,
+    VirtualProfileMapping, Wheel, WorkspaceKind, resolve_virtual_button_mappings,
+    validate_companion_apps,
 };
 use lmukit_virtual::{
     EncoderGroup, EncoderMode, LogicalAction, PhysicalButton, ProfileBinding, ProfileMapping,
@@ -366,6 +367,9 @@ enum LearnedPhysicalMapping {
 struct AppSnapshot {
     profiles: Vec<ProfileSummary>,
     wheels: Vec<WheelSummary>,
+    workspaces: Vec<WorkspaceSummary>,
+    active_workspace_id: String,
+    active_workspace_kind: WorkspaceKind,
     active_profile: Option<Uuid>,
     lmu_config_path: String,
     lmu_settings_path: String,
@@ -375,6 +379,14 @@ struct AppSnapshot {
     auto_start_virtual_profile: bool,
     companion_apps: Vec<CompanionApp>,
     lmu_launch_mode: LaunchMode,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceSummary {
+    id: String,
+    name: String,
+    kind: WorkspaceKind,
 }
 
 #[derive(Serialize)]
@@ -499,31 +511,93 @@ struct VirtualSetupEvent {
 #[tauri::command]
 fn snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
-    let profiles = store.profiles().map_err(|error| error.to_string())?;
+    let all_profiles = store.profiles().map_err(|error| error.to_string())?;
+    let active_workspace = store.active_workspace().clone();
+    let profiles = all_profiles
+        .iter()
+        .filter(|profile| profile.workspace_id == active_workspace.id)
+        .cloned()
+        .collect::<Vec<_>>();
     let summaries = profiles
         .iter()
         .map(|profile| profile_summary(&store, profile))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(AppSnapshot {
         profiles: summaries,
+        workspaces: store
+            .workspaces()
+            .iter()
+            .map(|workspace| WorkspaceSummary {
+                id: workspace.id.clone(),
+                name: workspace.name.clone(),
+                kind: workspace.kind,
+            })
+            .collect(),
+        active_workspace_id: active_workspace.id,
+        active_workspace_kind: active_workspace.kind,
         wheels: store
             .wheels()
             .map_err(|error| error.to_string())?
             .into_iter()
-            .map(|wheel| wheel_summary(wheel, &profiles))
+            .map(|wheel| wheel_summary(wheel, &all_profiles))
             .collect(),
-        active_profile: store.settings.active_profile,
+        active_profile: (active_workspace.kind == WorkspaceKind::LeMansUltimate)
+            .then_some(store.settings.active_profile)
+            .flatten(),
         lmu_config_path: store.settings.lmu_config_path.display().to_string(),
         lmu_settings_path: store.settings.lmu_settings_path.display().to_string(),
-        active_profile_dirty: store
-            .active_profile_has_unsaved_changes()
-            .map_err(|error| error.to_string())?,
+        active_profile_dirty: if active_workspace.kind == WorkspaceKind::LeMansUltimate {
+            store
+                .active_profile_has_unsaved_changes()
+                .map_err(|error| error.to_string())?
+        } else {
+            None
+        },
         ui_font_scale: store.settings.ui_font_scale,
         input_mode: store.settings.input_mode,
         auto_start_virtual_profile: store.settings.auto_start_virtual_profile,
         companion_apps: store.settings.companion_apps.clone(),
         lmu_launch_mode: store.settings.lmu_launch_mode,
     })
+}
+
+#[tauri::command]
+fn create_virtual_profile(name: String, state: State<'_, AppState>) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .create_virtual_profile(&name)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_active_workspace(
+    workspace_id: String,
+    state: State<'_, AppState>,
+    routing_state: State<'_, VirtualRoutingState>,
+    hotkey_state: State<'_, HotkeyState>,
+    auto_state: State<'_, AutoProfileState>,
+) -> Result<(), String> {
+    let _operation = routing_state
+        .operation
+        .lock()
+        .map_err(|error| error.to_string())?;
+    stop_virtual_routing_inner(&routing_state)?;
+    let profiles = {
+        let mut store = state.0.lock().map_err(|error| error.to_string())?;
+        store
+            .set_active_workspace(workspace_id.trim())
+            .map_err(|error| error.to_string())?;
+        store
+            .active_workspace_profiles()
+            .map_err(|error| error.to_string())?
+    };
+    hotkey_state
+        .0
+        .send(HotkeyUpdate::Profiles(profile_shortcuts(&profiles)))
+        .map_err(|_| "The shortcut worker is not running.".to_owned())?;
+    pause_auto_profile_selection(&auto_state, "workspace changed");
+    Ok(())
 }
 
 #[tauri::command]
@@ -639,7 +713,9 @@ fn set_profile_hotkey(
     store
         .set_profile_hotkey(profile_id, slot)
         .map_err(|error| error.to_string())?;
-    let profiles = store.profiles().map_err(|error| error.to_string())?;
+    let profiles = store
+        .active_workspace_profiles()
+        .map_err(|error| error.to_string())?;
     hotkey_state
         .0
         .send(HotkeyUpdate::Profiles(profile_shortcuts(&profiles)))
@@ -1580,6 +1656,9 @@ fn start_virtual_routing_inner(
             );
         }
         let profile = find_profile(&store, profile_id)?;
+        if profile.workspace_id != store.settings.active_workspace_id {
+            return Err("That profile belongs to another workspace.".to_owned());
+        }
         let persisted_mapping = profile
             .virtual_mapping
             .as_ref()
@@ -2985,7 +3064,7 @@ pub fn run() {
         eprintln!("LMUKit logging could not start: {error}");
     }
     let shortcuts = store
-        .profiles()
+        .active_workspace_profiles()
         .map(|profiles| profile_shortcuts(&profiles))
         .unwrap_or_default();
     let (hotkey_tx, hotkey_rx) = std::sync::mpsc::channel();
@@ -3033,10 +3112,16 @@ pub fn run() {
             let auto_start_profile = {
                 let state = app.state::<AppState>();
                 state.0.lock().ok().and_then(|store| {
-                    (store.settings.input_mode == InputMode::Virtual
+                    let profile_id = (store.settings.input_mode == InputMode::Virtual
                         && store.settings.auto_start_virtual_profile)
                         .then_some(store.settings.last_virtual_profile)
-                        .flatten()
+                        .flatten()?;
+                    store
+                        .active_workspace_profiles()
+                        .ok()?
+                        .iter()
+                        .any(|profile| profile.id == profile_id)
+                        .then_some(profile_id)
                 })
             };
             if let Some(profile_id) = auto_start_profile {
@@ -3078,6 +3163,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             snapshot,
+            set_active_workspace,
             activate_profile,
             remove_profile_device,
             save_profile_wheel_image,
@@ -3091,6 +3177,7 @@ pub fn run() {
             remove_wheel_library_image,
             assign_profile_wheel,
             capture_profile,
+            create_virtual_profile,
             import_profile,
             update_profile,
             delete_profile,
@@ -3225,14 +3312,21 @@ fn poll_lmu_car_context(
 #[cfg(target_os = "windows")]
 fn apply_automatic_profile_selection(app: &tauri::AppHandle, context: &CarContextSummary) {
     let app_state = app.state::<AppState>();
-    let (enabled, input_mode) = match app_state.0.lock() {
+    let (enabled, input_mode, workspace_kind) = match app_state.0.lock() {
         Ok(store) => (
             store.settings.auto_profile_selection,
             store.settings.input_mode,
+            store.active_workspace().kind,
         ),
         Err(_) => return,
     };
     let auto_state = app.state::<AutoProfileState>();
+    if workspace_kind != WorkspaceKind::LeMansUltimate {
+        if let Ok(mut runtime) = auto_state.0.lock() {
+            runtime.reset("Automatic LMU profile selection is inactive in this workspace.");
+        }
+        return;
+    }
     let confirmed_class = (context.connected
         && context.status == LmuCarContextStatus::Confirmed
         && matches!(

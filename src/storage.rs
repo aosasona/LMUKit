@@ -10,12 +10,16 @@ use std::{
 use uuid::Uuid;
 
 pub const CONFIG_FILE_NAME: &str = "direct input.json";
+pub const LMU_WORKSPACE_ID: &str = "le-mans-ultimate";
+pub const AC_WORKSPACE_ID: &str = "assetto-corsa";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Profile {
     pub id: Uuid,
     pub name: String,
     pub created_at: u64,
+    #[serde(default = "default_profile_workspace_id")]
+    pub workspace_id: String,
     #[serde(default)]
     pub assignments: Vec<String>,
     #[serde(default)]
@@ -198,6 +202,25 @@ pub struct Settings {
     pub virtual_profile_defaults: Vec<VirtualProfileDefault>,
     #[serde(default)]
     pub class_profile_defaults: Vec<ClassProfileDefault>,
+    #[serde(default = "default_workspaces")]
+    pub workspaces: Vec<Workspace>,
+    #[serde(default = "default_active_workspace_id")]
+    pub active_workspace_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Workspace {
+    pub id: String,
+    pub name: String,
+    pub kind: WorkspaceKind,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceKind {
+    LeMansUltimate,
+    AssettoCorsa,
+    Generic,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -271,8 +294,80 @@ impl Default for Settings {
             virtual_device_id: default_virtual_device_id(),
             virtual_profile_defaults: Vec::new(),
             class_profile_defaults: Vec::new(),
+            workspaces: default_workspaces(),
+            active_workspace_id: default_active_workspace_id(),
         }
     }
+}
+
+fn default_profile_workspace_id() -> String {
+    LMU_WORKSPACE_ID.to_owned()
+}
+
+fn default_active_workspace_id() -> String {
+    LMU_WORKSPACE_ID.to_owned()
+}
+
+fn default_workspaces() -> Vec<Workspace> {
+    vec![
+        Workspace {
+            id: LMU_WORKSPACE_ID.to_owned(),
+            name: "Le Mans Ultimate".to_owned(),
+            kind: WorkspaceKind::LeMansUltimate,
+        },
+        Workspace {
+            id: AC_WORKSPACE_ID.to_owned(),
+            name: "Assetto Corsa".to_owned(),
+            kind: WorkspaceKind::AssettoCorsa,
+        },
+    ]
+}
+
+fn ensure_builtin_workspaces(workspaces: &mut Vec<Workspace>) {
+    for builtin in default_workspaces() {
+        if let Some(existing) = workspaces
+            .iter_mut()
+            .find(|workspace| workspace.id == builtin.id)
+        {
+            existing.name = builtin.name;
+            existing.kind = builtin.kind;
+        } else {
+            workspaces.push(builtin);
+        }
+    }
+}
+
+fn validate_workspaces(workspaces: &[Workspace], active_workspace_id: &str) -> Result<()> {
+    ensure!(
+        !workspaces.is_empty(),
+        "At least one workspace is required."
+    );
+    let mut ids = BTreeSet::new();
+    for workspace in workspaces {
+        ensure!(
+            !workspace.id.trim().is_empty() && workspace.id == workspace.id.trim(),
+            "Workspace IDs must not be empty or contain outer spaces."
+        );
+        ensure!(
+            !workspace.name.trim().is_empty(),
+            "Workspace names must not be empty."
+        );
+        ensure!(
+            workspace.name.chars().count() <= 80,
+            "Workspace names must be 80 characters or shorter."
+        );
+        ensure!(
+            ids.insert(workspace.id.to_lowercase()),
+            "Workspace IDs must be unique."
+        );
+    }
+    ensure!(
+        workspaces
+            .iter()
+            .any(|workspace| workspace.id == active_workspace_id),
+        "The active workspace no longer exists."
+    );
+    Ok(())
 }
 
 fn default_ui_font_scale() -> f32 {
@@ -342,6 +437,15 @@ impl Store {
         if !(1..=30).contains(&settings.log_retention_days) {
             settings.log_retention_days = default_log_retention_days();
         }
+        ensure_builtin_workspaces(&mut settings.workspaces);
+        if !settings
+            .workspaces
+            .iter()
+            .any(|workspace| workspace.id == settings.active_workspace_id)
+        {
+            settings.active_workspace_id = default_active_workspace_id();
+        }
+        validate_workspaces(&settings.workspaces, &settings.active_workspace_id)?;
         if !settings.lmuffb_path.as_os_str().is_empty()
             && let Some(lmuffb) = settings
                 .companion_apps
@@ -372,7 +476,37 @@ impl Store {
             (1..=30).contains(&self.settings.log_retention_days),
             "Log retention must be between 1 and 30 days."
         );
+        validate_workspaces(
+            &self.settings.workspaces,
+            &self.settings.active_workspace_id,
+        )?;
         write_json(&self.root.join("settings.json"), &self.settings)
+    }
+
+    pub fn workspaces(&self) -> &[Workspace] {
+        &self.settings.workspaces
+    }
+
+    pub fn active_workspace(&self) -> &Workspace {
+        self.settings
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.id == self.settings.active_workspace_id)
+            .expect("active workspace is validated when the store opens")
+    }
+
+    pub fn set_active_workspace(&mut self, workspace_id: &str) -> Result<()> {
+        let workspace = self
+            .settings
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.id == workspace_id)
+            .context("That workspace no longer exists.")?;
+        self.settings.active_workspace_id = workspace_id.to_owned();
+        if workspace.kind != WorkspaceKind::LeMansUltimate {
+            self.settings.input_mode = InputMode::Virtual;
+        }
+        self.save_settings()
     }
 
     pub fn set_virtual_profile_default(
@@ -1059,6 +1193,18 @@ impl Store {
         Ok(profiles)
     }
 
+    pub fn profiles_for_workspace(&self, workspace_id: &str) -> Result<Vec<Profile>> {
+        Ok(self
+            .profiles()?
+            .into_iter()
+            .filter(|profile| profile.workspace_id == workspace_id)
+            .collect())
+    }
+
+    pub fn active_workspace_profiles(&self) -> Result<Vec<Profile>> {
+        self.profiles_for_workspace(&self.settings.active_workspace_id)
+    }
+
     pub fn save_profile_metadata(&self, profile: &Profile) -> Result<()> {
         write_json(&self.profile_dir(profile.id).join("profile.json"), profile)
             .context("could not save profile metadata")
@@ -1072,10 +1218,15 @@ impl Store {
         if !profiles.iter().any(|profile| profile.id == profile_id) {
             bail!("That profile no longer exists.");
         }
+        let workspace_id = profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .map(|profile| profile.workspace_id.clone())
+            .expect("profile existence checked above");
         for profile in &mut profiles {
             let next = if profile.id == profile_id {
                 slot
-            } else if profile.hotkey_slot == slot {
+            } else if profile.workspace_id == workspace_id && profile.hotkey_slot == slot {
                 None
             } else {
                 profile.hotkey_slot
@@ -1097,10 +1248,16 @@ impl Store {
             bail!("Profile names must be 100 characters or shorter.");
         }
         let profiles = self.profiles()?;
-        if profiles
+        let workspace_id = profiles
             .iter()
-            .any(|profile| profile.id != profile_id && profile.name.eq_ignore_ascii_case(name))
-        {
+            .find(|profile| profile.id == profile_id)
+            .map(|profile| profile.workspace_id.as_str())
+            .context("That profile no longer exists.")?;
+        if profiles.iter().any(|profile| {
+            profile.id != profile_id
+                && profile.workspace_id == workspace_id
+                && profile.name.eq_ignore_ascii_case(name)
+        }) {
             bail!("A profile with that name already exists.");
         }
         let mut profile = profiles
@@ -1215,6 +1372,7 @@ impl Store {
             id: Uuid::new_v4(),
             name: name.to_owned(),
             created_at: unix_time()?,
+            workspace_id: self.settings.active_workspace_id.clone(),
             assignments: Vec::new(),
             hotkey_slot: None,
             wheel_image: None,
@@ -1232,6 +1390,10 @@ impl Store {
             .context("could not store the imported preset")?;
         write_json(&dir.join("profile.json"), &profile)?;
         Ok(profile)
+    }
+
+    pub fn create_virtual_profile(&self, name: &str) -> Result<Profile> {
+        self.import_profile_bytes(name, br#"{"Input":{},"Alternative Input":{},"Devices":{}}"#)
     }
 
     pub fn bindings(&self, profile: &Profile) -> Result<Vec<Binding>> {
@@ -1725,6 +1887,7 @@ impl Store {
             id: Uuid::new_v4(),
             name: name.to_owned(),
             created_at: unix_time()?,
+            workspace_id: self.settings.active_workspace_id.clone(),
             assignments: Vec::new(),
             hotkey_slot: None,
             wheel_image: None,
@@ -2493,12 +2656,76 @@ mod tests {
         .unwrap();
 
         assert_eq!(profile.hotkey_slot, None);
+        assert_eq!(profile.workspace_id, LMU_WORKSPACE_ID);
         assert!(profile.wheel_tags.is_empty());
         assert_eq!(profile.wheel_brand, None);
         assert_eq!(profile.wheel_name, None);
         assert!(profile.class_tags.is_empty());
         assert!(profile.custom_tags.is_empty());
         assert_eq!(profile.virtual_mapping, None);
+    }
+
+    #[test]
+    fn migrates_legacy_settings_and_profiles_into_the_lmu_workspace() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("lmukit");
+        fs::create_dir_all(&root).unwrap();
+        let mut legacy_settings = serde_json::to_value(Settings::default()).unwrap();
+        legacy_settings
+            .as_object_mut()
+            .unwrap()
+            .remove("workspaces");
+        legacy_settings
+            .as_object_mut()
+            .unwrap()
+            .remove("active_workspace_id");
+        fs::write(
+            root.join("settings.json"),
+            serde_json::to_vec(&legacy_settings).unwrap(),
+        )
+        .unwrap();
+
+        let store = Store::open_at(root).unwrap();
+
+        assert_eq!(store.active_workspace().id, LMU_WORKSPACE_ID);
+        assert_eq!(store.workspaces().len(), 2);
+        assert!(
+            store
+                .workspaces()
+                .iter()
+                .any(|workspace| workspace.id == AC_WORKSPACE_ID)
+        );
+    }
+
+    #[test]
+    fn keeps_profiles_separate_while_wheels_remain_shared_across_workspaces() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let lmu_profile = store
+            .import_profile_bytes("LMU GT3", br#"{"Input":{}}"#)
+            .unwrap();
+        let wheel = store
+            .create_wheel(Some("Simagic".into()), "GT Neo".into())
+            .unwrap();
+        store
+            .assign_profile_wheel(lmu_profile.id, Some(wheel.id))
+            .unwrap();
+
+        store.set_active_workspace(AC_WORKSPACE_ID).unwrap();
+        let ac_profile = store.create_virtual_profile("AC GT3").unwrap();
+        store
+            .assign_profile_wheel(ac_profile.id, Some(wheel.id))
+            .unwrap();
+
+        assert_eq!(lmu_profile.workspace_id, LMU_WORKSPACE_ID);
+        assert_eq!(ac_profile.workspace_id, AC_WORKSPACE_ID);
+        let active_profiles = store.active_workspace_profiles().unwrap();
+        assert_eq!(active_profiles.len(), 1);
+        assert_eq!(active_profiles[0].id, ac_profile.id);
+        let wheels = store.wheels().unwrap();
+        assert_eq!(wheels.len(), 1);
+        assert_eq!(wheels[0].id, wheel.id);
+        assert_eq!(store.profiles().unwrap().len(), 2);
     }
 
     #[test]
