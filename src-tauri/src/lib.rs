@@ -55,6 +55,7 @@ struct AutoProfileState(Mutex<AutoProfileRuntime>);
 
 struct AutoProfileRuntime {
     paused: bool,
+    manual_override_class: Option<String>,
     debouncer: ConfirmedClassDebouncer,
     last_attempted_profile: Option<Uuid>,
     message: String,
@@ -64,6 +65,7 @@ impl Default for AutoProfileRuntime {
     fn default() -> Self {
         Self {
             paused: false,
+            manual_override_class: None,
             debouncer: ConfirmedClassDebouncer::new(2),
             last_attempted_profile: None,
             message: "Automatic profile selection is off.".to_owned(),
@@ -81,7 +83,7 @@ impl AutoProfileRuntime {
     fn summary(&self, enabled: bool) -> AutoProfileSummary {
         AutoProfileSummary {
             enabled,
-            paused: self.paused,
+            paused: self.paused || self.manual_override_class.is_some(),
             candidate_class: self.debouncer.candidate().map(str::to_owned),
             confirmed_observations: self.debouncer.observations(),
             required_observations: self.debouncer.required_observations(),
@@ -1543,6 +1545,7 @@ fn set_auto_profile_selection(
     }
     let mut runtime = auto_state.0.lock().map_err(|error| error.to_string())?;
     runtime.paused = false;
+    runtime.manual_override_class = None;
     runtime.reset(if enabled {
         "Waiting for LMU to confirm a car class."
     } else {
@@ -1575,6 +1578,7 @@ fn resume_auto_profile_selection(
     }
     let mut runtime = auto_state.0.lock().map_err(|error| error.to_string())?;
     runtime.paused = false;
+    runtime.manual_override_class = None;
     runtime.reset("Waiting for LMU to confirm a car class.");
     diagnostics::info(
         "routing.auto.resumed",
@@ -1586,10 +1590,36 @@ fn resume_auto_profile_selection(
 fn pause_auto_profile_selection(state: &AutoProfileState, reason: &str) {
     if let Ok(mut runtime) = state.0.lock() {
         runtime.paused = true;
+        runtime.manual_override_class = None;
         runtime.reset(format!(
             "Paused after {reason}. Select Resume Auto when ready."
         ));
     }
+}
+
+fn hold_manual_profile_for_class(state: &AutoProfileState, class_tag: Option<&str>) {
+    if let Ok(mut runtime) = state.0.lock() {
+        runtime.paused = false;
+        runtime.manual_override_class = class_tag.map(str::to_owned);
+        runtime.reset(match class_tag {
+            Some(class_tag) => format!(
+                "Keeping the manually selected profile for {}. Automatic selection will resume when the detected class changes.",
+                display_existing_class(class_tag)
+            ),
+            None => "Automatic selection is active and waiting for a confirmed class.".to_owned(),
+        });
+    }
+}
+
+fn confirmed_class(context: &CarContextSummary) -> Option<&str> {
+    (context.connected
+        && context.status == LmuCarContextStatus::Confirmed
+        && matches!(
+            context.session_state,
+            LmuSessionState::Session | LmuSessionState::Realtime | LmuSessionState::Replay
+        ))
+    .then_some(context.class_id.as_deref())
+    .flatten()
 }
 
 #[tauri::command]
@@ -1598,14 +1628,21 @@ fn start_virtual_routing(
     app_state: State<'_, AppState>,
     routing_state: State<'_, VirtualRoutingState>,
     auto_state: State<'_, AutoProfileState>,
+    car_context: State<'_, CarContextState>,
 ) -> Result<VirtualRoutingStatus, String> {
-    pause_auto_profile_selection(&auto_state, "manual profile selection");
-    start_virtual_routing_inner(
+    let status = start_virtual_routing_inner(
         profile_id,
         "Selected manually".to_owned(),
         &app_state,
         &routing_state,
-    )
+    )?;
+    let class_tag = car_context
+        .status
+        .lock()
+        .ok()
+        .and_then(|context| confirmed_class(&context).map(str::to_owned));
+    hold_manual_profile_for_class(&auto_state, class_tag.as_deref());
+    Ok(status)
 }
 
 #[tauri::command]
@@ -1629,8 +1666,9 @@ fn start_default_virtual_routing(
         let reason = format!("{} class default", display_existing_class(&class_tag));
         (profile.id, reason)
     };
-    pause_auto_profile_selection(&auto_state, "manual class selection");
-    start_virtual_routing_inner(profile_id, reason, &app_state, &routing_state)
+    let status = start_virtual_routing_inner(profile_id, reason, &app_state, &routing_state)?;
+    hold_manual_profile_for_class(&auto_state, Some(&class_tag));
+    Ok(status)
 }
 
 fn start_virtual_routing_inner(
@@ -3327,14 +3365,7 @@ fn apply_automatic_profile_selection(app: &tauri::AppHandle, context: &CarContex
         }
         return;
     }
-    let confirmed_class = (context.connected
-        && context.status == LmuCarContextStatus::Confirmed
-        && matches!(
-            context.session_state,
-            LmuSessionState::Session | LmuSessionState::Realtime | LmuSessionState::Replay
-        ))
-    .then_some(context.class_id.as_deref())
-    .flatten();
+    let confirmed_class = confirmed_class(context);
     let stable_class = {
         let Ok(mut runtime) = auto_state.0.lock() else {
             return;
@@ -3353,9 +3384,24 @@ fn apply_automatic_profile_selection(app: &tauri::AppHandle, context: &CarContex
             return;
         }
         let Some(class_tag) = confirmed_class else {
-            runtime.reset("Holding the current profile until LMU confirms a car class.");
+            if runtime.manual_override_class.is_none() {
+                runtime.reset("Holding the current profile until LMU confirms a car class.");
+            }
             return;
         };
+        if let Some(override_class) = runtime.manual_override_class.clone() {
+            if override_class.eq_ignore_ascii_case(class_tag) {
+                runtime.debouncer.reset();
+                runtime.last_attempted_profile = None;
+                return;
+            }
+            runtime.manual_override_class = None;
+            runtime.reset(format!(
+                "Detected a change from {} to {}. Resuming automatic selection.",
+                display_existing_class(&override_class),
+                display_existing_class(class_tag)
+            ));
+        }
         if !runtime
             .debouncer
             .candidate()
@@ -3537,14 +3583,20 @@ fn poll_hotkeys(
                     InputMode::Virtual => {
                         let routing_state = app.state::<VirtualRoutingState>();
                         let auto_state = app.state::<AutoProfileState>();
-                        pause_auto_profile_selection(&auto_state, "profile shortcut");
-                        start_virtual_routing_inner(
+                        let result = start_virtual_routing_inner(
                             profile_id,
                             "Profile shortcut".to_owned(),
                             &app_state,
                             &routing_state,
-                        )
-                        .map(|status| {
+                        );
+                        if result.is_ok() {
+                            let class_tag =
+                                app.state::<CarContextState>().status.lock().ok().and_then(
+                                    |context| confirmed_class(&context).map(str::to_owned),
+                                );
+                            hold_manual_profile_for_class(&auto_state, class_tag.as_deref());
+                        }
+                        result.map(|status| {
                             format!(
                                 "{} is now remapping live.",
                                 status

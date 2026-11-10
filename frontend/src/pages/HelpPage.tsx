@@ -289,9 +289,11 @@ export function HelpPage({
               <RefreshCw /> The automatic profile is wrong
             </summary>
             <p>
-              Check the profile's class tags and its global class default.
-              Choose a profile manually to pause automation, or select Resume
-              Auto on Overview after correcting the default.
+              Check the profile's class tags and its global class default. A
+              profile chosen manually stays active for the current class, and
+              automatic selection resumes after a confirmed class change.
+              Select Resume Auto on Overview to clear that manual override
+              immediately after correcting the default.
             </p>
           </details>
           <details>
