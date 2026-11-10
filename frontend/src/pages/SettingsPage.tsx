@@ -23,7 +23,12 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import type { CompanionApp, DiagnosticStatus, Profile } from "../models";
+import type {
+  CompanionApp,
+  DiagnosticStatus,
+  Profile,
+  Workspace,
+} from "../models";
 
 const MIN_SCALE = 0.85;
 const MAX_SCALE = 1.4;
@@ -45,6 +50,7 @@ type Props = {
   companionApps: CompanionApp[];
   launchMode: "desktop" | "vr";
   autoStartVirtualProfile: boolean;
+  workspaceKind: Workspace["kind"];
   onSaveFontScale: (scale: number) => void;
   onSetVirtualAutoStart: (enabled: boolean) => void;
   onSaveSettings: (
@@ -80,6 +86,7 @@ export function SettingsPage(props: Props) {
     companionApps,
     launchMode,
     autoStartVirtualProfile,
+    workspaceKind,
     onSaveFontScale,
     onSetVirtualAutoStart,
     onSaveSettings,
@@ -87,6 +94,7 @@ export function SettingsPage(props: Props) {
     onCreateLaunchOption,
     onBrowse,
   } = props;
+  const isLmu = workspaceKind === "le_mans_ultimate";
   const [draftScale, setDraftScale] = useState(fontScale);
   const [bindings, setBindings] = useState(configPath);
   const [gameSettings, setGameSettings] = useState(settingsPath);
@@ -338,33 +346,40 @@ export function SettingsPage(props: Props) {
         </div>
       </section>
 
-      <section className="settings-card">
-        <SettingsHeading icon={<FileJson />} eyebrow="Files" title="LMU paths">
-          Choose the live binding and game-settings files LMUKit should manage.
-        </SettingsHeading>
-        <div className="path-fields">
-          <PathField
-            label="direct input.json"
-            value={bindings}
-            onChange={setBindings}
-            onBrowse={() =>
-              void onBrowse("bindings").then(
-                (path) => path && setBindings(path),
-              )
-            }
-          />
-          <PathField
-            label="Settings.JSON"
-            value={gameSettings}
-            onChange={setGameSettings}
-            onBrowse={() =>
-              void onBrowse("settings").then(
-                (path) => path && setGameSettings(path),
-              )
-            }
-          />
-        </div>
-      </section>
+      {isLmu && (
+        <section className="settings-card">
+          <SettingsHeading
+            icon={<FileJson />}
+            eyebrow="Files"
+            title="LMU paths"
+          >
+            Choose the live binding and game-settings files LMUKit should
+            manage.
+          </SettingsHeading>
+          <div className="path-fields">
+            <PathField
+              label="direct input.json"
+              value={bindings}
+              onChange={setBindings}
+              onBrowse={() =>
+                void onBrowse("bindings").then(
+                  (path) => path && setBindings(path),
+                )
+              }
+            />
+            <PathField
+              label="Settings.JSON"
+              value={gameSettings}
+              onChange={setGameSettings}
+              onBrowse={() =>
+                void onBrowse("settings").then(
+                  (path) => path && setGameSettings(path),
+                )
+              }
+            />
+          </div>
+        </section>
+      )}
 
       <section className="settings-card">
         <SettingsHeading
@@ -429,142 +444,147 @@ export function SettingsPage(props: Props) {
         </div>
       </section>
 
-      <section className="settings-card">
-        <SettingsHeading eyebrow="Launch setup" title="LMU and companion apps">
-          Generate one Steam launch option for LMUKit, your launch mode, and
-          selected helpers.
-        </SettingsHeading>
-        <div className="launch-mode">
-          <button
-            className={mode === "desktop" ? "active" : ""}
-            onClick={() => setMode("desktop")}
+      {isLmu && (
+        <section className="settings-card">
+          <SettingsHeading
+            eyebrow="Launch setup"
+            title="LMU and companion apps"
           >
-            Desktop
-          </button>
-          <button
-            className={mode === "vr" ? "active" : ""}
-            onClick={() => setMode("vr")}
-          >
-            VR (OpenXR)
-          </button>
-        </div>
-        <div className="companion-list">
-          {apps.map((app, index) => {
-            const errors = launchIssues[index] ?? [];
-            return (
-              <div className="companion-entry" key={index}>
-                <div
-                  className={`companion-row ${errors.length ? "invalid" : ""}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={app.enabled}
-                    onChange={(event) =>
-                      updateApp(index, { enabled: event.target.checked })
-                    }
-                    aria-label={`Enable ${app.name}`}
-                  />
-                  <input
-                    value={app.name}
-                    aria-label="Companion app name"
-                    aria-invalid={errors.length > 0}
-                    onChange={(event) =>
-                      updateApp(index, { name: event.target.value })
-                    }
-                  />
-                  <input
-                    value={app.path}
-                    placeholder="Executable path"
-                    aria-label={`${app.name || "Companion app"} executable path`}
-                    aria-invalid={errors.length > 0}
-                    onChange={(event) =>
-                      updateApp(index, { path: event.target.value })
-                    }
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void onBrowse("executable").then(
-                        (path) =>
-                          path && updateApp(index, { path, enabled: true }),
-                      )
-                    }
-                  >
-                    Browse
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-button"
-                    aria-label={`Remove ${app.name}`}
-                    onClick={() => {
-                      setApps((current) =>
-                        current.filter((_, i) => i !== index),
-                      );
-                      setLaunchIssues({});
-                      setLaunchCopyState("idle");
-                    }}
-                  >
-                    <Trash2 />
-                  </button>
-                </div>
-                {errors.length > 0 && (
-                  <div className="companion-errors" role="alert">
-                    <AlertCircle />
-                    <span>{errors.join(" ")}</span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <div className="settings-actions split-actions">
-          <button
-            type="button"
-            className="secondary"
-            onClick={() =>
-              setApps((current) => [
-                ...current,
-                { name: "Companion app", path: "", enabled: true },
-              ])
-            }
-          >
-            <PlusCircle /> Add app
-          </button>
-          <div>
-            <span className={`autosave-state ${saveState}`}>
-              {saveState === "saved" && <Check />}
-              {(saveState === "pending" || saveState === "saving") && (
-                <LoaderCircle className="spin" />
-              )}
-              {saveState === "error" && <AlertCircle />}
-              {saveState === "saved"
-                ? "Saved automatically"
-                : saveState === "pending"
-                  ? "Waiting to save…"
-                  : saveState === "saving"
-                    ? "Saving…"
-                    : "Could not save"}
-            </span>
+            Generate one Steam launch option for LMUKit, your launch mode, and
+            selected helpers.
+          </SettingsHeading>
+          <div className="launch-mode">
             <button
-              type="button"
-              className="primary"
-              disabled={busy || launchCopyState === "copying"}
-              onClick={() => void copyLaunchOption()}
+              className={mode === "desktop" ? "active" : ""}
+              onClick={() => setMode("desktop")}
             >
-              {launchCopyState === "copied" ? <Check /> : <Copy />}
-              {launchCopyState === "copying"
-                ? "Checking setup…"
-                : launchCopyState === "copied"
-                  ? "Copied to clipboard"
-                  : launchCopyState === "error"
-                    ? Object.keys(launchIssues).length
-                      ? "Fix highlighted apps"
-                      : "Try copying again"
-                    : "Copy Steam launch option"}
+              Desktop
+            </button>
+            <button
+              className={mode === "vr" ? "active" : ""}
+              onClick={() => setMode("vr")}
+            >
+              VR (OpenXR)
             </button>
           </div>
-        </div>
-      </section>
+          <div className="companion-list">
+            {apps.map((app, index) => {
+              const errors = launchIssues[index] ?? [];
+              return (
+                <div className="companion-entry" key={index}>
+                  <div
+                    className={`companion-row ${errors.length ? "invalid" : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={app.enabled}
+                      onChange={(event) =>
+                        updateApp(index, { enabled: event.target.checked })
+                      }
+                      aria-label={`Enable ${app.name}`}
+                    />
+                    <input
+                      value={app.name}
+                      aria-label="Companion app name"
+                      aria-invalid={errors.length > 0}
+                      onChange={(event) =>
+                        updateApp(index, { name: event.target.value })
+                      }
+                    />
+                    <input
+                      value={app.path}
+                      placeholder="Executable path"
+                      aria-label={`${app.name || "Companion app"} executable path`}
+                      aria-invalid={errors.length > 0}
+                      onChange={(event) =>
+                        updateApp(index, { path: event.target.value })
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void onBrowse("executable").then(
+                          (path) =>
+                            path && updateApp(index, { path, enabled: true }),
+                        )
+                      }
+                    >
+                      Browse
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={`Remove ${app.name}`}
+                      onClick={() => {
+                        setApps((current) =>
+                          current.filter((_, i) => i !== index),
+                        );
+                        setLaunchIssues({});
+                        setLaunchCopyState("idle");
+                      }}
+                    >
+                      <Trash2 />
+                    </button>
+                  </div>
+                  {errors.length > 0 && (
+                    <div className="companion-errors" role="alert">
+                      <AlertCircle />
+                      <span>{errors.join(" ")}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="settings-actions split-actions">
+            <button
+              type="button"
+              className="secondary"
+              onClick={() =>
+                setApps((current) => [
+                  ...current,
+                  { name: "Companion app", path: "", enabled: true },
+                ])
+              }
+            >
+              <PlusCircle /> Add app
+            </button>
+            <div>
+              <span className={`autosave-state ${saveState}`}>
+                {saveState === "saved" && <Check />}
+                {(saveState === "pending" || saveState === "saving") && (
+                  <LoaderCircle className="spin" />
+                )}
+                {saveState === "error" && <AlertCircle />}
+                {saveState === "saved"
+                  ? "Saved automatically"
+                  : saveState === "pending"
+                    ? "Waiting to save…"
+                    : saveState === "saving"
+                      ? "Saving…"
+                      : "Could not save"}
+              </span>
+              <button
+                type="button"
+                className="primary"
+                disabled={busy || launchCopyState === "copying"}
+                onClick={() => void copyLaunchOption()}
+              >
+                {launchCopyState === "copied" ? <Check /> : <Copy />}
+                {launchCopyState === "copying"
+                  ? "Checking setup…"
+                  : launchCopyState === "copied"
+                    ? "Copied to clipboard"
+                    : launchCopyState === "error"
+                      ? Object.keys(launchIssues).length
+                        ? "Fix highlighted apps"
+                        : "Try copying again"
+                      : "Copy Steam launch option"}
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="settings-card diagnostics-card">
         <SettingsHeading

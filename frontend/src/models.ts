@@ -24,6 +24,12 @@ export type Wheel = {
   profileCount: number;
 };
 
+export type Workspace = {
+  id: string;
+  name: string;
+  kind: "le_mans_ultimate" | "assetto_corsa" | "generic";
+};
+
 export type Binding = {
   action: string;
   deviceKey: string;
@@ -49,6 +55,9 @@ export type BindingAssignmentCandidate = {
 export type Snapshot = {
   profiles: Profile[];
   wheels: Wheel[];
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
+  activeWorkspaceKind: Workspace["kind"];
   activeProfile: string | null;
   lmuConfigPath: string;
   lmuSettingsPath: string;
@@ -212,6 +221,20 @@ export type Page =
 export const emptySnapshot: Snapshot = {
   profiles: [],
   wheels: [],
+  workspaces: [
+    {
+      id: "le-mans-ultimate",
+      name: "Le Mans Ultimate",
+      kind: "le_mans_ultimate",
+    },
+    {
+      id: "assetto-corsa",
+      name: "Assetto Corsa",
+      kind: "assetto_corsa",
+    },
+  ],
+  activeWorkspaceId: "le-mans-ultimate",
+  activeWorkspaceKind: "le_mans_ultimate",
   activeProfile: null,
   lmuConfigPath: "",
   lmuSettingsPath: "",

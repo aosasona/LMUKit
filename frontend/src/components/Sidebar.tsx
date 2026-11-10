@@ -10,6 +10,8 @@ import {
   Wrench,
 } from "lucide-react";
 import type { Page } from "../models";
+import type { Workspace } from "../models";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 const items = [
   ["home", "Overview", LayoutDashboard],
@@ -24,11 +26,21 @@ const items = [
 export function Sidebar({
   page,
   profileCount,
+  workspaces,
+  activeWorkspaceId,
+  activeWorkspaceKind,
+  busy,
+  onWorkspaceChange,
   onNavigate,
   onExit,
 }: {
   page: Page;
   profileCount: number;
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
+  activeWorkspaceKind: Workspace["kind"];
+  busy: boolean;
+  onWorkspaceChange: (workspaceId: string) => void;
   onNavigate: (page: Page) => void;
   onExit: () => void;
 }) {
@@ -43,19 +55,30 @@ export function Sidebar({
           <small>Race setup, simplified</small>
         </div>
       </div>
+      <WorkspaceSwitcher
+        workspaces={workspaces}
+        activeId={activeWorkspaceId}
+        busy={busy}
+        onChange={onWorkspaceChange}
+      />
       <nav>
         <span className="nav-label">Workspace</span>
-        {items.map(([id, label, Icon]) => (
-          <button
-            className={page === id ? "nav-item active" : "nav-item"}
-            onClick={() => onNavigate(id)}
-            key={id}
-          >
-            <Icon size={18} strokeWidth={1.8} />
-            <span>{label}</span>
-            {id === "profiles" && <em>{profileCount}</em>}
-          </button>
-        ))}
+        {items
+          .filter(
+            ([id]) =>
+              id !== "game" || activeWorkspaceKind === "le_mans_ultimate",
+          )
+          .map(([id, label, Icon]) => (
+            <button
+              className={page === id ? "nav-item active" : "nav-item"}
+              onClick={() => onNavigate(id)}
+              key={id}
+            >
+              <Icon size={18} strokeWidth={1.8} />
+              <span>{label}</span>
+              {id === "profiles" && <em>{profileCount}</em>}
+            </button>
+          ))}
       </nav>
       <div className="sidebar-foot">
         <button

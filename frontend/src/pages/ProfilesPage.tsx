@@ -15,7 +15,13 @@ import { ProfileVirtualMappings } from "../components/ProfileVirtualMappings";
 import { WheelImage } from "../components/WheelImage";
 import { SearchSelect } from "../components/SearchSelect";
 import { displayClassTag } from "../lib/classTags";
-import type { Device, Profile, VirtualRoutingStatus, Wheel } from "../models";
+import type {
+  Device,
+  Profile,
+  VirtualRoutingStatus,
+  Wheel,
+  Workspace,
+} from "../models";
 
 const DEFAULT_CLASSES = ["GT3", "GTE", "LMP3", "LMP2", "HY"] as const;
 
@@ -48,6 +54,7 @@ type Props = {
   onEdit: (profile: Profile) => void;
   onImport: (file: File) => void;
   onCapture: (name: string) => void;
+  onCreateVirtual: (name: string) => void;
   onUpdate: (profile: Profile) => void;
   onDelete: (profile: Profile) => void;
   onReveal: () => void;
@@ -62,6 +69,7 @@ type Props = {
   onAssignWheel: (profile: Profile, wheel: Wheel | null) => void;
   onNotice: (message: string) => void;
   onDismissDirty: () => void;
+  workspaceKind: Workspace["kind"];
 };
 
 export function ProfilesPage(props: Props) {
@@ -84,6 +92,7 @@ export function ProfilesPage(props: Props) {
     onEdit,
     onImport,
     onCapture,
+    onCreateVirtual,
     onUpdate,
     onDelete,
     onReveal,
@@ -93,8 +102,10 @@ export function ProfilesPage(props: Props) {
     onAssignWheel,
     onNotice,
     onDismissDirty,
+    workspaceKind,
   } = props;
-  const legacyMode = inputMode === "legacy";
+  const isLmu = workspaceKind === "le_mans_ultimate";
+  const legacyMode = isLmu && inputMode === "legacy";
   const selectedIsLive =
     !legacyMode && routing.active && routing.profileId === selected?.id;
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -139,7 +150,7 @@ export function ProfilesPage(props: Props) {
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         event.preventDefault();
-        acceptFiles(event.dataTransfer.files);
+        if (isLmu) acceptFiles(event.dataTransfer.files);
       }}
     >
       <div className="profiles-toolbar">
@@ -161,28 +172,31 @@ export function ProfilesPage(props: Props) {
             <button
               disabled={busy || !captureName.trim()}
               onClick={() => {
-                onCapture(captureName);
+                if (isLmu) onCapture(captureName);
+                else onCreateVirtual(captureName);
                 setCaptureName("");
               }}
             >
-              Capture LMU
+              {isLmu ? "Capture LMU" : "Create profile"}
             </button>
           </div>
           <button className="secondary compact" onClick={onReveal}>
             <FolderOpen /> Folder
           </button>
-          <label className="primary compact image-picker">
-            <Upload /> Import
-            <input
-              type="file"
-              accept="application/json,.json"
-              disabled={busy}
-              onChange={(event) => {
-                acceptFiles(event.target.files);
-                event.target.value = "";
-              }}
-            />
-          </label>
+          {isLmu && (
+            <label className="primary compact image-picker">
+              <Upload /> Import
+              <input
+                type="file"
+                accept="application/json,.json"
+                disabled={busy}
+                onChange={(event) => {
+                  acceptFiles(event.target.files);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+          )}
         </div>
       </div>
       {(wheelOptions.length > 0 || classTags.length > 0) && (
@@ -270,7 +284,9 @@ export function ProfilesPage(props: Props) {
               <span>
                 {profiles.length
                   ? "Clear the search or adjust the filters."
-                  : "Drop a preset here, import one, or capture LMU."}
+                  : isLmu
+                    ? "Drop a preset here, import one, or capture LMU."
+                    : "Create a profile, assign a wheel, then map its physical controls."}
               </span>
             </div>
           )}
@@ -299,6 +315,7 @@ export function ProfilesPage(props: Props) {
                     },
                     {
                       label: "Edit LMU configuration",
+                      hidden: !isLmu,
                       onSelect: () => onEdit(selected),
                     },
                     {
@@ -357,9 +374,11 @@ export function ProfilesPage(props: Props) {
               </div>
             </header>
             <div className="profile-detail-metrics">
-              <span>
-                <strong>{selected.bindingCount}</strong> bindings
-              </span>
+              {isLmu && (
+                <span>
+                  <strong>{selected.bindingCount}</strong> file bindings
+                </span>
+              )}
               <span>
                 <strong>{selected.devices.length}</strong> devices
               </span>
@@ -388,6 +407,7 @@ export function ProfilesPage(props: Props) {
               onSave={onSaveCategories}
               onCreateWheel={onCreateWheel}
               onAssignWheel={onAssignWheel}
+              isLmu={isLmu}
             />
             <ProfileVirtualMappings
               key={`virtual-${selected.id}`}
@@ -400,54 +420,58 @@ export function ProfilesPage(props: Props) {
                 setMappingEditorProfileId(open ? selected.id : null)
               }
             />
-            <div className="profile-devices-head">
-              <div>
-                <span className="eyebrow">Connected hardware</span>
-                <h4>Profile devices</h4>
+            {isLmu && (
+              <div className="profile-devices-head">
+                <div>
+                  <span className="eyebrow">Connected hardware</span>
+                  <h4>Profile devices</h4>
+                </div>
+                <small>Removing a device also removes its bindings.</small>
               </div>
-              <small>Removing a device also removes its bindings.</small>
-            </div>
-            <div className="device-list">
-              {selected.devices.map((device) => (
-                <div className="device-row" key={device.key}>
-                  <span className="device-thumb">
-                    <Gamepad2 />
-                  </span>
-                  <div>
-                    <strong>{device.name}</strong>
-                    <small>
-                      {device.bindingCount} binding
-                      {device.bindingCount === 1 ? "" : "s"} · {device.key}
-                    </small>
+            )}
+            {isLmu && (
+              <div className="device-list">
+                {selected.devices.map((device) => (
+                  <div className="device-row" key={device.key}>
+                    <span className="device-thumb">
+                      <Gamepad2 />
+                    </span>
+                    <div>
+                      <strong>{device.name}</strong>
+                      <small>
+                        {device.bindingCount} binding
+                        {device.bindingCount === 1 ? "" : "s"} · {device.key}
+                      </small>
+                    </div>
+                    <ActionMenu
+                      label={`Actions for ${device.name}`}
+                      items={[
+                        {
+                          label: "Delete device",
+                          danger: true,
+                          onSelect: () =>
+                            setConfirmation({
+                              title: `Delete ${device.name}?`,
+                              description: `This removes the device and its ${device.bindingCount} binding${device.bindingCount === 1 ? "" : "s"} from ${selected.name}. A recovery backup will be created.`,
+                              confirmLabel: "Delete device",
+                              danger: true,
+                              onConfirm: () => {
+                                onRemoveDevice(selected, device);
+                                setConfirmation(null);
+                              },
+                            }),
+                        },
+                      ]}
+                    />
                   </div>
-                  <ActionMenu
-                    label={`Actions for ${device.name}`}
-                    items={[
-                      {
-                        label: "Delete device",
-                        danger: true,
-                        onSelect: () =>
-                          setConfirmation({
-                            title: `Delete ${device.name}?`,
-                            description: `This removes the device and its ${device.bindingCount} binding${device.bindingCount === 1 ? "" : "s"} from ${selected.name}. A recovery backup will be created.`,
-                            confirmLabel: "Delete device",
-                            danger: true,
-                            onConfirm: () => {
-                              onRemoveDevice(selected, device);
-                              setConfirmation(null);
-                            },
-                          }),
-                      },
-                    ]}
-                  />
-                </div>
-              ))}
-              {!selected.devices.length && (
-                <div className="empty">
-                  This profile has no registered devices.
-                </div>
-              )}
-            </div>
+                ))}
+                {!selected.devices.length && (
+                  <div className="empty">
+                    This profile has no registered devices.
+                  </div>
+                )}
+              </div>
+            )}
             <div className="profile-activation-bar">
               <div>
                 {(legacyMode && selected.id === activeId && !activeDirty) ||
@@ -519,6 +543,7 @@ function CategoryEditor({
   onSave,
   onCreateWheel,
   onAssignWheel,
+  isLmu,
 }: {
   profile: Profile;
   wheels: Wheel[];
@@ -526,6 +551,7 @@ function CategoryEditor({
   onSave: Props["onSaveCategories"];
   onCreateWheel: Props["onCreateWheel"];
   onAssignWheel: Props["onAssignWheel"];
+  isLmu: boolean;
 }) {
   const [creatingWheel, setCreatingWheel] = useState(false);
   const [profileName, setProfileName] = useState(profile.name);
@@ -541,7 +567,9 @@ function CategoryEditor({
     <section className="category-editor">
       <div>
         <span className="eyebrow">Profile identity</span>
-        <h4>Wheel and intended car classes</h4>
+        <h4>
+          {isLmu ? "Wheel and intended car classes" : "Wheel and profile tags"}
+        </h4>
       </div>
       <div className="category-fields">
         <label className="identity-field wheel-library-field">
@@ -612,7 +640,7 @@ function CategoryEditor({
           </div>
         )}
         <ProfileTagPicker
-          classOptions={DEFAULT_CLASSES}
+          classOptions={isLmu ? DEFAULT_CLASSES : []}
           classTags={classes}
           customTags={customTags}
           onChange={(tags) => {

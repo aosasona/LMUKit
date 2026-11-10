@@ -3,7 +3,7 @@
 
 # LMUKit
 
-LMUKit is a modern Windows toolkit for Le Mans Ultimate. It brings binding profiles, reusable wheel metadata, control inspection, game settings, and companion-app launching into one focused race workspace.
+LMUKit is a modern Windows toolkit for Le Mans Ultimate and button-only virtual remapping in Assetto Corsa. It brings isolated sim workspaces, binding profiles, reusable wheel metadata, control inspection, LMU game settings, and companion-app launching into one focused application.
 
 Closing the main window hides LMUKit in the Windows notification area so live remapping can continue without a taskbar button. Right-click the tray icon for **Show LMUKit** or **Exit LMUKit**. Exit always requires confirmation, stops routing, and releases virtual buttons before shutdown.
 
@@ -28,6 +28,7 @@ _The screenshot uses isolated synthetic profile data; no personal LMU files are 
 
 ## Current features
 
+- Switch between isolated Le Mans Ultimate and Assetto Corsa workspaces. Existing profiles migrate to LMU automatically, while wheels and managed images remain shared.
 - Capture LMU's live `direct input.json` as a named profile.
 - Import validated preset JSON files by file picker or drag and drop.
 - Activate a saved profile for LMU's next launch, always backing up the live file first.
@@ -55,6 +56,20 @@ LMUKit stores profiles, managed wheel images, settings, and timestamped recovery
 Virtual Input Mode is optional and requires the user to install and configure [vJoy](https://github.com/BrunnerInnovation/vJoy) separately. LMUKit does not bundle, install, update, or silently reconfigure vJoy. Legacy JSON profile switching and the rest of LMUKit remain usable without it.
 
 ## Using LMUKit
+
+### Workspaces and Assetto Corsa
+
+Use the workspace selector below the LMUKit logo to switch sims. Switching always stops live routing and releases every vJoy output first. Profiles, mappings, keyboard shortcuts, and the selected profile are shown for the active workspace; the wheel library remains shared.
+
+Initial Assetto Corsa support uses the existing button-only Virtual Input engine and a manual one-time binding flow:
+
+1. Select **Assetto Corsa** and create a profile under **Profiles**.
+2. Assign a shared wheel, then open **Virtual input**.
+3. Under **External app actions**, name the AC action, choose **Send now** or **In 5s**, and make Assetto Corsa listen for that vJoy button.
+4. Open **Profile editor** and bind the physical wheel control to the named action.
+5. Start that profile's live remapping from Profiles.
+
+LMUKit does not edit Assetto Corsa configuration files or route axes and FFB. Steering, pedals and force feedback stay directly connected to the game. Automatic AC process detection and a workspace-local virtual action layout are follow-up work; this first phase uses manual workspace selection and the current shared vJoy action catalogue.
 
 ### Profiles
 

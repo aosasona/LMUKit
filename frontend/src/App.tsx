@@ -36,6 +36,7 @@ import { ProfileEditorPage } from "./pages/ProfileEditorPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { VirtualInputPage } from "./pages/VirtualInputPage";
 import { WheelsPage } from "./pages/WheelsPage";
+import { WorkspaceOverviewPage } from "./pages/WorkspaceOverviewPage";
 
 export default function App() {
   const [page, setPage] = useState<Page>("home");
@@ -95,6 +96,10 @@ export default function App() {
     snapshot.inputMode === "legacy" &&
     snapshot.activeProfileDirty === true &&
     active?.id !== dismissedDirtyProfileId;
+  const activeWorkspace =
+    snapshot.workspaces.find(
+      (workspace) => workspace.id === snapshot.activeWorkspaceId,
+    ) ?? snapshot.workspaces[0];
   const gameSettingsDirty = Boolean(
     gameSettings &&
       gameSettingsBaseline &&
@@ -339,11 +344,18 @@ export default function App() {
     }
   }
   useEffect(() => {
-    if (page === "bindings") {
+    if (
+      page === "bindings" &&
+      snapshot.activeWorkspaceKind === "le_mans_ultimate"
+    ) {
       void loadBindings();
       void loadProfileDocument();
+    } else if (page === "bindings") {
+      setBindings([]);
+      setProfileDocument(null);
+      setProfileDocumentBaseline(null);
     }
-  }, [page, selected?.id]);
+  }, [page, selected?.id, snapshot.activeWorkspaceKind]);
   async function loadGameSettings() {
     setGameSettingsLoading(true);
     try {
@@ -426,6 +438,32 @@ export default function App() {
         inputMode === "virtual"
           ? "Virtual Input selected. Choose a mapped profile to start live remapping."
           : "Legacy JSON selected. Live remapping stopped and all virtual buttons were released.",
+      );
+    });
+  };
+  const changeWorkspace = (workspaceId: string) => {
+    if (workspaceId === snapshot.activeWorkspaceId) return;
+    if (
+      (gameSettingsDirty || profileDocumentDirty) &&
+      !window.confirm(
+        "Switch workspaces and discard the unsaved LMU file changes?",
+      )
+    )
+      return;
+    void withBusy(async () => {
+      await invoke("set_active_workspace", { workspaceId });
+      setSelectedId(null);
+      setProfileDocument(null);
+      setProfileDocumentBaseline(null);
+      setGameSettings(null);
+      setGameSettingsBaseline(null);
+      if (page === "game") setPage("home");
+      await refresh();
+      const workspace = snapshot.workspaces.find(
+        (candidate) => candidate.id === workspaceId,
+      );
+      setNotice(
+        `${workspace?.name ?? "Workspace"} selected. Live remapping was stopped safely.`,
       );
     });
   };
@@ -574,6 +612,12 @@ export default function App() {
       await invoke("capture_profile", { name });
       await refresh();
       setNotice(`${name.trim()} captured from LMU.`);
+    });
+  const createVirtualProfile = (name: string) =>
+    withBusy(async () => {
+      await invoke("create_virtual_profile", { name });
+      await refresh();
+      setNotice(`${name.trim()} created in this workspace.`);
     });
   const updateProfile = (profile: Profile) =>
     withBusy(async () => {
@@ -798,6 +842,11 @@ export default function App() {
         <Sidebar
           page={page}
           profileCount={snapshot.profiles.length}
+          workspaces={snapshot.workspaces}
+          activeWorkspaceId={snapshot.activeWorkspaceId}
+          activeWorkspaceKind={snapshot.activeWorkspaceKind}
+          busy={busy}
+          onWorkspaceChange={changeWorkspace}
           onNavigate={navigate}
           onExit={() => setExitRequested(true)}
         />
@@ -810,11 +859,15 @@ export default function App() {
               <h1>{pageTitle(page)}</h1>
             </div>
             <div className="top-actions">
-              <InputModeSwitch
-                mode={snapshot.inputMode}
-                busy={busy}
-                onChange={changeInputMode}
-              />
+              {snapshot.activeWorkspaceKind === "le_mans_ultimate" ? (
+                <InputModeSwitch
+                  mode={snapshot.inputMode}
+                  busy={busy}
+                  onChange={changeInputMode}
+                />
+              ) : (
+                <span className="workspace-mode-chip">Virtual Input</span>
+              )}
               {snapshot.inputMode === "virtual" && routing.active && (
                 <button
                   type="button"
@@ -836,29 +889,40 @@ export default function App() {
             </div>
           </header>
           <div className="content">
-            {page === "home" && (
-              <OverviewPage
-                active={active}
-                activeDirty={visibleActiveDirty}
-                selected={selected}
-                wheelImageUrl={wheelImageUrl}
-                wheelImageRevision={wheelImageRevision}
-                profiles={snapshot.profiles}
-                busy={busy}
-                inputMode={snapshot.inputMode}
-                routing={routing}
-                carContext={carContext}
-                autoProfileSelection={autoProfileSelection}
-                onSetAutoProfileSelection={changeAutoProfileSelection}
-                onResumeAutoProfileSelection={resumeAutoProfileSelection}
-                onDismissDirty={() =>
-                  setDismissedDirtyProfileId(active?.id ?? null)
-                }
-                onNavigate={navigate}
-                onActivate={activate}
-                onUpdate={updateProfile}
-              />
-            )}
+            {page === "home" &&
+              snapshot.activeWorkspaceKind === "le_mans_ultimate" && (
+                <OverviewPage
+                  active={active}
+                  activeDirty={visibleActiveDirty}
+                  selected={selected}
+                  wheelImageUrl={wheelImageUrl}
+                  wheelImageRevision={wheelImageRevision}
+                  profiles={snapshot.profiles}
+                  busy={busy}
+                  inputMode={snapshot.inputMode}
+                  routing={routing}
+                  carContext={carContext}
+                  autoProfileSelection={autoProfileSelection}
+                  onSetAutoProfileSelection={changeAutoProfileSelection}
+                  onResumeAutoProfileSelection={resumeAutoProfileSelection}
+                  onDismissDirty={() =>
+                    setDismissedDirtyProfileId(active?.id ?? null)
+                  }
+                  onNavigate={navigate}
+                  onActivate={activate}
+                  onUpdate={updateProfile}
+                />
+              )}
+            {page === "home" &&
+              snapshot.activeWorkspaceKind !== "le_mans_ultimate" &&
+              activeWorkspace && (
+                <WorkspaceOverviewPage
+                  workspace={activeWorkspace}
+                  profiles={snapshot.profiles}
+                  routing={routing}
+                  onNavigate={navigate}
+                />
+              )}
             {page === "profiles" && (
               <ProfilesPage
                 profiles={snapshot.profiles}
@@ -885,6 +949,7 @@ export default function App() {
                 }}
                 onImport={importPreset}
                 onCapture={captureProfile}
+                onCreateVirtual={createVirtualProfile}
                 onUpdate={updateProfile}
                 onDelete={deleteProfile}
                 onReveal={revealProfiles}
@@ -893,6 +958,7 @@ export default function App() {
                 onCreateWheel={createWheel}
                 onAssignWheel={assignWheel}
                 onNotice={setNotice}
+                workspaceKind={snapshot.activeWorkspaceKind}
               />
             )}
             {page === "bindings" && (
@@ -910,6 +976,7 @@ export default function App() {
                 onChange={setProfileDocument}
                 onSave={saveProfileDocument}
                 onNotice={setNotice}
+                workspaceKind={snapshot.activeWorkspaceKind}
               />
             )}
             {page === "wheels" && (
@@ -932,6 +999,7 @@ export default function App() {
                 profiles={snapshot.profiles}
                 onNotice={setNotice}
                 onOpenProfiles={() => navigate("profiles")}
+                workspaceKind={snapshot.activeWorkspaceKind}
               />
             )}
             {page === "game" && (
@@ -955,6 +1023,7 @@ export default function App() {
                 companionApps={snapshot.companionApps}
                 launchMode={snapshot.lmuLaunchMode}
                 autoStartVirtualProfile={snapshot.autoStartVirtualProfile}
+                workspaceKind={snapshot.activeWorkspaceKind}
                 onSaveFontScale={saveFontScale}
                 onSetVirtualAutoStart={setVirtualAutoStart}
                 onSaveSettings={saveAppSettings}

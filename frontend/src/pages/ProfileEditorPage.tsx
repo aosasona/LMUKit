@@ -17,6 +17,7 @@ import type {
   BindingAssignmentCandidate,
   JsonObject,
   Profile,
+  Workspace,
 } from "../models";
 import { BindingEditorPage } from "./BindingEditorPage";
 
@@ -37,6 +38,7 @@ export function ProfileEditorPage({
   onChange,
   onSave,
   onNotice,
+  workspaceKind,
 }: {
   profile?: Profile;
   bindings: Binding[];
@@ -56,6 +58,7 @@ export function ProfileEditorPage({
   onChange: (document: JsonObject) => void;
   onSave: (activate: boolean) => void;
   onNotice: (message: string) => void;
+  workspaceKind: Workspace["kind"];
 }) {
   const [section, setSection] = useState<EditorSection>("virtual");
   const [legacySection, setLegacySection] = useState<LegacySection>("bindings");
@@ -112,12 +115,14 @@ export function ProfileEditorPage({
         >
           <Workflow /> Virtual mappings
         </button>
-        <button
-          className={section === "legacy" ? "active legacy" : "legacy"}
-          onClick={() => setSection("legacy")}
-        >
-          <FileJson /> LMU file tools
-        </button>
+        {workspaceKind === "le_mans_ultimate" && (
+          <button
+            className={section === "legacy" ? "active legacy" : "legacy"}
+            onClick={() => setSection("legacy")}
+          >
+            <FileJson /> LMU file tools
+          </button>
+        )}
         {section === "legacy" && dirty && (
           <div className="profile-editor-save">
             <span>Unsaved profile changes</span>

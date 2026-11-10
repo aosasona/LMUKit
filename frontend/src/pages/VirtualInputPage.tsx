@@ -21,6 +21,7 @@ import type {
   VirtualRoutingStatus,
   VirtualSetupEvent,
   VirtualSetupStatus,
+  Workspace,
 } from "../models";
 import type { InputMode } from "../components/InputModeSwitch";
 
@@ -33,13 +34,16 @@ export function VirtualInputPage({
   profiles,
   onNotice,
   onOpenProfiles,
+  workspaceKind,
 }: {
   busy: boolean;
   inputMode: InputMode;
   profiles: Profile[];
   onNotice: (message: string) => void;
   onOpenProfiles: () => void;
+  workspaceKind: Workspace["kind"];
 }) {
+  const isLmu = workspaceKind === "le_mans_ultimate";
   const [devices, setDevices] = useState<VirtualBindingDevice[]>([]);
   const [selectedKey, setSelectedKey] = useState("");
   const [actions, setActions] = useState<VirtualAction[]>([]);
@@ -207,8 +211,9 @@ export function VirtualInputPage({
   );
 
   useEffect(() => {
-    void scan(false);
-  }, [scan]);
+    if (isLmu) void scan(false);
+    else setLoading(false);
+  }, [scan, isLmu]);
 
   useEffect(() => {
     void invoke<VirtualAction[]>("manual_virtual_actions")
@@ -450,7 +455,11 @@ export function VirtualInputPage({
         <Gamepad2 />
         <div>
           <span className="eyebrow">Experimental · button-only</span>
-          <strong>Route wheel buttons to LMU and companion apps</strong>
+          <strong>
+            {isLmu
+              ? "Route wheel buttons to LMU and companion apps"
+              : "Route wheel buttons to Assetto Corsa and other apps"}
+          </strong>
           <p>
             Name virtual actions once, assign buttons from each profile, then
             enable live remapping while LMUKit is open.
@@ -471,150 +480,156 @@ export function VirtualInputPage({
         </div>
       </div>
 
-      <details className="virtual-setup-details panel">
-        <summary>
-          <span>
-            <strong>One-time LMU button setup</strong>
-            <small>Configure or change the vJoy buttons LMU receives</small>
-          </span>
-          <span>Open setup</span>
-        </summary>
-        <section className="virtual-wizard">
-          <header className="virtual-wizard-header">
-            <div>
-              <span className="eyebrow">One-time setup</span>
-              <h2>Teach LMU the virtual buttons</h2>
-              <p>LMUKit advances through unused buttons and never edits LMU.</p>
-            </div>
-            <span className={setup ? "active" : ""}>
-              <i /> {setup ? "Setup active" : "Setup stopped"}
+      {isLmu && (
+        <details className="virtual-setup-details panel">
+          <summary>
+            <span>
+              <strong>One-time LMU button setup</strong>
+              <small>Configure or change the vJoy buttons LMU receives</small>
             </span>
-          </header>
+            <span>Open setup</span>
+          </summary>
+          <section className="virtual-wizard">
+            <header className="virtual-wizard-header">
+              <div>
+                <span className="eyebrow">One-time setup</span>
+                <h2>Teach LMU the virtual buttons</h2>
+                <p>
+                  LMUKit advances through unused buttons and never edits LMU.
+                </p>
+              </div>
+              <span className={setup ? "active" : ""}>
+                <i /> {setup ? "Setup active" : "Setup stopped"}
+              </span>
+            </header>
 
-          <div className="virtual-wizard-steps">
-            <div>
-              <b>1</b>
-              <span>
-                <strong>Listen in LMU</strong>
-                <small>Choose the action you want to bind.</small>
-              </span>
+            <div className="virtual-wizard-steps">
+              <div>
+                <b>1</b>
+                <span>
+                  <strong>Listen in LMU</strong>
+                  <small>Choose the action you want to bind.</small>
+                </span>
+              </div>
+              <div>
+                <b>2</b>
+                <span>
+                  <strong>Send the next button</strong>
+                  <small>
+                    Press <kbd>Ctrl Alt V</kbd> or use Send below.
+                  </small>
+                </span>
+              </div>
+              <div>
+                <b>3</b>
+                <span>
+                  <strong>Save and rescan</strong>
+                  <small>LMUKit names only bindings LMU actually saved.</small>
+                </span>
+              </div>
             </div>
-            <div>
-              <b>2</b>
-              <span>
-                <strong>Send the next button</strong>
-                <small>
-                  Press <kbd>Ctrl Alt V</kbd> or use Send below.
-                </small>
-              </span>
-            </div>
-            <div>
-              <b>3</b>
-              <span>
-                <strong>Save and rescan</strong>
-                <small>LMUKit names only bindings LMU actually saved.</small>
-              </span>
-            </div>
-          </div>
 
-          <div className="virtual-wizard-console">
-            {setupError && <div className="virtual-error">{setupError}</div>}
-            {setup ? (
-              <>
-                {setup.buttonCount < RECOMMENDED_VJOY_BUTTON_COUNT && (
-                  <div className="virtual-capacity-warning">
-                    <AlertTriangle />
+            <div className="virtual-wizard-console">
+              {setupError && <div className="virtual-error">{setupError}</div>}
+              {setup ? (
+                <>
+                  {setup.buttonCount < RECOMMENDED_VJOY_BUTTON_COUNT && (
+                    <div className="virtual-capacity-warning">
+                      <AlertTriangle />
+                      <span>
+                        <strong>
+                          Device 1 has only {setup.buttonCount} virtual buttons
+                        </strong>
+                        <small>
+                          Close LMU and LMUKit, open Configure vJoy, set Buttons
+                          to
+                          {` ${RECOMMENDED_VJOY_BUTTON_COUNT}`}, apply the
+                          change, then reopen both apps. Windows may
+                          re-enumerate the controller after its capacity
+                          changes, so existing LMU vJoy assignments may need to
+                          be registered again once.
+                        </small>
+                      </span>
+                    </div>
+                  )}
+                  <div className="virtual-wizard-status">
+                    <Radio />
                     <span>
-                      <strong>
-                        Device 1 has only {setup.buttonCount} virtual buttons
-                      </strong>
+                      <strong>{setup.identity}</strong>
                       <small>
-                        Close LMU and LMUKit, open Configure vJoy, set Buttons
-                        to
-                        {` ${RECOMMENDED_VJOY_BUTTON_COUNT}`}, apply the change,
-                        then reopen both apps. Windows may re-enumerate the
-                        controller after its capacity changes, so existing LMU
-                        vJoy assignments may need to be registered again once.
+                        {setup.usedButtonCount} of {setup.buttonCount} buttons
+                        reserved or already bound
                       </small>
                     </span>
                   </div>
-                )}
-                <div className="virtual-wizard-status">
-                  <Radio />
-                  <span>
-                    <strong>{setup.identity}</strong>
-                    <small>
-                      {setup.usedButtonCount} of {setup.buttonCount} buttons
-                      reserved or already bound
-                    </small>
-                  </span>
-                </div>
-                <div className="virtual-next-button">
-                  <span>Next output</span>
-                  <strong>
-                    {setup.nextVirtualButton
-                      ? `B${setup.nextVirtualButton}`
-                      : "None available"}
-                  </strong>
-                  {lastPulse && (
-                    <small>Last sent: B{lastPulse.virtualButton}</small>
-                  )}
-                </div>
-                <div className="virtual-wizard-actions">
+                  <div className="virtual-next-button">
+                    <span>Next output</span>
+                    <strong>
+                      {setup.nextVirtualButton
+                        ? `B${setup.nextVirtualButton}`
+                        : "None available"}
+                    </strong>
+                    {lastPulse && (
+                      <small>Last sent: B{lastPulse.virtualButton}</small>
+                    )}
+                  </div>
+                  <div className="virtual-wizard-actions">
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={
+                        busy || setupBusy || setup.nextVirtualButton === null
+                      }
+                      onClick={() => void sendNextButton()}
+                    >
+                      {setupBusy ? <LoaderCircle className="spin" /> : <Send />}
+                      Send next button
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy || setupBusy}
+                      onClick={() => void stopSetup(true)}
+                    >
+                      <Check /> Finish &amp; rescan
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={busy || setupBusy}
+                      onClick={() => void stopSetup(false)}
+                    >
+                      <Square /> Stop
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="virtual-wizard-status idle">
+                    <Gamepad2 />
+                    <span>
+                      <strong>Ready to check vJoy device 1</strong>
+                      <small>
+                        The global shortcut is enabled only while setup is
+                        active.
+                      </small>
+                    </span>
+                  </div>
                   <button
                     type="button"
-                    className="primary"
-                    disabled={
-                      busy || setupBusy || setup.nextVirtualButton === null
-                    }
-                    onClick={() => void sendNextButton()}
+                    className="primary virtual-start-button"
+                    disabled={busy || setupBusy || routing.active}
+                    onClick={() => void startSetup()}
                   >
-                    {setupBusy ? <LoaderCircle className="spin" /> : <Send />}
-                    Send next button
+                    {setupBusy && <LoaderCircle className="spin" />}
+                    Start binding setup
                   </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={busy || setupBusy}
-                    onClick={() => void stopSetup(true)}
-                  >
-                    <Check /> Finish &amp; rescan
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost"
-                    disabled={busy || setupBusy}
-                    onClick={() => void stopSetup(false)}
-                  >
-                    <Square /> Stop
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="virtual-wizard-status idle">
-                  <Gamepad2 />
-                  <span>
-                    <strong>Ready to check vJoy device 1</strong>
-                    <small>
-                      The global shortcut is enabled only while setup is active.
-                    </small>
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="primary virtual-start-button"
-                  disabled={busy || setupBusy || routing.active}
-                  onClick={() => void startSetup()}
-                >
-                  {setupBusy && <LoaderCircle className="spin" />}
-                  Start binding setup
-                </button>
-              </>
-            )}
-          </div>
-        </section>
-      </details>
+                </>
+              )}
+            </div>
+          </section>
+        </details>
+      )}
 
       <section className="virtual-router panel">
         {error && (
@@ -665,40 +680,44 @@ export function VirtualInputPage({
             <Gamepad2 /> Open profiles
           </button>
         )}
-        <div className="virtual-default-switcher">
-          <span>
-            <strong>Switch by car class</strong>
-            <small>Uses the single class default configured on Profiles.</small>
-          </span>
-          <label>
-            <span>Class</span>
-            <select
-              value={selectedClass}
-              onChange={(event) => setSelectedClass(event.target.value)}
+        {isLmu && (
+          <div className="virtual-default-switcher">
+            <span>
+              <strong>Switch by car class</strong>
+              <small>
+                Uses the single class default configured on Profiles.
+              </small>
+            </span>
+            <label>
+              <span>Class</span>
+              <select
+                value={selectedClass}
+                onChange={(event) => setSelectedClass(event.target.value)}
+              >
+                {availableClasses.map((classTag) => (
+                  <option value={classTag} key={classTag}>
+                    {displayClassTag(classTag)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="primary"
+              disabled={
+                busy ||
+                routingBusy ||
+                setup !== null ||
+                !selectedClass ||
+                inputMode !== "virtual"
+              }
+              onClick={() => void startDefaultRouting()}
             >
-              {availableClasses.map((classTag) => (
-                <option value={classTag} key={classTag}>
-                  {displayClassTag(classTag)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            className="primary"
-            disabled={
-              busy ||
-              routingBusy ||
-              setup !== null ||
-              !selectedClass ||
-              inputMode !== "virtual"
-            }
-            onClick={() => void startDefaultRouting()}
-          >
-            {routingBusy ? <LoaderCircle className="spin" /> : <RefreshCw />}
-            {routing.active ? "Switch profile" : "Use class default"}
-          </button>
-        </div>
+              {routingBusy ? <LoaderCircle className="spin" /> : <RefreshCw />}
+              {routing.active ? "Switch profile" : "Use class default"}
+            </button>
+          </div>
+        )}
       </section>
 
       <section className="virtual-manual-actions panel">
@@ -707,8 +726,9 @@ export function VirtualInputPage({
             <span className="eyebrow">External app actions</span>
             <h2>Name and send a virtual button</h2>
             <p>
-              Use the same profile mappings and modifiers for RaceLab, overlay
-              tools, or any application that accepts vJoy buttons.
+              {isLmu
+                ? "Use the same profile mappings and modifiers for RaceLab, overlay tools, or any application that accepts vJoy buttons."
+                : "Create an action for Assetto Corsa or another app, then send its vJoy button while that app is listening."}
             </p>
           </div>
           <strong>{manualActions.length}</strong>
@@ -848,118 +868,120 @@ export function VirtualInputPage({
         </div>
       </section>
 
-      <details className="virtual-layout-details panel">
-        <summary>
-          <span>
-            <strong>LMU virtual-button details</strong>
-            <small>Review the vJoy device and saved LMU action layout</small>
-          </span>
-          <span>Show details</span>
-        </summary>
-        <div className="virtual-setup-grid">
-          <section className="virtual-device-panel panel">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">LMU devices</span>
-                <h3>Select the virtual controller</h3>
-              </div>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label="Rescan LMU bindings"
-                disabled={loading || busy}
-                onClick={() => void scan(true)}
-              >
-                <RefreshCw className={loading ? "spin" : ""} />
-              </button>
-            </div>
-            <div className="virtual-device-list">
-              {devices.map((device) => (
+      {isLmu && (
+        <details className="virtual-layout-details panel">
+          <summary>
+            <span>
+              <strong>LMU virtual-button details</strong>
+              <small>Review the vJoy device and saved LMU action layout</small>
+            </span>
+            <span>Show details</span>
+          </summary>
+          <div className="virtual-setup-grid">
+            <section className="virtual-device-panel panel">
+              <div className="section-heading">
+                <div>
+                  <span className="eyebrow">LMU devices</span>
+                  <h3>Select the virtual controller</h3>
+                </div>
                 <button
                   type="button"
-                  className={device.key === selectedKey ? "active" : ""}
-                  key={device.key}
-                  onClick={() => {
-                    setSelectedKey(device.key);
-                    void preview(device.key);
-                  }}
+                  className="icon-button"
+                  aria-label="Rescan LMU bindings"
+                  disabled={loading || busy}
+                  onClick={() => void scan(true)}
                 >
-                  <Gamepad2 />
-                  <span>
-                    <strong>{device.name}</strong>
-                    <small>
-                      {device.buttonBindingCount} virtual button bindings
-                    </small>
-                  </span>
-                  {device.likelyVirtual && <em>Likely vJoy</em>}
+                  <RefreshCw className={loading ? "spin" : ""} />
                 </button>
-              ))}
-              {!loading && !devices.length && (
-                <p className="virtual-empty">
-                  No devices were found in LMU&apos;s saved direct input.json.
-                </p>
-              )}
-            </div>
-          </section>
-
-          <section className="virtual-actions-panel panel">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">Shared layout</span>
-                <h3>Actions LMU will receive</h3>
               </div>
-              <strong>{actions.length}</strong>
-            </div>
-            {error && <div className="virtual-error">{error}</div>}
-            {loading ? (
-              <div className="virtual-loading">
-                <LoaderCircle className="spin" /> Reading LMU bindings…
-              </div>
-            ) : (
-              <div className="virtual-action-list">
-                {actions.map((action) => (
-                  <div key={`${action.virtualButton}-${action.action}`}>
-                    <span>{action.action}</span>
-                    <code>B{action.virtualButton}</code>
-                  </div>
+              <div className="virtual-device-list">
+                {devices.map((device) => (
+                  <button
+                    type="button"
+                    className={device.key === selectedKey ? "active" : ""}
+                    key={device.key}
+                    onClick={() => {
+                      setSelectedKey(device.key);
+                      void preview(device.key);
+                    }}
+                  >
+                    <Gamepad2 />
+                    <span>
+                      <strong>{device.name}</strong>
+                      <small>
+                        {device.buttonBindingCount} virtual button bindings
+                      </small>
+                    </span>
+                    {device.likelyVirtual && <em>Likely vJoy</em>}
+                  </button>
                 ))}
-                {!actions.length && !error && (
+                {!loading && !devices.length && (
                   <p className="virtual-empty">
-                    Bind some buttons from this device in LMU, let LMU save the
-                    file, then rescan.
+                    No devices were found in LMU&apos;s saved direct input.json.
                   </p>
                 )}
               </div>
-            )}
-            <div className="virtual-import-bar">
-              <span>
-                {saved ? (
-                  <>
-                    <Check /> Layout saved
-                  </>
-                ) : (
-                  "Rescans save automatically when the vJoy device is unambiguous."
-                )}
-              </span>
-              <button
-                type="button"
-                className="primary"
-                disabled={
-                  busy ||
-                  loading ||
-                  importing ||
-                  routing.active ||
-                  !actions.length
-                }
-                onClick={() => void importLayout()}
-              >
-                {importing && <LoaderCircle className="spin" />}
-                Save selected layout
-              </button>
-            </div>
-          </section>
-        </div>
-      </details>
+            </section>
+
+            <section className="virtual-actions-panel panel">
+              <div className="section-heading">
+                <div>
+                  <span className="eyebrow">Shared layout</span>
+                  <h3>Actions LMU will receive</h3>
+                </div>
+                <strong>{actions.length}</strong>
+              </div>
+              {error && <div className="virtual-error">{error}</div>}
+              {loading ? (
+                <div className="virtual-loading">
+                  <LoaderCircle className="spin" /> Reading LMU bindings…
+                </div>
+              ) : (
+                <div className="virtual-action-list">
+                  {actions.map((action) => (
+                    <div key={`${action.virtualButton}-${action.action}`}>
+                      <span>{action.action}</span>
+                      <code>B{action.virtualButton}</code>
+                    </div>
+                  ))}
+                  {!actions.length && !error && (
+                    <p className="virtual-empty">
+                      Bind some buttons from this device in LMU, let LMU save
+                      the file, then rescan.
+                    </p>
+                  )}
+                </div>
+              )}
+              <div className="virtual-import-bar">
+                <span>
+                  {saved ? (
+                    <>
+                      <Check /> Layout saved
+                    </>
+                  ) : (
+                    "Rescans save automatically when the vJoy device is unambiguous."
+                  )}
+                </span>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={
+                    busy ||
+                    loading ||
+                    importing ||
+                    routing.active ||
+                    !actions.length
+                  }
+                  onClick={() => void importLayout()}
+                >
+                  {importing && <LoaderCircle className="spin" />}
+                  Save selected layout
+                </button>
+              </div>
+            </section>
+          </div>
+        </details>
+      )}
     </section>
   );
 }
