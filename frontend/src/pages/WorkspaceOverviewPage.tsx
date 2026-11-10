@@ -1,15 +1,32 @@
 import { Disc3, Gamepad2, Workflow } from "lucide-react";
-import type { Page, Profile, VirtualRoutingStatus, Workspace } from "../models";
+import type {
+  AcCarContextStatus,
+  AutoProfileSelectionStatus,
+  Page,
+  Profile,
+  VirtualRoutingStatus,
+  Workspace,
+} from "../models";
 
 export function WorkspaceOverviewPage({
   workspace,
   profiles,
   routing,
+  carContext,
+  autoProfileSelection,
+  busy,
+  onSetAutoProfileSelection,
+  onResumeAutoProfileSelection,
   onNavigate,
 }: {
   workspace: Workspace;
   profiles: Profile[];
   routing: VirtualRoutingStatus;
+  carContext: AcCarContextStatus;
+  autoProfileSelection: AutoProfileSelectionStatus;
+  busy: boolean;
+  onSetAutoProfileSelection: (enabled: boolean) => void;
+  onResumeAutoProfileSelection: () => void;
   onNavigate: (page: Page) => void;
 }) {
   return (
@@ -33,6 +50,58 @@ export function WorkspaceOverviewPage({
           </span>
         </div>
       </header>
+
+      <section className="panel car-context-card">
+        <div className="car-context-heading">
+          <div>
+            <span className="eyebrow">Live car detection</span>
+            <h3>{carContext.carName ?? "Waiting for Assetto Corsa"}</h3>
+            <p>{carContext.message}</p>
+          </div>
+          <span className={carContext.connected ? "status-good" : "status-warn"}>
+            {carContext.connected ? carContext.sessionState : "Offline"}
+          </span>
+        </div>
+        <div className="profile-tags compact-tags">
+          {carContext.tags.map((tag) => (
+            <span className="custom-tag" key={tag}>
+              {tag}
+            </span>
+          ))}
+          {carContext.connected && !carContext.tags.length && (
+            <span className="generic-tag">No car tags found</span>
+          )}
+        </div>
+        <div className="car-context-footer">
+          <div>
+            <strong>Automatic car-tag switching</strong>
+            <span>{autoProfileSelection.message}</span>
+          </div>
+          <div className="car-context-actions">
+            {autoProfileSelection.enabled && autoProfileSelection.paused && (
+              <button
+                type="button"
+                className="secondary compact"
+                disabled={busy}
+                onClick={onResumeAutoProfileSelection}
+              >
+                Resume Auto
+              </button>
+            )}
+            <label className="inline-switch">
+              <span>Auto-select</span>
+              <input
+                type="checkbox"
+                checked={autoProfileSelection.enabled}
+                disabled={busy}
+                onChange={(event) =>
+                  onSetAutoProfileSelection(event.target.checked)
+                }
+              />
+            </label>
+          </div>
+        </div>
+      </section>
 
       <div className="workspace-overview-steps panel">
         <header>
@@ -68,11 +137,12 @@ export function WorkspaceOverviewPage({
       </div>
 
       <div className="workspace-overview-note panel">
-        <strong>Initial AC support is manual</strong>
+        <strong>Car-tag switching is read-only</strong>
         <p>
-          LMUKit does not edit Assetto Corsa configuration files. AC must be
-          taught the vJoy buttons once, and the game remains responsible for
-          steering, pedals and force feedback.
+          LMUKit reads the active car ID from AC shared memory and its tags from
+          ui_car.json. It does not edit Assetto Corsa or Content Manager. AC
+          must still be taught the vJoy buttons once, and the game remains
+          responsible for steering, pedals and force feedback.
         </p>
       </div>
     </section>

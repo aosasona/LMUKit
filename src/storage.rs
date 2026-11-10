@@ -170,6 +170,8 @@ pub struct Settings {
     pub lmu_config_path: PathBuf,
     #[serde(default)]
     pub lmu_settings_path: PathBuf,
+    #[serde(default = "default_assetto_corsa_path")]
+    pub assetto_corsa_path: PathBuf,
     #[serde(default)]
     pub active_profile: Option<Uuid>,
     #[serde(default, skip_serializing)]
@@ -233,6 +235,8 @@ pub struct VirtualProfileDefault {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ClassProfileDefault {
+    #[serde(default = "default_profile_workspace_id")]
+    pub workspace_id: String,
     pub class_tag: String,
     pub profile_id: Uuid,
 }
@@ -278,6 +282,7 @@ impl Default for Settings {
         Self {
             lmu_config_path: default_lmu_path(),
             lmu_settings_path: default_lmu_settings_path(),
+            assetto_corsa_path: default_assetto_corsa_path(),
             active_profile: None,
             lmuffb_path: PathBuf::new(),
             companion_apps: default_companion_apps(),
@@ -526,12 +531,14 @@ impl Store {
             .find(|tag| tag.eq_ignore_ascii_case(requested))
             .cloned()
             .with_context(|| format!("This profile is not tagged for the {requested} class."))?;
-        self.settings
-            .class_profile_defaults
-            .retain(|entry| !entry.class_tag.eq_ignore_ascii_case(&class_tag));
+        self.settings.class_profile_defaults.retain(|entry| {
+            entry.workspace_id != profile.workspace_id
+                || !entry.class_tag.eq_ignore_ascii_case(&class_tag)
+        });
         self.settings
             .class_profile_defaults
             .push(ClassProfileDefault {
+                workspace_id: profile.workspace_id,
                 class_tag,
                 profile_id,
             });
@@ -541,9 +548,10 @@ impl Store {
 
     pub fn clear_virtual_profile_default(&mut self, class_tag: String) -> Result<()> {
         let before = self.settings.class_profile_defaults.len();
-        self.settings
-            .class_profile_defaults
-            .retain(|entry| !entry.class_tag.eq_ignore_ascii_case(class_tag.trim()));
+        self.settings.class_profile_defaults.retain(|entry| {
+            entry.workspace_id != self.settings.active_workspace_id
+                || !entry.class_tag.eq_ignore_ascii_case(class_tag.trim())
+        });
         ensure!(
             self.settings.class_profile_defaults.len() != before,
             "That default assignment no longer exists."
@@ -553,11 +561,10 @@ impl Store {
 
     pub fn resolve_virtual_profile(&self, class_tag: &str) -> Result<Option<Profile>> {
         let profiles = self.profiles()?;
-        let selected = self
-            .settings
-            .class_profile_defaults
-            .iter()
-            .find(|entry| entry.class_tag.eq_ignore_ascii_case(class_tag.trim()));
+        let selected = self.settings.class_profile_defaults.iter().find(|entry| {
+            entry.workspace_id == self.settings.active_workspace_id
+                && entry.class_tag.eq_ignore_ascii_case(class_tag.trim())
+        });
         Ok(selected.and_then(|entry| {
             profiles
                 .iter()
@@ -607,6 +614,10 @@ impl Store {
                 .find(|profile| profile.id == entry.profile_id)
                 .context("A class profile default references a missing profile.")?;
             ensure!(
+                profile.workspace_id == entry.workspace_id,
+                "A class profile default references a profile in another workspace."
+            );
+            ensure!(
                 profile
                     .class_tags
                     .iter()
@@ -614,8 +625,8 @@ impl Store {
                 "A class profile default references a class missing from its profile."
             );
             ensure!(
-                class_scopes.insert(entry.class_tag.to_lowercase()),
-                "Only one default profile may be assigned per class."
+                class_scopes.insert((entry.workspace_id.clone(), entry.class_tag.to_lowercase())),
+                "Only one default profile may be assigned per workspace and class."
             );
         }
         Ok(())
@@ -623,9 +634,8 @@ impl Store {
 
     fn sort_class_profile_defaults(&mut self) {
         self.settings.class_profile_defaults.sort_by(|left, right| {
-            left.class_tag
-                .to_lowercase()
-                .cmp(&right.class_tag.to_lowercase())
+            (left.workspace_id.as_str(), left.class_tag.to_lowercase())
+                .cmp(&(right.workspace_id.as_str(), right.class_tag.to_lowercase()))
         });
     }
 
@@ -1172,6 +1182,7 @@ impl Store {
             .into_values()
             .filter_map(|(class_tag, profile_ids)| {
                 (profile_ids.len() == 1).then(|| ClassProfileDefault {
+                    workspace_id: LMU_WORKSPACE_ID.to_owned(),
                     class_tag,
                     profile_id: *profile_ids.first().expect("one profile ID"),
                 })
@@ -2195,6 +2206,10 @@ pub fn default_lmu_path() -> PathBuf {
 
 pub fn default_lmu_settings_path() -> PathBuf {
     default_lmu_path().with_file_name("Settings.JSON")
+}
+
+pub fn default_assetto_corsa_path() -> PathBuf {
+    PathBuf::from(r"C:\Program Files (x86)\Steam\steamapps\common\assettocorsa")
 }
 
 fn validate_lmu_file(path: &Path) -> Result<()> {
@@ -3702,6 +3717,41 @@ mod tests {
         let resolved = store.resolve_virtual_profile("gt3").unwrap().unwrap();
         assert_eq!(resolved.id, alternate.id);
         assert!(store.resolve_virtual_profile("HY").unwrap().is_none());
+    }
+
+    #[test]
+    fn scopes_automatic_profile_defaults_to_the_active_workspace() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open_at(temp.path().join("data")).unwrap();
+        let lmu = store
+            .import_profile_bytes("LMU GT3", br#"{"Input":{}}"#)
+            .unwrap();
+        store
+            .set_profile_categories(lmu.id, vec!["GT3".into()], Vec::new())
+            .unwrap();
+        store
+            .set_virtual_profile_default(lmu.id, "GT3".into())
+            .unwrap();
+
+        store.set_active_workspace(AC_WORKSPACE_ID).unwrap();
+        let ac = store.create_virtual_profile("AC GT3").unwrap();
+        store
+            .set_profile_categories(ac.id, vec!["GT3".into()], Vec::new())
+            .unwrap();
+        store
+            .set_virtual_profile_default(ac.id, "GT3".into())
+            .unwrap();
+
+        assert_eq!(store.settings.class_profile_defaults.len(), 2);
+        assert_eq!(
+            store.resolve_virtual_profile("GT3").unwrap().unwrap().id,
+            ac.id
+        );
+        store.set_active_workspace(LMU_WORKSPACE_ID).unwrap();
+        assert_eq!(
+            store.resolve_virtual_profile("GT3").unwrap().unwrap().id,
+            lmu.id
+        );
     }
 
     #[test]

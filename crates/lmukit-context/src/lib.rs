@@ -1,6 +1,7 @@
 //! Read-only LMU car-context decoding and platform provider.
 
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::{fs, path::Path};
 
 use anyhow::{Context, Result, bail, ensure};
 use lmukit_core::car_context::{
@@ -13,6 +14,12 @@ pub mod windows;
 
 pub const LMU_SHARED_MEMORY_NAME: &str = "LMU_Data";
 pub const LMU_SHARED_MEMORY_PAYLOAD_SIZE: usize = 324_820;
+pub const AC_STATIC_SHARED_MEMORY_NAME: &str = "Local\\acpmf_static";
+pub const AC_GRAPHICS_SHARED_MEMORY_NAME: &str = "Local\\acpmf_graphics";
+pub const AC_STATIC_SNAPSHOT_SIZE: usize = 134;
+pub const AC_GRAPHICS_SNAPSHOT_SIZE: usize = 8;
+const AC_CAR_MODEL_OFFSET: usize = 68;
+const AC_CAR_MODEL_LENGTH: usize = 33;
 const MAX_VEHICLES: usize = 104;
 const GAME_VERSION_OFFSET: usize = 64;
 const SCORING_OFFSET: usize = 1_632;
@@ -29,6 +36,106 @@ const VEHICLE_IS_PLAYER_OFFSET: usize = 196;
 const VEHICLE_CONTROL_OFFSET: usize = 197;
 const VEHICLE_CLASS_OFFSET: usize = 200;
 const VEHICLE_FILENAME_OFFSET: usize = 544;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AcCarContext {
+    pub car_id: Option<String>,
+    pub car_name: Option<String>,
+    pub tags: Vec<String>,
+    pub session_state: AcSessionState,
+    pub observed_at: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AcSessionState {
+    #[default]
+    Unknown,
+    Replay,
+    Live,
+    Paused,
+}
+
+pub fn decode_ac_car_context(
+    static_snapshot: &[u8],
+    graphics_snapshot: &[u8],
+    assetto_corsa_root: &Path,
+    observed_at: Option<String>,
+) -> Result<AcCarContext> {
+    ensure!(
+        static_snapshot.len() >= AC_STATIC_SNAPSHOT_SIZE,
+        "AC static shared-memory snapshot is too small"
+    );
+    ensure!(
+        graphics_snapshot.len() >= AC_GRAPHICS_SNAPSHOT_SIZE,
+        "AC graphics shared-memory snapshot is too small"
+    );
+    let car_id = utf16_string(static_snapshot, AC_CAR_MODEL_OFFSET, AC_CAR_MODEL_LENGTH)?;
+    ensure!(
+        !car_id.is_empty()
+            && car_id.chars().all(
+                |character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-')
+            ),
+        "AC reported an invalid car model identifier"
+    );
+    let status = i32::from_le_bytes(graphics_snapshot[4..8].try_into()?);
+    let session_state = match status {
+        0 => AcSessionState::Unknown,
+        1 => AcSessionState::Replay,
+        2 => AcSessionState::Live,
+        3 => AcSessionState::Paused,
+        _ => bail!("AC reported invalid session status {status}"),
+    };
+    let metadata_path = assetto_corsa_root
+        .join("content")
+        .join("cars")
+        .join(&car_id)
+        .join("ui")
+        .join("ui_car.json");
+    let metadata_bytes = fs::read(&metadata_path)
+        .with_context(|| format!("could not read {}", metadata_path.display()))?;
+    let metadata_bytes = metadata_bytes
+        .strip_prefix(&[0xef, 0xbb, 0xbf])
+        .unwrap_or(&metadata_bytes);
+    let metadata: serde_json::Value = serde_json::from_slice(metadata_bytes)
+        .with_context(|| format!("{} is not valid JSON", metadata_path.display()))?;
+    let car_name = metadata
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned);
+    let mut tags = metadata
+        .get("tags")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|tag| !tag.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    tags.sort_by_key(|tag| tag.to_lowercase());
+    tags.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+    Ok(AcCarContext {
+        car_id: Some(car_id),
+        car_name,
+        tags,
+        session_state,
+        observed_at,
+    })
+}
+
+fn utf16_string(snapshot: &[u8], offset: usize, code_units: usize) -> Result<String> {
+    let bytes = snapshot
+        .get(offset..offset + code_units * 2)
+        .context("UTF-16 field is outside the snapshot")?;
+    let units = bytes
+        .chunks_exact(2)
+        .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]))
+        .take_while(|unit| *unit != 0)
+        .collect::<Vec<_>>();
+    String::from_utf16(&units).context("shared-memory field is not valid UTF-16")
+}
 
 pub fn decode_lmu_car_context(
     snapshot: &[u8],
@@ -399,6 +506,40 @@ mod tests {
         assert_eq!(utc_timestamp(time), "1970-01-02T01:01:01.123Z");
     }
 
+    #[test]
+    fn decodes_assetto_corsa_car_and_content_manager_tags() {
+        let temp = tempfile::tempdir().unwrap();
+        let metadata_dir = temp.path().join("content/cars/ks_ferrari_488_gt3/ui");
+        fs::create_dir_all(&metadata_dir).unwrap();
+        fs::write(
+            metadata_dir.join("ui_car.json"),
+            br##"{"name":"Ferrari 488 GT3","tags":["#GT3","race","gt3"]}"##,
+        )
+        .unwrap();
+        let mut static_snapshot = vec![0; AC_STATIC_SNAPSHOT_SIZE];
+        put_utf16(
+            &mut static_snapshot,
+            AC_CAR_MODEL_OFFSET,
+            AC_CAR_MODEL_LENGTH,
+            "ks_ferrari_488_gt3",
+        );
+        let mut graphics_snapshot = vec![0; AC_GRAPHICS_SNAPSHOT_SIZE];
+        graphics_snapshot[4..8].copy_from_slice(&2_i32.to_le_bytes());
+
+        let context = decode_ac_car_context(
+            &static_snapshot,
+            &graphics_snapshot,
+            temp.path(),
+            Some("2026-11-10T12:00:00Z".into()),
+        )
+        .unwrap();
+
+        assert_eq!(context.car_id.as_deref(), Some("ks_ferrari_488_gt3"));
+        assert_eq!(context.car_name.as_deref(), Some("Ferrari 488 GT3"));
+        assert_eq!(context.tags, vec!["#GT3", "gt3", "race"]);
+        assert_eq!(context.session_state, AcSessionState::Live);
+    }
+
     fn put_i32(data: &mut [u8], offset: usize, value: i32) {
         data[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
     }
@@ -407,5 +548,12 @@ mod tests {
         let bytes = value.as_bytes();
         data[offset..offset + bytes.len().min(length)]
             .copy_from_slice(&bytes[..bytes.len().min(length)]);
+    }
+
+    fn put_utf16(data: &mut [u8], offset: usize, length: usize, value: &str) {
+        for (index, unit) in value.encode_utf16().take(length).enumerate() {
+            let start = offset + index * 2;
+            data[start..start + 2].copy_from_slice(&unit.to_le_bytes());
+        }
     }
 }

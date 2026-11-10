@@ -208,10 +208,10 @@ export function ProfilesPage(props: Props) {
             onChange={setWheelFilter}
           />
           <SearchSelect
-            label="Class"
+            label={isLmu ? "Class" : "Car tag"}
             value={classFilter}
             options={classTags}
-            formatOption={displayClassTag}
+            formatOption={isLmu ? displayClassTag : undefined}
             onChange={setClassFilter}
           />
         </div>
@@ -257,7 +257,7 @@ export function ProfilesPage(props: Props) {
                       className={`class-tag class-${classSlug(tag)}`}
                       key={`class-${tag}`}
                     >
-                      {displayClassTag(tag)}
+                      {isLmu ? displayClassTag(tag) : tag}
                     </span>
                   ))}
                   {!profile.classTags.length && (
@@ -419,6 +419,7 @@ export function ProfilesPage(props: Props) {
               onEditorOpenChange={(open) =>
                 setMappingEditorProfileId(open ? selected.id : null)
               }
+              workspaceKind={workspaceKind}
             />
             {isLmu && (
               <div className="profile-devices-head">
@@ -648,6 +649,7 @@ function CategoryEditor({
             setCustomTags(tags.customTags);
           }}
           classNameFor={(tag) => `class-${classSlug(tag)}`}
+          mode={isLmu ? "classes-and-custom" : "car-tags"}
         />
       </div>
       <button

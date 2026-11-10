@@ -22,6 +22,7 @@ import type {
   VirtualProfileDefault,
   VirtualProfileMapping,
   VirtualRoutingStatus,
+  Workspace,
 } from "../models";
 import { ActionMenu } from "./ActionMenu";
 import { ConfirmDialog, type Confirmation } from "./ConfirmDialog";
@@ -55,6 +56,7 @@ export function ProfileVirtualMappings({
   editorOpen,
   onEditorOpenChange,
   presentation = "card",
+  workspaceKind,
 }: {
   profile: Profile;
   busy: boolean;
@@ -63,7 +65,9 @@ export function ProfileVirtualMappings({
   editorOpen?: boolean;
   onEditorOpenChange?: (open: boolean) => void;
   presentation?: "card" | "workspace";
+  workspaceKind: Workspace["kind"];
 }) {
+  const isLmu = workspaceKind === "le_mans_ultimate";
   const [actions, setActions] = useState<VirtualAction[]>([]);
   const [mappings, setMappings] = useState<VirtualProfileMapping[]>([]);
   const [loading, setLoading] = useState(true);
@@ -377,8 +381,8 @@ export function ProfileVirtualMappings({
       setDefaults(next);
       onNotice(
         remove
-          ? `${displayClassTag(classTag)} default removed.`
-          : `${profile.name} is now the automatic default for ${displayClassTag(classTag)}.`,
+          ? `${isLmu ? displayClassTag(classTag) : classTag} default removed.`
+          : `${profile.name} is now the automatic default for ${isLmu ? displayClassTag(classTag) : classTag}.`,
       );
     } catch (reason) {
       setError(String(reason));
@@ -470,13 +474,17 @@ export function ProfileVirtualMappings({
           <span>
             <Star />
             <span>
-              <strong>Automatic class defaults</strong>
+              <strong>
+                {isLmu ? "Automatic class defaults" : "Automatic car-tag defaults"}
+              </strong>
               <small>
-                One profile is selected for each class across LMUKit.
+                One profile is selected for each {isLmu ? "class" : "matching tag"} in this workspace.
               </small>
             </span>
           </span>
-          {!profile.classTags.length && <em>Add a class tag first</em>}
+          {!profile.classTags.length && (
+            <em>Add {isLmu ? "a class" : "an AC car"} tag first</em>
+          )}
         </div>
         {!!profile.classTags.length && (
           <div className="profile-default-scopes">
@@ -489,7 +497,9 @@ export function ProfileVirtualMappings({
               return (
                 <div className="profile-default-scope" key={classTag}>
                   <span>
-                    <strong>{displayClassTag(classTag)}</strong>
+                    <strong>
+                      {isLmu ? displayClassTag(classTag) : classTag}
+                    </strong>
                     <small>
                       {assigned ? assigned.profileName : "No default selected"}
                     </small>

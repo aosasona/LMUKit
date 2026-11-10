@@ -160,6 +160,7 @@ export function ProfileEditorPage({
             inputMode={inputMode}
             onNotice={onNotice}
             presentation="workspace"
+            workspaceKind={workspaceKind}
           />
         </div>
       )}

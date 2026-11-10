@@ -61,6 +61,7 @@ export type Snapshot = {
   activeProfile: string | null;
   lmuConfigPath: string;
   lmuSettingsPath: string;
+  assettoCorsaPath: string;
   activeProfileDirty: boolean | null;
   uiFontScale: number;
   inputMode: "legacy" | "virtual";
@@ -159,6 +160,15 @@ export type LmuCarContextStatus = {
   status: "confirmed" | "stale" | "unknown";
   message: string;
 };
+export type AcCarContextStatus = {
+  connected: boolean;
+  carId: string | null;
+  carName: string | null;
+  tags: string[];
+  sessionState: "unknown" | "replay" | "live" | "paused";
+  observedAt: string | null;
+  message: string;
+};
 export type LmuRuntimeStatus = {
   running: boolean;
   processName: string | null;
@@ -238,6 +248,7 @@ export const emptySnapshot: Snapshot = {
   activeProfile: null,
   lmuConfigPath: "",
   lmuSettingsPath: "",
+  assettoCorsaPath: "",
   activeProfileDirty: null,
   uiFontScale: 1,
   inputMode: "legacy",
@@ -259,6 +270,16 @@ export const emptyCarContextStatus: LmuCarContextStatus = {
   observedAt: null,
   status: "unknown",
   message: "Waiting for LMU shared memory.",
+};
+
+export const emptyAcCarContextStatus: AcCarContextStatus = {
+  connected: false,
+  carId: null,
+  carName: null,
+  tags: [],
+  sessionState: "unknown",
+  observedAt: null,
+  message: "Waiting for Assetto Corsa shared memory.",
 };
 
 export const emptyAutoProfileSelectionStatus: AutoProfileSelectionStatus = {

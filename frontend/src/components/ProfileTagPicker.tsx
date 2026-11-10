@@ -14,29 +14,37 @@ export function ProfileTagPicker({
   customTags,
   onChange,
   classNameFor,
+  mode = "classes-and-custom",
 }: {
   classOptions: readonly string[];
   classTags: string[];
   customTags: string[];
   onChange: (tags: Tags) => void;
   classNameFor: (tag: string) => string;
+  mode?: "classes-and-custom" | "car-tags";
 }) {
   const [query, setQuery] = useState("");
   const [availableCustomTags, setAvailableCustomTags] = useState(customTags);
   const details = useRef<HTMLDetailsElement>(null);
   useDismissableDetails(details);
   const normalizedQuery = query.trim().toLowerCase();
+  const displayTag = (tag: string) =>
+    mode === "car-tags" ? tag : displayClassTag(tag);
   const selected = [...classTags, ...customTags];
-  const visibleClasses = classOptions.filter(
+  const availableClasses = Array.from(new Set([...classOptions, ...classTags]));
+  const visibleClasses = availableClasses.filter(
     (tag) =>
       tag.toLowerCase().includes(normalizedQuery) ||
-      displayClassTag(tag).toLowerCase().includes(normalizedQuery),
+      displayTag(tag).toLowerCase().includes(normalizedQuery),
   );
-  const visibleCustomTags = availableCustomTags.filter((tag) =>
-    tag.toLowerCase().includes(normalizedQuery),
-  );
+  const visibleCustomTags =
+    mode === "car-tags"
+      ? []
+      : availableCustomTags.filter((tag) =>
+          tag.toLowerCase().includes(normalizedQuery),
+        );
   const candidate = query.trim();
-  const knownTags = [...classOptions, ...availableCustomTags];
+  const knownTags = [...availableClasses, ...availableCustomTags];
   const canCreate =
     candidate.length > 0 &&
     !knownTags.some((tag) => tag.toLowerCase() === normalizedQuery);
@@ -59,6 +67,11 @@ export function ProfileTagPicker({
   };
   const createTag = () => {
     if (!canCreate) return;
+    if (mode === "car-tags") {
+      onChange({ classTags: [...classTags, candidate], customTags });
+      setQuery("");
+      return;
+    }
     setAvailableCustomTags((tags) => [...tags, candidate]);
     onChange({ classTags, customTags: [...customTags, candidate] });
     setQuery("");
@@ -66,7 +79,7 @@ export function ProfileTagPicker({
 
   return (
     <div className="tag-picker profile-tag-picker">
-      <span>Profile tags</span>
+      <span>{mode === "car-tags" ? "Assetto Corsa car tags" : "Profile tags"}</span>
       <details
         ref={details}
         onToggle={(event) => positionDropdown(event.currentTarget, 300)}
@@ -78,8 +91,10 @@ export function ProfileTagPicker({
             }
           >
             {selected.length
-              ? [...classTags.map(displayClassTag), ...customTags].join(", ")
-              : "Generic — no class restrictions"}
+              ? [...classTags.map(displayTag), ...customTags].join(", ")
+              : mode === "car-tags"
+                ? "Manual only — no matching car tags"
+                : "Generic — no class restrictions"}
           </span>
           <ChevronDown size={16} />
         </summary>
@@ -88,7 +103,11 @@ export function ProfileTagPicker({
             <Search size={15} />
             <input
               value={query}
-              placeholder="Find or create a tag…"
+              placeholder={
+                mode === "car-tags"
+                  ? "Enter an exact AC car tag…"
+                  : "Find or create a tag…"
+              }
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && canCreate) {
@@ -101,7 +120,9 @@ export function ProfileTagPicker({
           <div className="tag-picker-options">
             {visibleClasses.length > 0 && (
               <section>
-                <span className="tag-picker-section-label">Car classes</span>
+                <span className="tag-picker-section-label">
+                  {mode === "car-tags" ? "Matching car tags" : "Car classes"}
+                </span>
                 {visibleClasses.map((tag) => (
                   <button
                     type="button"
@@ -109,7 +130,7 @@ export function ProfileTagPicker({
                     key={tag}
                     onClick={() => toggleClass(tag)}
                   >
-                    <span>{displayClassTag(tag)}</span>
+                    <span>{displayTag(tag)}</span>
                     {classTags.includes(tag) && <Check size={15} />}
                   </button>
                 ))}
@@ -150,7 +171,9 @@ export function ProfileTagPicker({
         </div>
       </details>
       <small>
-        Choose any relevant car classes, or type to create your own tag.
+        {mode === "car-tags"
+          ? "Use exact tags from the car's ui_car.json. Any matching tag can select this profile automatically."
+          : "Choose any relevant car classes, or type to create your own tag."}
       </small>
     </div>
   );

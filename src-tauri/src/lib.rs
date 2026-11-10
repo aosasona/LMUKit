@@ -1,3 +1,4 @@
+use lmukit_context::{AcCarContext, AcSessionState};
 use lmukit_core::car_context::{
     ConfirmedClassDebouncer, LmuCarContext, LmuCarContextSource, LmuCarContextStatus,
     LmuSessionState, display_existing_class,
@@ -51,11 +52,15 @@ struct CarContextState {
     stop: Arc<std::sync::atomic::AtomicBool>,
 }
 
+struct AcContextState {
+    status: Arc<Mutex<AcContextSummary>>,
+}
+
 struct AutoProfileState(Mutex<AutoProfileRuntime>);
 
 struct AutoProfileRuntime {
     paused: bool,
-    manual_override_class: Option<String>,
+    manual_override_context: Option<String>,
     debouncer: ConfirmedClassDebouncer,
     last_attempted_profile: Option<Uuid>,
     message: String,
@@ -65,7 +70,7 @@ impl Default for AutoProfileRuntime {
     fn default() -> Self {
         Self {
             paused: false,
-            manual_override_class: None,
+            manual_override_context: None,
             debouncer: ConfirmedClassDebouncer::new(2),
             last_attempted_profile: None,
             message: "Automatic profile selection is off.".to_owned(),
@@ -83,7 +88,7 @@ impl AutoProfileRuntime {
     fn summary(&self, enabled: bool) -> AutoProfileSummary {
         AutoProfileSummary {
             enabled,
-            paused: self.paused || self.manual_override_class.is_some(),
+            paused: self.paused || self.manual_override_context.is_some(),
             candidate_class: self.debouncer.candidate().map(str::to_owned),
             confirmed_observations: self.debouncer.observations(),
             required_observations: self.debouncer.required_observations(),
@@ -162,6 +167,18 @@ struct CarContextSummary {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct AcContextSummary {
+    connected: bool,
+    car_id: Option<String>,
+    car_name: Option<String>,
+    tags: Vec<String>,
+    session_state: String,
+    observed_at: Option<String>,
+    message: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct AutoProfileSummary {
     enabled: bool,
     paused: bool,
@@ -194,6 +211,48 @@ impl Default for CarContextSummary {
             status: LmuCarContextStatus::Unknown,
             message: "Waiting for LMU shared memory.".to_owned(),
         }
+    }
+}
+
+impl Default for AcContextSummary {
+    fn default() -> Self {
+        Self {
+            connected: false,
+            car_id: None,
+            car_name: None,
+            tags: Vec::new(),
+            session_state: "unknown".to_owned(),
+            observed_at: None,
+            message: "Waiting for Assetto Corsa shared memory.".to_owned(),
+        }
+    }
+}
+
+impl AcContextSummary {
+    fn observed(context: AcCarContext) -> Self {
+        Self {
+            connected: true,
+            car_id: context.car_id,
+            car_name: context.car_name,
+            tags: context.tags,
+            session_state: match context.session_state {
+                AcSessionState::Unknown => "unknown",
+                AcSessionState::Replay => "replay",
+                AcSessionState::Live => "live",
+                AcSessionState::Paused => "paused",
+            }
+            .to_owned(),
+            observed_at: context.observed_at,
+            message: "Active car and Content Manager tags confirmed.".to_owned(),
+        }
+    }
+
+    fn unavailable(previous: &Self) -> Self {
+        let mut next = previous.clone();
+        next.connected = false;
+        next.session_state = "unknown".to_owned();
+        next.message = "Assetto Corsa shared memory is unavailable.".to_owned();
+        next
     }
 }
 
@@ -375,6 +434,7 @@ struct AppSnapshot {
     active_profile: Option<Uuid>,
     lmu_config_path: String,
     lmu_settings_path: String,
+    assetto_corsa_path: String,
     active_profile_dirty: Option<bool>,
     ui_font_scale: f32,
     input_mode: InputMode,
@@ -548,6 +608,7 @@ fn snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, String> {
             .flatten(),
         lmu_config_path: store.settings.lmu_config_path.display().to_string(),
         lmu_settings_path: store.settings.lmu_settings_path.display().to_string(),
+        assetto_corsa_path: store.settings.assetto_corsa_path.display().to_string(),
         active_profile_dirty: if active_workspace.kind == WorkspaceKind::LeMansUltimate {
             store
                 .active_profile_has_unsaved_changes()
@@ -609,6 +670,17 @@ fn set_ui_font_scale(scale: f32, state: State<'_, AppState>) -> Result<(), Strin
     }
     let mut store = state.0.lock().map_err(|error| error.to_string())?;
     store.settings.ui_font_scale = scale;
+    store.save_settings().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_assetto_corsa_path(path: String, state: State<'_, AppState>) -> Result<(), String> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err("Choose the Assetto Corsa installation folder.".to_owned());
+    }
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    store.settings.assetto_corsa_path = path.into();
     store.save_settings().map_err(|error| error.to_string())
 }
 
@@ -1481,6 +1553,7 @@ fn virtual_profile_default_summaries(
         .settings
         .class_profile_defaults
         .iter()
+        .filter(|entry| entry.workspace_id == store.settings.active_workspace_id)
         .filter_map(|entry| {
             profiles
                 .iter()
@@ -1515,6 +1588,15 @@ fn lmu_car_context_status(state: State<'_, CarContextState>) -> Result<CarContex
 }
 
 #[tauri::command]
+fn ac_car_context_status(state: State<'_, AcContextState>) -> Result<AcContextSummary, String> {
+    state
+        .status
+        .lock()
+        .map(|status| status.clone())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn auto_profile_selection_status(
     app_state: State<'_, AppState>,
     auto_state: State<'_, AutoProfileState>,
@@ -1538,16 +1620,21 @@ fn set_auto_profile_selection(
     app_state: State<'_, AppState>,
     auto_state: State<'_, AutoProfileState>,
 ) -> Result<AutoProfileSummary, String> {
-    {
+    let workspace_kind = {
         let mut store = app_state.0.lock().map_err(|error| error.to_string())?;
         store.settings.auto_profile_selection = enabled;
         store.save_settings().map_err(|error| error.to_string())?;
-    }
+        store.active_workspace().kind
+    };
     let mut runtime = auto_state.0.lock().map_err(|error| error.to_string())?;
     runtime.paused = false;
-    runtime.manual_override_class = None;
+    runtime.manual_override_context = None;
     runtime.reset(if enabled {
-        "Waiting for LMU to confirm a car class."
+        if workspace_kind == WorkspaceKind::AssettoCorsa {
+            "Waiting for Assetto Corsa to confirm a car."
+        } else {
+            "Waiting for LMU to confirm a car class."
+        }
     } else {
         "Automatic profile selection is off."
     });
@@ -1578,7 +1665,7 @@ fn resume_auto_profile_selection(
     }
     let mut runtime = auto_state.0.lock().map_err(|error| error.to_string())?;
     runtime.paused = false;
-    runtime.manual_override_class = None;
+    runtime.manual_override_context = None;
     runtime.reset("Waiting for LMU to confirm a car class.");
     diagnostics::info(
         "routing.auto.resumed",
@@ -1590,7 +1677,7 @@ fn resume_auto_profile_selection(
 fn pause_auto_profile_selection(state: &AutoProfileState, reason: &str) {
     if let Ok(mut runtime) = state.0.lock() {
         runtime.paused = true;
-        runtime.manual_override_class = None;
+        runtime.manual_override_context = None;
         runtime.reset(format!(
             "Paused after {reason}. Select Resume Auto when ready."
         ));
@@ -1598,15 +1685,27 @@ fn pause_auto_profile_selection(state: &AutoProfileState, reason: &str) {
 }
 
 fn hold_manual_profile_for_class(state: &AutoProfileState, class_tag: Option<&str>) {
+    hold_manual_profile_for_context(
+        state,
+        class_tag,
+        class_tag.map(|tag| display_existing_class(tag).to_owned()),
+    );
+}
+
+fn hold_manual_profile_for_context(
+    state: &AutoProfileState,
+    context_key: Option<&str>,
+    context_label: Option<String>,
+) {
     if let Ok(mut runtime) = state.0.lock() {
         runtime.paused = false;
-        runtime.manual_override_class = class_tag.map(str::to_owned);
-        runtime.reset(match class_tag {
-            Some(class_tag) => format!(
-                "Keeping the manually selected profile for {}. Automatic selection will resume when the detected class changes.",
-                display_existing_class(class_tag)
+        runtime.manual_override_context = context_key.map(str::to_owned);
+        runtime.reset(match context_label {
+            Some(context_label) => format!(
+                "Keeping the manually selected profile for {context_label}. Automatic selection will resume when the detected car or class changes."
             ),
-            None => "Automatic selection is active and waiting for a confirmed class.".to_owned(),
+            None => "Automatic selection is active and waiting for a confirmed car or class."
+                .to_owned(),
         });
     }
 }
@@ -1629,6 +1728,7 @@ fn start_virtual_routing(
     routing_state: State<'_, VirtualRoutingState>,
     auto_state: State<'_, AutoProfileState>,
     car_context: State<'_, CarContextState>,
+    ac_context: State<'_, AcContextState>,
 ) -> Result<VirtualRoutingStatus, String> {
     let status = start_virtual_routing_inner(
         profile_id,
@@ -1636,12 +1736,30 @@ fn start_virtual_routing(
         &app_state,
         &routing_state,
     )?;
-    let class_tag = car_context
-        .status
+    let workspace_kind = app_state
+        .0
         .lock()
-        .ok()
-        .and_then(|context| confirmed_class(&context).map(str::to_owned));
-    hold_manual_profile_for_class(&auto_state, class_tag.as_deref());
+        .map_err(|error| error.to_string())?
+        .active_workspace()
+        .kind;
+    match workspace_kind {
+        WorkspaceKind::AssettoCorsa => {
+            let context = ac_context.status.lock().ok();
+            let context_key = context.as_ref().and_then(|context| context.car_id.clone());
+            let context_label = context
+                .as_ref()
+                .and_then(|context| context.car_name.clone().or_else(|| context.car_id.clone()));
+            hold_manual_profile_for_context(&auto_state, context_key.as_deref(), context_label);
+        }
+        _ => {
+            let class_tag = car_context
+                .status
+                .lock()
+                .ok()
+                .and_then(|context| confirmed_class(&context).map(str::to_owned));
+            hold_manual_profile_for_class(&auto_state, class_tag.as_deref());
+        }
+    }
     Ok(status)
 }
 
@@ -3107,9 +3225,12 @@ pub fn run() {
         .unwrap_or_default();
     let (hotkey_tx, hotkey_rx) = std::sync::mpsc::channel();
     let car_context_status = Arc::new(Mutex::new(CarContextSummary::default()));
+    let ac_context_status = Arc::new(Mutex::new(AcContextSummary::default()));
     let car_context_stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     #[cfg(target_os = "windows")]
     let context_worker_status = Arc::clone(&car_context_status);
+    #[cfg(target_os = "windows")]
+    let ac_context_worker_status = Arc::clone(&ac_context_status);
     #[cfg(target_os = "windows")]
     let context_worker_stop = Arc::clone(&car_context_stop);
     let app = tauri::Builder::default()
@@ -3136,6 +3257,9 @@ pub fn run() {
             status: car_context_status,
             stop: car_context_stop,
         })
+        .manage(AcContextState {
+            status: ac_context_status,
+        })
         .setup(move |app| {
             setup_tray(app)?;
             let handle = app.handle().clone();
@@ -3144,7 +3268,12 @@ pub fn run() {
             {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
-                    poll_lmu_car_context(handle, context_worker_status, context_worker_stop)
+                    poll_game_car_context(
+                        handle,
+                        context_worker_status,
+                        ac_context_worker_status,
+                        context_worker_stop,
+                    )
                 });
             }
             let auto_start_profile = {
@@ -3235,6 +3364,7 @@ pub fn run() {
             listen_for_profile_binding,
             cancel_binding_lookup,
             set_ui_font_scale,
+            set_assetto_corsa_path,
             set_input_mode,
             set_virtual_auto_start,
             set_log_retention_days,
@@ -3271,6 +3401,7 @@ pub fn run() {
             remove_virtual_profile_button,
             virtual_routing_status,
             lmu_car_context_status,
+            ac_car_context_status,
             auto_profile_selection_status,
             set_auto_profile_selection,
             resume_auto_profile_selection,
@@ -3317,33 +3448,225 @@ fn profile_shortcuts(profiles: &[Profile]) -> Vec<(Uuid, u8)> {
 }
 
 #[cfg(target_os = "windows")]
-fn poll_lmu_car_context(
+fn poll_game_car_context(
     app: tauri::AppHandle,
-    status: Arc<Mutex<CarContextSummary>>,
+    lmu_status: Arc<Mutex<CarContextSummary>>,
+    ac_status: Arc<Mutex<AcContextSummary>>,
     stop: Arc<std::sync::atomic::AtomicBool>,
 ) {
-    use lmukit_context::windows::WindowsLmuCarContextProvider;
+    use lmukit_context::windows::{WindowsAcCarContextProvider, WindowsLmuCarContextProvider};
     use lmukit_core::car_context::LmuCarContextProvider;
 
     while !stop.load(Ordering::Acquire) {
-        // Open and close the LMU handles for each low-frequency sample. If LMU
-        // exits, LMUKit therefore cannot keep the game-owned mappings alive and
-        // incorrectly present an old snapshot as a current observation.
-        let observation = WindowsLmuCarContextProvider::connect()
-            .and_then(|mut provider| provider.current_context());
-        let summary = if let Ok(current) = status.lock() {
-            match observation {
-                Ok(context) => CarContextSummary::observed(context),
-                Err(_) => CarContextSummary::unavailable(&current),
+        let workspace = app.state::<AppState>().0.lock().ok().map(|store| {
+            (
+                store.active_workspace().kind,
+                store.settings.assetto_corsa_path.clone(),
+            )
+        });
+        match workspace {
+            Some((WorkspaceKind::AssettoCorsa, assetto_corsa_path)) => {
+                let observation = WindowsAcCarContextProvider::connect()
+                    .and_then(|provider| provider.current_context(&assetto_corsa_path));
+                let summary = if let Ok(current) = ac_status.lock() {
+                    match observation {
+                        Ok(context) => AcContextSummary::observed(context),
+                        Err(_) => AcContextSummary::unavailable(&current),
+                    }
+                } else {
+                    AcContextSummary::default()
+                };
+                if let Ok(mut current) = ac_status.lock() {
+                    *current = summary.clone();
+                }
+                apply_ac_automatic_profile_selection(&app, &summary);
             }
-        } else {
-            CarContextSummary::default()
-        };
-        if let Ok(mut current) = status.lock() {
-            *current = summary.clone();
+            Some((WorkspaceKind::LeMansUltimate, _)) => {
+                // Reopen the game-owned mapping for every sample so shutdown
+                // cannot leave a stale snapshot apparently connected.
+                let observation = WindowsLmuCarContextProvider::connect()
+                    .and_then(|mut provider| provider.current_context());
+                let summary = if let Ok(current) = lmu_status.lock() {
+                    match observation {
+                        Ok(context) => CarContextSummary::observed(context),
+                        Err(_) => CarContextSummary::unavailable(&current),
+                    }
+                } else {
+                    CarContextSummary::default()
+                };
+                if let Ok(mut current) = lmu_status.lock() {
+                    *current = summary.clone();
+                }
+                apply_automatic_profile_selection(&app, &summary);
+            }
+            _ => {}
         }
-        apply_automatic_profile_selection(&app, &summary);
         std::thread::sleep(std::time::Duration::from_millis(1_500));
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn apply_ac_automatic_profile_selection(app: &tauri::AppHandle, context: &AcContextSummary) {
+    let app_state = app.state::<AppState>();
+    let (enabled, input_mode) = match app_state.0.lock() {
+        Ok(store) => (
+            store.settings.auto_profile_selection,
+            store.settings.input_mode,
+        ),
+        Err(_) => return,
+    };
+    let auto_state = app.state::<AutoProfileState>();
+    let stable_car = {
+        let Ok(mut runtime) = auto_state.0.lock() else {
+            return;
+        };
+        if !enabled {
+            runtime.reset("Automatic profile selection is off.");
+            return;
+        }
+        if input_mode != InputMode::Virtual {
+            runtime.reset("Automatic profile selection waits for Virtual Input mode.");
+            return;
+        }
+        if runtime.paused {
+            runtime.debouncer.reset();
+            runtime.last_attempted_profile = None;
+            return;
+        }
+        let Some(car_id) = context.car_id.as_deref().filter(|_| context.connected) else {
+            if runtime.manual_override_context.is_none() {
+                runtime.reset("Holding the current profile until Assetto Corsa confirms a car.");
+            }
+            return;
+        };
+        if let Some(override_car) = runtime.manual_override_context.clone() {
+            if override_car.eq_ignore_ascii_case(car_id) {
+                runtime.debouncer.reset();
+                runtime.last_attempted_profile = None;
+                return;
+            }
+            runtime.manual_override_context = None;
+            runtime.reset("Assetto Corsa changed cars. Resuming automatic selection.");
+        }
+        if !runtime
+            .debouncer
+            .candidate()
+            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(car_id))
+        {
+            runtime.last_attempted_profile = None;
+        }
+        let stable = runtime.debouncer.observe(Some(car_id)).map(str::to_owned);
+        if stable.is_none() {
+            runtime.message = format!(
+                "Confirming {} ({}/{})…",
+                context.car_name.as_deref().unwrap_or(car_id),
+                runtime.debouncer.observations(),
+                runtime.debouncer.required_observations()
+            );
+        }
+        stable
+    };
+    let Some(car_id) = stable_car else {
+        return;
+    };
+    let resolved = (|| -> Result<(Profile, String), String> {
+        let store = app_state.0.lock().map_err(|error| error.to_string())?;
+        let profiles = store
+            .active_workspace_profiles()
+            .map_err(|error| error.to_string())?;
+        let mut matches = store
+            .settings
+            .class_profile_defaults
+            .iter()
+            .filter(|entry| entry.workspace_id == store.settings.active_workspace_id)
+            .filter(|entry| {
+                context
+                    .tags
+                    .iter()
+                    .any(|tag| tag.eq_ignore_ascii_case(&entry.class_tag))
+            })
+            .filter_map(|entry| {
+                profiles
+                    .iter()
+                    .find(|profile| profile.id == entry.profile_id)
+                    .cloned()
+                    .map(|profile| (profile, entry.class_tag.clone()))
+            })
+            .collect::<Vec<_>>();
+        matches.sort_by_key(|(profile, _)| profile.id);
+        matches.dedup_by_key(|(profile, _)| profile.id);
+        match matches.len() {
+            0 => Err(format!(
+                "No automatic profile tag matches {}.",
+                context.car_name.as_deref().unwrap_or(&car_id)
+            )),
+            1 => Ok(matches.remove(0)),
+            _ => Err(format!(
+                "{} matches tags assigned to multiple profile defaults. Use a more specific tag.",
+                context.car_name.as_deref().unwrap_or(&car_id)
+            )),
+        }
+    })();
+    let (profile, matched_tag) = match resolved {
+        Ok(resolved) => resolved,
+        Err(message) => {
+            if let Ok(mut runtime) = auto_state.0.lock() {
+                runtime.message = message;
+            }
+            return;
+        }
+    };
+    let routing_state = app.state::<VirtualRoutingState>();
+    if routing_state
+        .status
+        .lock()
+        .is_ok_and(|status| status.active && status.profile_id == Some(profile.id))
+    {
+        if let Ok(mut runtime) = auto_state.0.lock() {
+            runtime.last_attempted_profile = Some(profile.id);
+            runtime.message = format!(
+                "{} is already active for {}.",
+                profile.name,
+                context.car_name.as_deref().unwrap_or(&car_id)
+            );
+        }
+        return;
+    }
+    {
+        let Ok(mut runtime) = auto_state.0.lock() else {
+            return;
+        };
+        if runtime.paused || runtime.last_attempted_profile == Some(profile.id) {
+            return;
+        }
+        runtime.last_attempted_profile = Some(profile.id);
+        runtime.message = format!("Switching to {}…", profile.name);
+    }
+    let reason = format!("AC tag {matched_tag} detected automatically");
+    match start_virtual_routing_inner(profile.id, reason, &app_state, &routing_state) {
+        Ok(_) => {
+            if let Ok(mut runtime) = auto_state.0.lock() {
+                runtime.message = format!(
+                    "Switched to {} for {}.",
+                    profile.name,
+                    context.car_name.as_deref().unwrap_or(&car_id)
+                );
+            }
+            diagnostics::info(
+                "routing.auto.selected",
+                format!(
+                    "{} selected for AC car {car_id} via tag {matched_tag}",
+                    profile.name
+                ),
+            );
+        }
+        Err(error) => {
+            if let Ok(mut runtime) = auto_state.0.lock() {
+                runtime.message =
+                    format!("Could not start {} automatically: {error}", profile.name);
+            }
+            diagnostics::warn("routing.auto.failed", error);
+        }
     }
 }
 
@@ -3384,18 +3707,18 @@ fn apply_automatic_profile_selection(app: &tauri::AppHandle, context: &CarContex
             return;
         }
         let Some(class_tag) = confirmed_class else {
-            if runtime.manual_override_class.is_none() {
+            if runtime.manual_override_context.is_none() {
                 runtime.reset("Holding the current profile until LMU confirms a car class.");
             }
             return;
         };
-        if let Some(override_class) = runtime.manual_override_class.clone() {
+        if let Some(override_class) = runtime.manual_override_context.clone() {
             if override_class.eq_ignore_ascii_case(class_tag) {
                 runtime.debouncer.reset();
                 runtime.last_attempted_profile = None;
                 return;
             }
-            runtime.manual_override_class = None;
+            runtime.manual_override_context = None;
             runtime.reset(format!(
                 "Detected a change from {} to {}. Resuming automatic selection.",
                 display_existing_class(&override_class),
@@ -3554,9 +3877,9 @@ fn poll_hotkeys(
                 let mode = app_state
                     .0
                     .lock()
-                    .map(|store| store.settings.input_mode)
+                    .map(|store| (store.settings.input_mode, store.active_workspace().kind))
                     .map_err(|error| error.to_string());
-                let result = mode.and_then(|mode| match mode {
+                let result = mode.and_then(|(mode, workspace_kind)| match mode {
                     InputMode::Legacy => ensure_lmu_file_write_allowed(false).and_then(|_| {
                         app_state
                             .0
@@ -3590,11 +3913,26 @@ fn poll_hotkeys(
                             &routing_state,
                         );
                         if result.is_ok() {
-                            let class_tag =
-                                app.state::<CarContextState>().status.lock().ok().and_then(
-                                    |context| confirmed_class(&context).map(str::to_owned),
+                            if workspace_kind == WorkspaceKind::AssettoCorsa {
+                                let context = app.state::<AcContextState>();
+                                let context = context.status.lock().ok();
+                                let context_key =
+                                    context.as_ref().and_then(|context| context.car_id.clone());
+                                let context_label = context.as_ref().and_then(|context| {
+                                    context.car_name.clone().or_else(|| context.car_id.clone())
+                                });
+                                hold_manual_profile_for_context(
+                                    &auto_state,
+                                    context_key.as_deref(),
+                                    context_label,
                                 );
-                            hold_manual_profile_for_class(&auto_state, class_tag.as_deref());
+                            } else {
+                                let class_tag =
+                                    app.state::<CarContextState>().status.lock().ok().and_then(
+                                        |context| confirmed_class(&context).map(str::to_owned),
+                                    );
+                                hold_manual_profile_for_class(&auto_state, class_tag.as_deref());
+                            }
                         }
                         result.map(|status| {
                             format!(

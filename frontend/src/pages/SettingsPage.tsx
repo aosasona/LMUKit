@@ -47,12 +47,14 @@ type Props = {
   profiles: Profile[];
   configPath: string;
   settingsPath: string;
+  assettoCorsaPath: string;
   companionApps: CompanionApp[];
   launchMode: "desktop" | "vr";
   autoStartVirtualProfile: boolean;
   workspaceKind: Workspace["kind"];
   onSaveFontScale: (scale: number) => void;
   onSetVirtualAutoStart: (enabled: boolean) => void;
+  onSaveAssettoCorsaPath: (path: string) => void;
   onSaveSettings: (
     configPath: string,
     settingsPath: string,
@@ -83,12 +85,14 @@ export function SettingsPage(props: Props) {
     profiles,
     configPath,
     settingsPath,
+    assettoCorsaPath,
     companionApps,
     launchMode,
     autoStartVirtualProfile,
     workspaceKind,
     onSaveFontScale,
     onSetVirtualAutoStart,
+    onSaveAssettoCorsaPath,
     onSaveSettings,
     onSetHotkey,
     onCreateLaunchOption,
@@ -98,6 +102,7 @@ export function SettingsPage(props: Props) {
   const [draftScale, setDraftScale] = useState(fontScale);
   const [bindings, setBindings] = useState(configPath);
   const [gameSettings, setGameSettings] = useState(settingsPath);
+  const [assettoRoot, setAssettoRoot] = useState(assettoCorsaPath);
   const [apps, setApps] = useState(companionApps);
   const [mode, setMode] = useState(launchMode);
   const [saveState, setSaveState] = useState<
@@ -126,6 +131,7 @@ export function SettingsPage(props: Props) {
     mode !== launchMode;
 
   useEffect(() => setDraftScale(fontScale), [fontScale]);
+  useEffect(() => setAssettoRoot(assettoCorsaPath), [assettoCorsaPath]);
   useEffect(() => {
     saveSettings.current = onSaveSettings;
   }, [onSaveSettings]);
@@ -377,6 +383,38 @@ export function SettingsPage(props: Props) {
                 )
               }
             />
+          </div>
+        </section>
+      )}
+
+      {!isLmu && (
+        <section className="settings-card">
+          <SettingsHeading
+            icon={<FolderOpen />}
+            eyebrow="Game files"
+            title="Assetto Corsa installation"
+          >
+            LMUKit reads the active car&apos;s Content Manager tags from this
+            folder. It never edits them.
+          </SettingsHeading>
+          <div className="path-fields">
+            <label className="path-field">
+              <span>Assetto Corsa folder</span>
+              <div>
+                <input
+                  value={assettoRoot}
+                  placeholder="C:\\Program Files (x86)\\Steam\\steamapps\\common\\assettocorsa"
+                  onChange={(event) => setAssettoRoot(event.target.value)}
+                />
+                <button
+                  type="button"
+                  disabled={busy || !assettoRoot.trim() || assettoRoot.trim() === assettoCorsaPath}
+                  onClick={() => onSaveAssettoCorsaPath(assettoRoot)}
+                >
+                  Save
+                </button>
+              </div>
+            </label>
           </div>
         </section>
       )}

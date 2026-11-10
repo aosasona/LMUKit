@@ -61,15 +61,16 @@ Virtual Input Mode is optional and requires the user to install and configure [v
 
 Use the workspace selector below the LMUKit logo to switch sims. Switching always stops live routing and releases every vJoy output first. Profiles, mappings, keyboard shortcuts, and the selected profile are shown for the active workspace; the wheel library remains shared.
 
-Initial Assetto Corsa support uses the existing button-only Virtual Input engine and a manual one-time binding flow:
+Assetto Corsa uses the existing button-only Virtual Input engine and a one-time binding flow:
 
 1. Select **Assetto Corsa** and create a profile under **Profiles**.
 2. Assign a shared wheel, then open **Virtual input**.
 3. Under **External app actions**, name the AC action, choose **Send now** or **In 5s**, and make Assetto Corsa listen for that vJoy button.
 4. Open **Profile editor** and bind the physical wheel control to the named action.
 5. Start that profile's live remapping from Profiles.
+6. Add one or more exact tags from the car's `content/cars/<car-id>/ui/ui_car.json`, make the appropriate profile the default for each tag, and optionally enable **Auto-select** on the AC overview.
 
-LMUKit does not edit Assetto Corsa configuration files or route axes and FFB. Steering, pedals and force feedback stay directly connected to the game. Automatic AC process detection and a workspace-local virtual action layout are follow-up work; this first phase uses manual workspace selection and the current shared vJoy action catalogue.
+While AC is running, LMUKit reads the active car ID from the documented `Local\acpmf_static` and `Local\acpmf_graphics` shared-memory pages, then reads that car's Content Manager tags from `ui_car.json`. Matching is case-insensitive but otherwise exact. If several matching tags point to different profile defaults, LMUKit refuses to guess and asks for a more specific tag. Configure a non-default Steam library under **Settings → Assetto Corsa installation**. LMUKit never edits AC or Content Manager files and does not route axes or FFB; steering, pedals and force feedback stay directly connected to the game. The virtual action catalogue remains shared between workspaces for now.
 
 ### Profiles
 

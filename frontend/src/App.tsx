@@ -11,6 +11,7 @@ import type {
   Binding,
   BindingAssignmentCandidate,
   AutoProfileSelectionStatus,
+  AcCarContextStatus,
   CompanionApp,
   Device,
   JsonObject,
@@ -24,6 +25,7 @@ import type {
 } from "./models";
 import {
   emptyAutoProfileSelectionStatus,
+  emptyAcCarContextStatus,
   emptyCarContextStatus,
   emptySnapshot,
 } from "./models";
@@ -54,6 +56,9 @@ export default function App() {
   });
   const [carContext, setCarContext] = useState<LmuCarContextStatus>(
     emptyCarContextStatus,
+  );
+  const [acCarContext, setAcCarContext] = useState<AcCarContextStatus>(
+    emptyAcCarContextStatus,
   );
   const [autoProfileSelection, setAutoProfileSelection] =
     useState<AutoProfileSelectionStatus>(emptyAutoProfileSelectionStatus);
@@ -130,16 +135,18 @@ export default function App() {
   };
   async function refresh() {
     try {
-      const [next, nextRouting, nextCarContext, nextAutoSelection] =
+      const [next, nextRouting, nextCarContext, nextAcCarContext, nextAutoSelection] =
         await Promise.all([
           invoke<Snapshot>("snapshot"),
           invoke<VirtualRoutingStatus>("virtual_routing_status"),
           invoke<LmuCarContextStatus>("lmu_car_context_status"),
+          invoke<AcCarContextStatus>("ac_car_context_status"),
           invoke<AutoProfileSelectionStatus>("auto_profile_selection_status"),
         ]);
       setSnapshot(next);
       setRouting(nextRouting);
       setCarContext(nextCarContext);
+      setAcCarContext(nextAcCarContext);
       setAutoProfileSelection(nextAutoSelection);
       setSelectedId((current) =>
         next.profiles.some((profile) => profile.id === current)
@@ -161,10 +168,12 @@ export default function App() {
     const timer = window.setInterval(() => {
       void Promise.all([
         invoke<LmuCarContextStatus>("lmu_car_context_status"),
+        invoke<AcCarContextStatus>("ac_car_context_status"),
         invoke<AutoProfileSelectionStatus>("auto_profile_selection_status"),
       ])
-        .then(([context, autoSelection]) => {
+        .then(([context, acContext, autoSelection]) => {
           setCarContext(context);
+          setAcCarContext(acContext);
           setAutoProfileSelection(autoSelection);
         })
         .catch(() => undefined);
@@ -481,7 +490,9 @@ export default function App() {
       );
       setNotice(
         enabled
-          ? "Automatic profile selection enabled. Waiting for LMU to confirm a class."
+          ? snapshot.activeWorkspaceKind === "assetto_corsa"
+            ? "Automatic profile selection enabled. Waiting for Assetto Corsa to confirm a car and its tags."
+            : "Automatic profile selection enabled. Waiting for LMU to confirm a class."
           : "Automatic profile selection disabled. The current live profile is unchanged.",
       );
     });
@@ -698,6 +709,15 @@ export default function App() {
           ? "The last live profile will start automatically with LMUKit."
           : "Automatic live-profile startup disabled.",
       );
+    });
+  const saveAssettoCorsaPath = (path: string) =>
+    withBusy(async () => {
+      await invoke("set_assetto_corsa_path", { path });
+      setSnapshot((current) => ({
+        ...current,
+        assettoCorsaPath: path.trim(),
+      }));
+      setNotice("Assetto Corsa installation folder saved.");
     });
   const saveAppSettings = (
     configPath: string,
@@ -920,6 +940,11 @@ export default function App() {
                   workspace={activeWorkspace}
                   profiles={snapshot.profiles}
                   routing={routing}
+                  carContext={acCarContext}
+                  autoProfileSelection={autoProfileSelection}
+                  busy={busy}
+                  onSetAutoProfileSelection={changeAutoProfileSelection}
+                  onResumeAutoProfileSelection={resumeAutoProfileSelection}
                   onNavigate={navigate}
                 />
               )}
@@ -1020,12 +1045,14 @@ export default function App() {
                 profiles={snapshot.profiles}
                 configPath={snapshot.lmuConfigPath}
                 settingsPath={snapshot.lmuSettingsPath}
+                assettoCorsaPath={snapshot.assettoCorsaPath}
                 companionApps={snapshot.companionApps}
                 launchMode={snapshot.lmuLaunchMode}
                 autoStartVirtualProfile={snapshot.autoStartVirtualProfile}
                 workspaceKind={snapshot.activeWorkspaceKind}
                 onSaveFontScale={saveFontScale}
                 onSetVirtualAutoStart={setVirtualAutoStart}
+                onSaveAssettoCorsaPath={saveAssettoCorsaPath}
                 onSaveSettings={saveAppSettings}
                 onSetHotkey={setProfileHotkey}
                 onCreateLaunchOption={createLaunchOption}

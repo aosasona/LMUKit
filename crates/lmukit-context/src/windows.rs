@@ -1,4 +1,5 @@
 use std::{
+    path::Path,
     ptr,
     sync::atomic::{AtomicI32, Ordering},
     time::SystemTime,
@@ -21,7 +22,9 @@ use windows_sys::Win32::{
 };
 
 use crate::{
-    LMU_SHARED_MEMORY_NAME, LMU_SHARED_MEMORY_PAYLOAD_SIZE, decode_lmu_car_context, utc_timestamp,
+    AC_GRAPHICS_SHARED_MEMORY_NAME, AC_GRAPHICS_SNAPSHOT_SIZE, AC_STATIC_SHARED_MEMORY_NAME,
+    AC_STATIC_SNAPSHOT_SIZE, AcCarContext, LMU_SHARED_MEMORY_NAME, LMU_SHARED_MEMORY_PAYLOAD_SIZE,
+    decode_ac_car_context, decode_lmu_car_context, utc_timestamp,
 };
 
 const LOCK_MAPPING_NAME: &str = "LMU_SharedMemoryLockData";
@@ -67,6 +70,39 @@ impl LmuCarContextProvider for WindowsLmuCarContextProvider {
     }
 }
 
+pub struct WindowsAcCarContextProvider {
+    static_data: MappedView,
+    graphics_data: MappedView,
+}
+
+impl WindowsAcCarContextProvider {
+    pub fn connect() -> Result<Self> {
+        Ok(Self {
+            static_data: MappedView::open_read(
+                AC_STATIC_SHARED_MEMORY_NAME,
+                AC_STATIC_SNAPSHOT_SIZE,
+            )
+            .context("Assetto Corsa static shared memory is unavailable")?,
+            graphics_data: MappedView::open_read(
+                AC_GRAPHICS_SHARED_MEMORY_NAME,
+                AC_GRAPHICS_SNAPSHOT_SIZE,
+            )
+            .context("Assetto Corsa graphics shared memory is unavailable")?,
+        })
+    }
+
+    pub fn current_context(&self, assetto_corsa_root: &Path) -> Result<AcCarContext> {
+        let static_snapshot = self.static_data.snapshot(AC_STATIC_SNAPSHOT_SIZE);
+        let graphics_snapshot = self.graphics_data.snapshot(AC_GRAPHICS_SNAPSHOT_SIZE);
+        decode_ac_car_context(
+            &static_snapshot,
+            &graphics_snapshot,
+            assetto_corsa_root,
+            Some(utc_timestamp(SystemTime::now())),
+        )
+    }
+}
+
 struct MappedView {
     handle: HANDLE,
     address: MEMORY_MAPPED_VIEW_ADDRESS,
@@ -98,6 +134,20 @@ impl MappedView {
             bail!("Windows mapping view could not be created");
         }
         Ok(Self { handle, address })
+    }
+
+    fn snapshot(&self, size: usize) -> Vec<u8> {
+        let mut snapshot = vec![0; size];
+        // SAFETY: the mapped view was opened for at least `size` bytes and the
+        // destination owns a buffer of exactly that length.
+        unsafe {
+            ptr::copy_nonoverlapping(
+                self.address.Value.cast::<u8>(),
+                snapshot.as_mut_ptr(),
+                snapshot.len(),
+            );
+        }
+        snapshot
     }
 }
 
