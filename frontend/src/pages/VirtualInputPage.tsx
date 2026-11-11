@@ -462,7 +462,7 @@ export function VirtualInputPage({
           </strong>
           <p>
             Name virtual actions once, assign buttons from each profile, then
-            enable live remapping while LMUKit is open.
+            enable live remapping while Pivot is open.
           </p>
           {!!routing.activeEncoderModes.length && (
             <div className="active-encoder-modes">
@@ -495,7 +495,7 @@ export function VirtualInputPage({
                 <span className="eyebrow">One-time setup</span>
                 <h2>Teach LMU the virtual buttons</h2>
                 <p>
-                  LMUKit advances through unused buttons and never edits LMU.
+                  Pivot advances through unused buttons and never edits LMU.
                 </p>
               </div>
               <span className={setup ? "active" : ""}>
@@ -524,7 +524,7 @@ export function VirtualInputPage({
                 <b>3</b>
                 <span>
                   <strong>Save and rescan</strong>
-                  <small>LMUKit names only bindings LMU actually saved.</small>
+                  <small>Pivot names only bindings LMU actually saved.</small>
                 </span>
               </div>
             </div>
@@ -541,7 +541,7 @@ export function VirtualInputPage({
                           Device 1 has only {setup.buttonCount} virtual buttons
                         </strong>
                         <small>
-                          Close LMU and LMUKit, open Configure vJoy, set Buttons
+                          Close LMU and Pivot, open Configure vJoy, set Buttons
                           to
                           {` ${RECOMMENDED_VJOY_BUTTON_COUNT}`}, apply the
                           change, then reopen both apps. Windows may

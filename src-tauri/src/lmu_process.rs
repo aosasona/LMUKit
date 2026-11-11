@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn rejects_similar_unrelated_processes() {
-        assert!(!is_lmu_process_name("LMUKit.exe"));
+        assert!(!is_lmu_process_name("Pivot.exe"));
         assert!(!is_lmu_process_name("Le Mans Ultimate Launcher.exe"));
         assert!(!is_lmu_process_name("steam.exe"));
     }

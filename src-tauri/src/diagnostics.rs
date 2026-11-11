@@ -63,7 +63,7 @@ pub fn initialise(data_directory: &Path, retention_days: usize) -> std::io::Resu
     });
     info(
         "app.start",
-        format!("LMUKit {} started", env!("CARGO_PKG_VERSION")),
+        format!("Pivot {} started", env!("CARGO_PKG_VERSION")),
     );
     Ok(())
 }

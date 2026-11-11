@@ -32,14 +32,14 @@ const virtualSteps: GuideStep[] = [
   {
     title: "Prepare vJoy once",
     detail:
-      "Install vJoy separately, configure device 1 with 128 buttons, and restart Windows if its installer asks. LMUKit never installs or silently changes the driver.",
+      "Install vJoy separately, configure device 1 with 128 buttons, and restart Windows if its installer asks. Pivot never installs or silently changes the driver.",
     action: "Check virtual input",
     page: "virtual",
   },
   {
     title: "Bind LMU actions to vJoy",
     detail:
-      "Open LMU's control assignments, choose an action, then use LMUKit's guided setup to send the next unused virtual button. Finish and rescan after LMU saves the bindings.",
+      "Open LMU's control assignments, choose an action, then use Pivot's guided setup to send the next unused virtual button. Finish and rescan after LMU saves the bindings.",
     action: "Open guided setup",
     page: "virtual",
   },
@@ -67,7 +67,7 @@ const virtualSteps: GuideStep[] = [
   {
     title: "Go live",
     detail:
-      "Select Virtual Input in the title bar and use the profile live. Optionally set one default per class and enable Auto-select on Overview. Keep LMUKit running or hidden in the tray.",
+      "Select Virtual Input in the title bar and use the profile live. Optionally set one default per class and enable Auto-select on Overview. Keep Pivot running or hidden in the tray.",
     action: "Open overview",
     page: "home",
   },
@@ -77,7 +77,7 @@ const legacySteps: GuideStep[] = [
   {
     title: "Confirm LMU's file locations",
     detail:
-      "LMUKit normally finds direct input.json and Settings.JSON automatically. Check them in Settings if LMU is installed in a non-standard Steam library.",
+      "Pivot normally finds direct input.json and Settings.JSON automatically. Check them in Settings if LMU is installed in a non-standard Steam library.",
     action: "Open settings",
     page: "settings",
   },
@@ -247,7 +247,7 @@ export function HelpPage({
           <div>
             <strong>Virtual Input is deliberately button-only</strong>
             <span>
-              LMUKit does not suppress physical hardware, transform axes, or
+              Pivot does not suppress physical hardware, transform axes, or
               participate in force feedback. Avoid binding the same physical
               button directly in LMU and through vJoy, or both inputs may fire.
             </span>
@@ -265,7 +265,7 @@ export function HelpPage({
         <div className="help-faq-grid">
           <details>
             <summary>
-              <Usb /> LMUKit does not detect my button
+              <Usb /> Pivot does not detect my button
             </summary>
             <p>
               Turn the device on before capture and try Bind control again. A
@@ -298,12 +298,12 @@ export function HelpPage({
           </details>
           <details>
             <summary>
-              <Radio /> Discord stops listening when I click LMUKit
+              <Radio /> Discord stops listening when I click Pivot
             </summary>
             <p>
               Create the external action first, then choose In 5s. Switch to
               Discord and click Edit Keybind before the countdown finishes.
-              LMUKit sends the vJoy pulse from its background worker, so Discord
+              Pivot sends the vJoy pulse from its background worker, so Discord
               can remain focused when the input arrives.
             </p>
           </details>
@@ -314,7 +314,7 @@ export function HelpPage({
             <p>
               Remove any direct LMU binding for that physical control when it is
               also routed through vJoy. Use Test a control with live remapping
-              disabled to check which named action LMUKit resolves.
+              disabled to check which named action Pivot resolves.
             </p>
           </details>
           <details>

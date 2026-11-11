@@ -129,7 +129,7 @@ export function OverviewPage({
                     setConfirmation({
                       title: `Update ${active.name} from LMU?`,
                       description:
-                        "This replaces the saved profile with LMU's current bindings. LMUKit will create a recovery backup first.",
+                        "This replaces the saved profile with LMU's current bindings. Pivot will create a recovery backup first.",
                       confirmLabel: "Update from LMU",
                       onConfirm: () => {
                         onUpdate(active);

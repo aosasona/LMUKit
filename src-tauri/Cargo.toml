@@ -2,7 +2,7 @@
 name = "lmukit"
 version.workspace = true
 edition.workspace = true
-description = "A native desktop toolkit for Le Mans Ultimate"
+description = "A native desktop toolkit for focused sim-racing utilities"
 license.workspace = true
 build = "build.rs"
 

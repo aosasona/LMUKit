@@ -706,7 +706,7 @@ export default function App() {
       }));
       setNotice(
         enabled
-          ? "The last live profile will start automatically with LMUKit."
+          ? "The last live profile will start automatically with Pivot."
           : "Automatic live-profile startup disabled.",
       );
     });
@@ -835,18 +835,18 @@ export default function App() {
     });
   const exitConfirmation: Confirmation | null = exitRequested
     ? {
-        title: "Exit LMUKit?",
+        title: "Exit Pivot?",
         description: [
           routing.active
             ? "Live remapping will stop and every virtual button will be released."
-            : "LMUKit will stop running in the notification area.",
+            : "Pivot will stop running in the notification area.",
           gameSettingsDirty || profileDocumentDirty
             ? "Your unsaved editor changes will be discarded."
             : "",
         ]
           .filter(Boolean)
           .join(" "),
-        confirmLabel: "Exit LMUKit",
+        confirmLabel: "Exit Pivot",
         danger: true,
         onConfirm: () => {
           setExitRequested(false);
@@ -874,7 +874,7 @@ export default function App() {
           <header className="topbar">
             <div>
               <span className="eyebrow">
-                {page === "home" ? "Good evening" : "LMUKit"}
+                {page === "home" ? "Good evening" : "Pivot"}
               </span>
               <h1>{pageTitle(page)}</h1>
             </div>

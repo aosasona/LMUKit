@@ -139,7 +139,7 @@ export function WorkspaceOverviewPage({
       <div className="workspace-overview-note panel">
         <strong>Car-tag switching is read-only</strong>
         <p>
-          LMUKit reads the active car ID from AC shared memory and its tags from
+          Pivot reads the active car ID from AC shared memory and its tags from
           ui_car.json. It does not edit Assetto Corsa or Content Manager. AC
           must still be taught the vJoy buttons once, and the game remains
           responsible for steering, pedals and force feedback.

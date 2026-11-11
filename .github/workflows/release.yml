@@ -81,8 +81,8 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}".Substring(1)
-          $archive = "LMUKit-$version-windows-x86_64-portable.zip"
-          $installerName = "LMUKit-$version-windows-x86_64-setup.exe"
+          $archive = "Pivot-$version-windows-x86_64-portable.zip"
+          $installerName = "Pivot-$version-windows-x86_64-setup.exe"
           Compress-Archive -Path "target/release/lmukit.exe" -DestinationPath $archive
 
           $installer = Get-ChildItem "target/release/bundle/nsis" -Filter "*-setup.exe" |
@@ -104,7 +104,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
-          name: LMUKit-${{ github.ref_name }}-windows-x86_64
+          name: Pivot-${{ github.ref_name }}-windows-x86_64
           if-no-files-found: error
           path: |
             ${{ steps.package.outputs.archive }}
@@ -128,5 +128,5 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $assets --clobber
           } else {
-            gh release create $tag $assets --verify-tag --generate-notes --title "LMUKit $tag"
+            gh release create $tag $assets --verify-tag --generate-notes --title "Pivot $tag"
           }

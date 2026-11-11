@@ -3180,13 +3180,13 @@ fn request_exit_confirmation(app: &tauri::AppHandle) {
 }
 
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
-    let show = MenuItem::with_id(app, "show-lmukit", "Show LMUKit", true, None::<&str>)?;
-    let exit = MenuItem::with_id(app, "exit-lmukit", "Exit LMUKit", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show-lmukit", "Show Pivot", true, None::<&str>)?;
+    let exit = MenuItem::with_id(app, "exit-lmukit", "Exit Pivot", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &exit])?;
     let mut tray = TrayIconBuilder::with_id("lmukit")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .tooltip("LMUKit")
+        .tooltip("Pivot")
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show-lmukit" => show_main_window(app),
             "exit-lmukit" => request_exit_confirmation(app),
@@ -3213,11 +3213,11 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let store = Store::open().expect("LMUKit data store should open");
+    let store = Store::open().expect("Pivot data store should open");
     if let Err(error) =
         diagnostics::initialise(&store.data_dir(), store.settings.log_retention_days)
     {
-        eprintln!("LMUKit logging could not start: {error}");
+        eprintln!("Pivot logging could not start: {error}");
     }
     let shortcuts = store
         .active_workspace_profiles()
@@ -3237,7 +3237,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             diagnostics::info(
                 "app.second-instance",
-                "A second launch restored the existing LMUKit window",
+                "A second launch restored the existing Pivot window",
             );
             show_main_window(app);
         }))
@@ -3413,7 +3413,7 @@ pub fn run() {
             send_next_virtual_button
         ])
         .build(tauri::generate_context!())
-        .expect("error while building LMUKit");
+        .expect("error while building Pivot");
     app.run(|app_handle, event| match event {
         tauri::RunEvent::WindowEvent {
             label,

@@ -79,7 +79,7 @@ export function ForceFeedbackEditor({
             <Gauge />
             <strong>No recognised FFB settings found</strong>
             <span>
-              Capture a current LMU wheel profile; LMUKit will not invent
+              Capture a current LMU wheel profile; Pivot will not invent
               undocumented fields.
             </span>
           </div>

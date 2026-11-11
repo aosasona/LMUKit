@@ -417,8 +417,10 @@ impl Store {
         if let Some(root) = std::env::var_os("LMUKIT_DATA_DIR") {
             return Self::open_at(PathBuf::from(root));
         }
+        // Keep the legacy application-data identity so the product rename does
+        // not make existing settings, profiles, wheels, or backups disappear.
         let dirs = ProjectDirs::from("app", "LMUKit", "LMUKit")
-            .context("could not determine LMUKit's application-data directory")?;
+            .context("could not determine Pivot's application-data directory")?;
         Self::open_at(dirs.data_local_dir().to_path_buf())
     }
 
@@ -429,7 +431,7 @@ impl Store {
         let settings_path = root.join("settings.json");
         let mut settings = if settings_path.exists() {
             serde_json::from_slice(&fs::read(&settings_path)?)
-                .context("LMUKit's settings file is invalid")?
+                .context("Pivot's settings file is invalid")?
         } else {
             Settings::default()
         };
@@ -883,7 +885,7 @@ impl Store {
     pub fn companion_launch_option(&self, lmukit_exe: &Path) -> Result<String> {
         if !lmukit_exe.is_file() {
             bail!(
-                "LMUKit's executable could not be found at {}",
+                "Pivot's executable could not be found at {}",
                 lmukit_exe.display()
             );
         }
@@ -903,7 +905,7 @@ impl Store {
         let lmukit_working_dir = batch_path(
             lmukit_exe
                 .parent()
-                .context("LMUKit's executable has no parent directory")?,
+                .context("Pivot's executable has no parent directory")?,
         );
         let mut script = format!(
             "@echo off\r\n\

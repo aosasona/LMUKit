@@ -403,7 +403,7 @@ export function ProfileEncoderMappings({
                   {step === "increase" && (
                     <CaptureStep
                       title="Capture Increase"
-                      description="Turn the encoder once in the direction that should increase the selected action. LMUKit is already listening."
+                      description="Turn the encoder once in the direction that should increase the selected action. Pivot is already listening."
                       control={draft.clockwise}
                       capturing={capturing === "clockwise"}
                       onCapture={() => void capture("clockwise")}
@@ -420,7 +420,7 @@ export function ProfileEncoderMappings({
                   {step === "decrease" && (
                     <CaptureStep
                       title="Capture Decrease"
-                      description="Turn the encoder once in the direction that should decrease the selected action. LMUKit is already listening."
+                      description="Turn the encoder once in the direction that should decrease the selected action. Pivot is already listening."
                       control={draft.counterclockwise}
                       capturing={capturing === "counterclockwise"}
                       onCapture={() => void capture("counterclockwise")}

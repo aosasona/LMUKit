@@ -686,7 +686,7 @@ export function ProfileVirtualMappings({
                       setConfirmation({
                         title: "Import controls from this LMU profile?",
                         description:
-                          "LMUKit will add matching physical button controls from the profile's saved direct input configuration. Existing physical control assignments are kept, but you should review any newly added mappings afterward.",
+                          "Pivot will add matching physical button controls from the profile's saved direct input configuration. Existing physical control assignments are kept, but you should review any newly added mappings afterward.",
                         confirmLabel: "Import controls",
                         onConfirm: () => {
                           setConfirmation(null);

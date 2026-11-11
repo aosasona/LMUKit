@@ -24,7 +24,7 @@ export function TitleBar({ onError }: { onError: (message: string) => void }) {
     >
       <div className="titlebar-brand" data-tauri-drag-region>
         <img src="/app-icon.png" alt="" />
-        <span data-tauri-drag-region>LMUKit</span>
+        <span data-tauri-drag-region>Pivot</span>
       </div>
       <div className="window-controls">
         <button

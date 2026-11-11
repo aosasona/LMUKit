@@ -57,7 +57,7 @@ pub struct LmuCarContext {
     pub vehicle_id: Option<String>,
     pub vehicle_name: Option<String>,
     pub class_raw: Option<String>,
-    /// One of LMUKit's existing profile class-tag identifiers.
+    /// One of the existing profile class-tag identifiers.
     pub class_normalized: Option<String>,
     pub session_state: LmuSessionState,
     pub source: LmuCarContextSource,

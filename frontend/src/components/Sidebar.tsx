@@ -48,10 +48,10 @@ export function Sidebar({
     <aside className="sidebar">
       <div className="brand">
         <div className="brand-mark">
-          <span>LMU</span>
+          <span>P</span>
         </div>
         <div>
-          <strong>LMUKit</strong>
+          <strong>Pivot</strong>
           <small>Race setup, simplified</small>
         </div>
       </div>
@@ -90,7 +90,7 @@ export function Sidebar({
         </button>
         <button className="app-exit" onClick={onExit}>
           <Power size={16} />
-          <span>Exit LMUKit</span>
+          <span>Exit Pivot</span>
         </button>
       </div>
     </aside>

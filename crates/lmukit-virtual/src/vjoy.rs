@@ -106,7 +106,7 @@ fn dll_candidates() -> Vec<PathBuf> {
     candidates
 }
 
-/// Runtime-loaded vJoy backend. LMUKit does not bundle or install the driver.
+/// Runtime-loaded vJoy backend. Pivot does not bundle or install the driver.
 pub struct VJoyBackend {
     // vJoyInterface.dll must remain loaded for the process lifetime. The DLL
     // can retain native work after a device is relinquished; unloading it with

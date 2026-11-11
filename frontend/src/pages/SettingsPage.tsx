@@ -304,7 +304,7 @@ export function SettingsPage(props: Props) {
     <section className="settings-page settings-stack">
       <section className="settings-card">
         <SettingsHeading icon={<Type />} eyebrow="Appearance" title="Text size">
-          Scale every font in LMUKit without changing your Windows settings.
+          Scale every font in Pivot without changing your Windows settings.
         </SettingsHeading>
         <div className="font-scale-control">
           <button
@@ -359,7 +359,7 @@ export function SettingsPage(props: Props) {
             eyebrow="Files"
             title="LMU paths"
           >
-            Choose the live binding and game-settings files LMUKit should
+            Choose the live binding and game-settings files Pivot should
             manage.
           </SettingsHeading>
           <div className="path-fields">
@@ -394,7 +394,7 @@ export function SettingsPage(props: Props) {
             eyebrow="Game files"
             title="Assetto Corsa installation"
           >
-            LMUKit reads the active car&apos;s Content Manager tags from this
+            Pivot reads the active car&apos;s Content Manager tags from this
             folder. It never edits them.
           </SettingsHeading>
           <div className="path-fields">
@@ -425,14 +425,14 @@ export function SettingsPage(props: Props) {
           eyebrow="Virtual input"
           title="Live profile startup"
         >
-          Optionally resume the most recently used live profile when LMUKit
+          Optionally resume the most recently used live profile when Pivot
           opens.
         </SettingsHeading>
         <label className="settings-toggle-row">
           <span>
             <strong>Start the last live profile automatically</strong>
             <small>
-              Runs only when the global input method is Virtual Input. LMUKit
+              Runs only when the global input method is Virtual Input. Pivot
               leaves live remapping stopped if this is disabled.
             </small>
           </span>
@@ -447,7 +447,7 @@ export function SettingsPage(props: Props) {
 
       <section className="settings-card">
         <SettingsHeading eyebrow="Shortcuts" title="Profile keyboard shortcuts">
-          Ctrl+Alt+Space opens LMUKit. Assign Ctrl+Alt+1–9 for direct profile
+          Ctrl+Alt+Space opens Pivot. Assign Ctrl+Alt+1–9 for direct profile
           access.
         </SettingsHeading>
         <div className="shortcut-list">
@@ -488,7 +488,7 @@ export function SettingsPage(props: Props) {
             eyebrow="Launch setup"
             title="LMU and companion apps"
           >
-            Generate one Steam launch option for LMUKit, your launch mode, and
+            Generate one Steam launch option for Pivot, your launch mode, and
             selected helpers.
           </SettingsHeading>
           <div className="launch-mode">

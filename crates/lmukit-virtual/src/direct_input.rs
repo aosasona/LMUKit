@@ -113,7 +113,7 @@ impl DirectInputButtonReader {
         let (data_objects, mut data_format) = button_data_format(capabilities.dwButtons);
         // SAFETY: data_format points into data_objects, which remains allocated
         // for the lifetime of the reader. It deliberately contains buttons
-        // only, keeping axes and FFB outside LMUKit's input path.
+        // only, keeping axes and FFB outside Pivot's input path.
         unsafe {
             device
                 .SetDataFormat(&mut data_format)

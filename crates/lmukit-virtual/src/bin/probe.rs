@@ -104,7 +104,7 @@ mod windows_probe {
     }
 
     fn print_help() {
-        println!("LMUKit experimental virtual-input probe");
+        println!("Pivot experimental virtual-input probe");
         println!("  lmukit-virtual-probe list");
         println!("  lmukit-virtual-probe directinput-list");
         println!("  lmukit-virtual-probe pulse [vjoy-device-id] [hold-ms]");

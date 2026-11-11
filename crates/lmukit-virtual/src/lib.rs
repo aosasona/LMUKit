@@ -1,4 +1,4 @@
-//! Replaceable virtual-controller output for LMUKit.
+//! Replaceable virtual-controller output for Pivot.
 //!
 //! This crate is experimental. A successful backend connection does not prove
 //! that Le Mans Ultimate recognises or accepts the virtual device.
@@ -191,7 +191,7 @@ impl MockVirtualBackend {
         Self {
             capabilities: VirtualCapabilities {
                 button_count,
-                identity: "LMUKit mock virtual controller".to_owned(),
+                identity: "Pivot mock virtual controller".to_owned(),
             },
             connected: false,
             buttons: vec![false; button_count as usize],
@@ -326,7 +326,7 @@ mod tests {
         let capabilities = backend.capabilities().unwrap();
 
         assert_eq!(capabilities.button_count, 32);
-        assert_eq!(capabilities.identity, "LMUKit mock virtual controller");
+        assert_eq!(capabilities.identity, "Pivot mock virtual controller");
     }
 
     #[test]

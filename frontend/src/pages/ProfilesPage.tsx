@@ -496,7 +496,7 @@ export function ProfilesPage(props: Props) {
                       ? "LMU will load it the next time the game starts."
                       : selectedIsLive
                         ? `${routing.identity ?? "vJoy"} · ${routing.selectionReason ?? "Active profile"}`
-                        : "LMUKit will route its assigned wheel buttons through vJoy."}
+                        : "Pivot will route its assigned wheel buttons through vJoy."}
                   </small>
                 </span>
               </div>
