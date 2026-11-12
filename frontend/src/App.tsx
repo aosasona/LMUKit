@@ -135,14 +135,19 @@ export default function App() {
   };
   async function refresh() {
     try {
-      const [next, nextRouting, nextCarContext, nextAcCarContext, nextAutoSelection] =
-        await Promise.all([
-          invoke<Snapshot>("snapshot"),
-          invoke<VirtualRoutingStatus>("virtual_routing_status"),
-          invoke<LmuCarContextStatus>("lmu_car_context_status"),
-          invoke<AcCarContextStatus>("ac_car_context_status"),
-          invoke<AutoProfileSelectionStatus>("auto_profile_selection_status"),
-        ]);
+      const [
+        next,
+        nextRouting,
+        nextCarContext,
+        nextAcCarContext,
+        nextAutoSelection,
+      ] = await Promise.all([
+        invoke<Snapshot>("snapshot"),
+        invoke<VirtualRoutingStatus>("virtual_routing_status"),
+        invoke<LmuCarContextStatus>("lmu_car_context_status"),
+        invoke<AcCarContextStatus>("ac_car_context_status"),
+        invoke<AutoProfileSelectionStatus>("auto_profile_selection_status"),
+      ]);
       setSnapshot(next);
       setRouting(nextRouting);
       setCarContext(nextCarContext);
@@ -857,7 +862,7 @@ export default function App() {
 
   return (
     <div className="window-shell">
-      <TitleBar onError={setNotice} />
+      <TitleBar onError={setNotice} onExit={() => setExitRequested(true)} />
       <div className="app-shell">
         <Sidebar
           page={page}

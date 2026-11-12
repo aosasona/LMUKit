@@ -5,7 +5,7 @@
 
 Pivot is a modern Windows toolkit for Le Mans Ultimate and button-only virtual remapping in Assetto Corsa. It brings isolated sim workspaces, binding profiles, reusable wheel metadata, control inspection, LMU game settings, and companion-app launching into one focused application.
 
-Closing the main window hides Pivot in the Windows notification area so live remapping can continue without a taskbar button. Right-click the tray icon for **Show Pivot** or **Exit Pivot**. Exit always requires confirmation, stops routing, and releases virtual buttons before shutdown.
+Left-clicking the title-bar close button hides Pivot in the Windows notification area so live remapping can continue without a taskbar button. Right-click the close button to request a permanent exit, or right-click the tray icon for **Show Pivot** or **Exit Pivot**. Exit always requires confirmation, stops routing, and releases virtual buttons before shutdown.
 
 Pivot runs as a single instance. Launching it again restores the existing window instead of starting another input-routing process or tray icon.
 

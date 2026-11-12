@@ -1,7 +1,13 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Minus, Square, X } from "lucide-react";
 
-export function TitleBar({ onError }: { onError: (message: string) => void }) {
+export function TitleBar({
+  onError,
+  onExit,
+}: {
+  onError: (message: string) => void;
+  onExit: () => void;
+}) {
   const run = (action: () => Promise<void>) =>
     void action().catch((error) =>
       onError(`Window action failed: ${String(error)}`),
@@ -42,8 +48,13 @@ export function TitleBar({ onError }: { onError: (message: string) => void }) {
         <button
           className="close"
           aria-label="Hide to notification area"
-          title="Hide to notification area"
+          title="Hide to notification area · Right-click to exit"
           onClick={() => run(() => getCurrentWindow().close())}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onExit();
+          }}
         >
           <X />
         </button>
