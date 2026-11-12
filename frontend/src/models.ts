@@ -215,6 +215,18 @@ export type DiagnosticStatus = {
   routing: VirtualRoutingStatus;
   devices: DiagnosticDevice[];
 };
+export type StartupHealth = {
+  level: "ready" | "warning" | "error";
+  title: string;
+  message: string;
+  buttonCount: number | null;
+};
+export type VirtualProfileReadiness = {
+  mappingCount: number;
+  encoderCount: number;
+  missingDevices: string[];
+  warnings: string[];
+};
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };

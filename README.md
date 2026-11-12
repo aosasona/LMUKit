@@ -5,7 +5,7 @@
 
 Pivot is a modern Windows toolkit for Le Mans Ultimate and button-only virtual remapping in Assetto Corsa. It brings isolated sim workspaces, binding profiles, reusable wheel metadata, control inspection, LMU game settings, and companion-app launching into one focused application.
 
-Left-clicking the title-bar close button hides Pivot in the Windows notification area so live remapping can continue without a taskbar button. Right-click the close button to request a permanent exit, or right-click the tray icon for **Show Pivot** or **Exit Pivot**. Exit always requires confirmation, stops routing, and releases virtual buttons before shutdown.
+Left-clicking the title-bar close button hides Pivot in the Windows notification area so live remapping can continue without a taskbar button. Right-click the close button to request a permanent exit. The tray shows the active workspace and live profile, and its menu provides **Show Pivot**, **Stop remapping**, and **Exit Pivot**. Exit always requires confirmation, stops routing, and releases virtual buttons before shutdown.
 
 Pivot runs as a single instance. Launching it again restores the existing window instead of starting another input-routing process or tray icon.
 
@@ -16,6 +16,10 @@ Existing LMUKit installations upgrade in place: Pivot deliberately reuses the ex
 ![Pivot overview showing the active Hypercar profile, wheel image, garage, and quick actions](assets/lmukit-overview.png)
 
 _The screenshot uses isolated synthetic profile data; no personal LMU files are included in the repository._
+
+![Pivot Assetto Corsa workspace showing virtual-input readiness and car-tag detection](docs/assetto-corsa-overview.png)
+
+_Assetto Corsa keeps its profiles and named actions separate while reusing the global wheel library._
 
 ## Why use Pivot?
 
@@ -46,7 +50,8 @@ _The screenshot uses isolated synthetic profile data; no personal LMU files are 
 - Autosave LMU paths, launch mode, and companion-app setup.
 - Follow an in-app Help & Setup guide for wheels, DirectInput-visible controllers, button boxes, Legacy JSON, Virtual Input, and common recovery steps.
 - Scale the entire interface from Settings.
-- Hide to the Windows notification area while live remapping continues, with explicit **Show Pivot** and confirmed **Exit Pivot** tray actions.
+- Hide to the Windows notification area while live remapping continues, see the active workspace/profile in its tooltip, or stop remapping directly from the tray.
+- Check vJoy capacity, workspace profiles, and the current route in a compact Overview health banner; starting a profile warns when one of its mapped physical devices is disconnected.
 - Inspect virtual-input health and attached controllers, open rotating local logs, and export a privacy-redacted diagnostic report from Settings.
 - Observe LMU's current player car, normalized class, session state, data source, and freshness on Overview through the game's read-only shared-memory interface.
 - Guide one-time vJoy binding setup, save LMU's named action layout, learn and test physical buttons and modifier combinations per profile, warn before replacing conflicting mappings, configure digital encoder modes, assign one automatic default profile per car class, and switch experimental live DirectInput-to-vJoy routing without recreating the virtual controller.

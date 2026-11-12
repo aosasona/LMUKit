@@ -37,9 +37,9 @@ const virtualSteps: GuideStep[] = [
     page: "virtual",
   },
   {
-    title: "Bind LMU actions to vJoy",
+    title: "Bind game actions to vJoy",
     detail:
-      "Open LMU's control assignments, choose an action, then use Pivot's guided setup to send the next unused virtual button. Finish and rescan after LMU saves the bindings.",
+      "For LMU, let the game listen, send the next button, then finish and rescan. For Assetto Corsa, name and arm the action in Pivot, let AC listen, then press Ctrl+Alt+V and confirm it accepted the input.",
     action: "Open guided setup",
     page: "virtual",
   },
@@ -60,14 +60,14 @@ const virtualSteps: GuideStep[] = [
   {
     title: "Map and test physical controls",
     detail:
-      "Choose a named LMU or external-app action, press the physical button, and confirm it. Hold one button and press another for a modifier. Stop live remapping before using Test a control.",
+      "Choose a named game or external-app action, press the physical button, and confirm it. Hold one button and press another for a modifier. Stop live remapping before using Test a control.",
     action: "Choose a profile",
     page: "profiles",
   },
   {
     title: "Go live",
     detail:
-      "Select Virtual Input in the title bar and use the profile live. Optionally set one default per class and enable Auto-select on Overview. Keep Pivot running or hidden in the tray.",
+      "Use the profile live. LMU can auto-select by class; Assetto Corsa can auto-select using exact Content Manager car tags. Keep Pivot running or hidden in the tray.",
     action: "Open overview",
     page: "home",
   },
@@ -265,6 +265,17 @@ export function HelpPage({
         <div className="help-faq-grid">
           <details>
             <summary>
+              <Gamepad2 /> How do I register Assetto Corsa actions?
+            </summary>
+            <p>
+              Select the Assetto Corsa workspace, open Virtual Input, and start
+              its one-time setup. Name and arm the action, make AC listen for a
+              controller input, then press Ctrl+Alt+V. Confirm AC accepted the
+              vJoy button before repeating for the next action.
+            </p>
+          </details>
+          <details>
+            <summary>
               <Usb /> Pivot does not detect my button
             </summary>
             <p>
@@ -291,9 +302,9 @@ export function HelpPage({
             <p>
               Check the profile's class tags and its global class default. A
               profile chosen manually stays active for the current class, and
-              automatic selection resumes after a confirmed class change.
-              Select Resume Auto on Overview to clear that manual override
-              immediately after correcting the default.
+              automatic selection resumes after a confirmed class change. Select
+              Resume Auto on Overview to clear that manual override immediately
+              after correcting the default.
             </p>
           </details>
           <details>

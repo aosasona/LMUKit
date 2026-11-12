@@ -21,6 +21,7 @@ import type {
   VirtualMappingImport,
   VirtualProfileDefault,
   VirtualProfileMapping,
+  VirtualProfileReadiness,
   VirtualRoutingStatus,
   Workspace,
 } from "../models";
@@ -397,6 +398,19 @@ export function ProfileVirtualMappings({
     setRoutingBusy(true);
     setError(null);
     try {
+      const readiness = await invoke<VirtualProfileReadiness>(
+        "virtual_profile_readiness",
+        { profileId: profile.id },
+      );
+      if (
+        readiness.warnings.length &&
+        !window.confirm(
+          `${readiness.warnings.join("\n\n")}\n\nStart live remapping anyway?`,
+        )
+      ) {
+        onNotice("Live remapping was not started.");
+        return;
+      }
       const next = await invoke<VirtualRoutingStatus>("start_virtual_routing", {
         profileId: profile.id,
       });

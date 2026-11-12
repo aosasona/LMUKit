@@ -8,6 +8,9 @@
   --muted: #87948e;
   --teal: #c6f36b;
   --amber: #f4d35e;
+  --accent: var(--teal);
+  --warning: var(--amber);
+  --danger: #ff6b6b;
   --font-scale: 1;
 }
 * {
@@ -587,6 +590,55 @@ main {
   min-height: 0;
   padding: 0 32px 24px;
   overflow: auto;
+}
+
+.startup-health {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+}
+
+.startup-health.warning {
+  border-color: color-mix(in srgb, var(--warning) 42%, var(--line));
+  background: color-mix(in srgb, var(--warning) 7%, var(--panel));
+}
+
+.startup-health.error {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--line));
+  background: color-mix(in srgb, var(--danger) 7%, var(--panel));
+}
+
+.startup-health > svg {
+  width: 1.2rem;
+  color: var(--accent);
+}
+
+.startup-health.warning > svg {
+  color: var(--warning);
+}
+
+.startup-health.error > svg {
+  color: var(--danger);
+}
+
+.startup-health span,
+.startup-health strong,
+.startup-health small {
+  min-width: 0;
+  display: block;
+}
+
+.startup-health small {
+  margin-top: 0.18rem;
+  color: var(--muted);
+}
+
+.startup-health button svg {
+  width: 0.95rem;
 }
 .dashboard-grid {
   display: grid;

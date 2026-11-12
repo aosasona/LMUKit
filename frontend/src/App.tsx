@@ -7,6 +7,7 @@ import { ConfirmDialog, type Confirmation } from "./components/ConfirmDialog";
 import { InputModeSwitch, type InputMode } from "./components/InputModeSwitch";
 import { TitleBar } from "./components/TitleBar";
 import { QuickProfileSwitcher } from "./components/QuickProfileSwitcher";
+import { StartupHealthBanner } from "./components/StartupHealthBanner";
 import type {
   Binding,
   BindingAssignmentCandidate,
@@ -20,6 +21,8 @@ import type {
   Page,
   Profile,
   Snapshot,
+  StartupHealth,
+  VirtualProfileReadiness,
   VirtualRoutingStatus,
   Wheel,
 } from "./models";
@@ -80,6 +83,10 @@ export default function App() {
   const [profileDocumentLoading, setProfileDocumentLoading] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [exitRequested, setExitRequested] = useState(false);
+  const [startupHealth, setStartupHealth] = useState<StartupHealth | null>(
+    null,
+  );
+  const [startupHealthLoading, setStartupHealthLoading] = useState(false);
   const [gameSettings, setGameSettings] = useState<JsonObject | null>(null);
   const [gameSettingsBaseline, setGameSettingsBaseline] =
     useState<JsonObject | null>(null);
@@ -230,11 +237,21 @@ export default function App() {
     const exitRequest = listen("request-exit-confirmation", () => {
       setExitRequested(true);
     });
+    const trayRouting = listen<{ Ok?: string; Err?: string }>(
+      "tray-routing-result",
+      (event) => {
+        setNotice(event.payload.Ok ?? event.payload.Err ?? "Routing updated.");
+        void invoke<VirtualRoutingStatus>("virtual_routing_status")
+          .then(setRouting)
+          .catch(() => undefined);
+      },
+    );
     return () => {
       void switcher.then((unlisten) => unlisten());
       void activation.then((unlisten) => unlisten());
       void virtualAutoStart.then((unlisten) => unlisten());
       void exitRequest.then((unlisten) => unlisten());
+      void trayRouting.then((unlisten) => unlisten());
     };
   }, []);
   useEffect(() => {
@@ -399,6 +416,51 @@ export default function App() {
     }
   }
 
+  const checkStartupHealth = async () => {
+    setStartupHealthLoading(true);
+    try {
+      setStartupHealth(await invoke<StartupHealth>("startup_health"));
+    } catch (error) {
+      setStartupHealth({
+        level: "error",
+        title: "Virtual input check failed",
+        message: String(error),
+        buttonCount: null,
+      });
+    } finally {
+      setStartupHealthLoading(false);
+    }
+  };
+  useEffect(() => {
+    if (page !== "home" || snapshot.inputMode !== "virtual") {
+      setStartupHealth(null);
+      return;
+    }
+    void checkStartupHealth();
+  }, [
+    page,
+    snapshot.inputMode,
+    snapshot.activeWorkspaceId,
+    snapshot.profiles.length,
+    routing.active,
+    routing.profileId,
+  ]);
+
+  const confirmVirtualReadiness = async (profile: Profile) => {
+    const readiness = await invoke<VirtualProfileReadiness>(
+      "virtual_profile_readiness",
+      { profileId: profile.id },
+    );
+    if (readiness.mappingCount === 0 && readiness.encoderCount === 0) {
+      window.alert(readiness.warnings[0] ?? "This profile has no mappings.");
+      return false;
+    }
+    if (!readiness.warnings.length) return true;
+    return window.confirm(
+      `${readiness.warnings.join("\n\n")}\n\nStart live remapping anyway?`,
+    );
+  };
+
   async function confirmLmuFileWrite(action: string) {
     const status = await invoke<LmuRuntimeStatus>("lmu_runtime_status");
     if (!status.running) return false;
@@ -414,6 +476,10 @@ export default function App() {
     withBusy(async () => {
       setSelectedId(profile.id);
       if (snapshot.inputMode === "virtual") {
+        if (!(await confirmVirtualReadiness(profile))) {
+          setNotice(`Live remapping for ${profile.name} was not started.`);
+          return;
+        }
         setNotice(`Starting live remapping for ${profile.name}…`);
         setRouting(
           await invoke<VirtualRoutingStatus>("start_virtual_routing", {
@@ -914,6 +980,13 @@ export default function App() {
             </div>
           </header>
           <div className="content">
+            {page === "home" && snapshot.inputMode === "virtual" && (
+              <StartupHealthBanner
+                health={startupHealth}
+                loading={startupHealthLoading}
+                onRefresh={() => void checkStartupHealth()}
+              />
+            )}
             {page === "home" &&
               snapshot.activeWorkspaceKind === "le_mans_ultimate" && (
                 <OverviewPage

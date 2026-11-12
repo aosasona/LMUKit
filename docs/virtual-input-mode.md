@@ -4,6 +4,8 @@ Virtual Input Mode is an optional, button-only alternative to Pivot's existing J
 
 Virtual action catalogues are scoped to workspaces. The LMU workspace retains the legacy persisted layout and can verify names by rescanning `direct input.json`. Assetto Corsa starts with an independent empty catalogue: the user names and arms an action, makes AC listen for input, and presses `Ctrl+Alt+V` to emit and save the next vJoy button. Pivot cannot verify AC's saved binding, so the user must confirm each assignment in game.
 
+Overview performs a compact readiness check when Virtual Input is selected. It reports whether vJoy device 1 can be acquired, warns when fewer than 128 buttons are configured, and shows the active route. Before a user starts a profile, Pivot compares every mapped DirectInput device ID with the currently attached controllers. Missing hardware is named and requires explicit confirmation; an entirely unmapped profile cannot be started. Automatic selection keeps its existing non-interactive behavior and reports backend startup failures through routing status.
+
 The existing Legacy JSON mode remains available and unchanged. Existing profiles, reusable wheels, and class tags are reused by Virtual Input Mode; there is no parallel profile or class system.
 
 ## Stable translation model

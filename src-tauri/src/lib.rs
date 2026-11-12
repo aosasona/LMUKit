@@ -15,6 +15,7 @@ use lmukit_virtual::{
     SetupButtonAllocator, VirtualLayout,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{
@@ -327,6 +328,24 @@ struct DiagnosticStatus {
     virtual_health: String,
     routing: VirtualRoutingStatus,
     devices: Vec<DiagnosticDeviceSummary>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StartupHealth {
+    level: &'static str,
+    title: String,
+    message: String,
+    button_count: Option<u32>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualProfileReadiness {
+    mapping_count: usize,
+    encoder_count: usize,
+    missing_devices: Vec<String>,
+    warnings: Vec<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -1591,6 +1610,173 @@ fn virtual_routing_status(
         .lock()
         .map(|status| status.clone())
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn startup_health(
+    app_state: State<'_, AppState>,
+    routing_state: State<'_, VirtualRoutingState>,
+) -> Result<StartupHealth, String> {
+    let routing = routing_state
+        .status
+        .lock()
+        .map_err(|error| error.to_string())?
+        .clone();
+    if routing.active {
+        return Ok(StartupHealth {
+            level: "ready",
+            title: "Live remapping is ready".to_owned(),
+            message: format!(
+                "{} is active through {}.",
+                routing.profile_name.as_deref().unwrap_or("A profile"),
+                routing.identity.as_deref().unwrap_or("vJoy")
+            ),
+            button_count: None,
+        });
+    }
+    let (device_id, profile_count) = {
+        let store = app_state.0.lock().map_err(|error| error.to_string())?;
+        (
+            store.settings.virtual_device_id,
+            store
+                .active_workspace_profiles()
+                .map_err(|error| error.to_string())?
+                .len(),
+        )
+    };
+    if profile_count == 0 {
+        return Ok(StartupHealth {
+            level: "warning",
+            title: "Create your first profile".to_owned(),
+            message: "This workspace has no profile to route yet.".to_owned(),
+            button_count: None,
+        });
+    }
+    let capabilities =
+        tauri::async_runtime::spawn_blocking(move || inspect_virtual_device(device_id)).await;
+    match capabilities {
+        Ok(Ok(capabilities)) if capabilities.button_count >= 128 => Ok(StartupHealth {
+            level: "ready",
+            title: "Virtual input is ready".to_owned(),
+            message: format!(
+                "{} is available with {} buttons. Choose a mapped profile to begin.",
+                capabilities.identity, capabilities.button_count
+            ),
+            button_count: Some(capabilities.button_count),
+        }),
+        Ok(Ok(capabilities)) => Ok(StartupHealth {
+            level: "warning",
+            title: "vJoy has limited capacity".to_owned(),
+            message: format!(
+                "{} provides {} buttons; 128 is recommended before registering more actions.",
+                capabilities.identity, capabilities.button_count
+            ),
+            button_count: Some(capabilities.button_count),
+        }),
+        Ok(Err(error)) => Ok(StartupHealth {
+            level: "error",
+            title: "vJoy needs attention".to_owned(),
+            message: error,
+            button_count: None,
+        }),
+        Err(error) => Ok(StartupHealth {
+            level: "error",
+            title: "Virtual input check stopped".to_owned(),
+            message: error.to_string(),
+            button_count: None,
+        }),
+    }
+}
+
+#[tauri::command]
+fn virtual_profile_readiness(
+    profile_id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<VirtualProfileReadiness, String> {
+    let (mapping_count, encoder_count, required_devices) = {
+        let store = state.0.lock().map_err(|error| error.to_string())?;
+        let profile = find_profile(&store, profile_id)?;
+        if profile.workspace_id != store.settings.active_workspace_id {
+            return Err("That profile belongs to another workspace.".to_owned());
+        }
+        let Some(mapping) = &profile.virtual_mapping else {
+            return Ok(VirtualProfileReadiness {
+                mapping_count: 0,
+                encoder_count: 0,
+                missing_devices: Vec::new(),
+                warnings: vec![
+                    "This profile has no Virtual Input mappings. Add at least one physical control before starting it live."
+                        .to_owned(),
+                ],
+            });
+        };
+        let mut devices = BTreeMap::new();
+        let mut remember = |device_id: &str, device_name: &str| {
+            devices
+                .entry(device_id.to_owned())
+                .or_insert_with(|| device_name.to_owned());
+        };
+        for button in &mapping.buttons {
+            remember(&button.device_id, &button.device_name);
+            for modifier in &button.modifiers {
+                remember(&modifier.device_id, &modifier.device_name);
+            }
+        }
+        for encoder in &mapping.encoder_groups {
+            remember(&encoder.clockwise.device_id, &encoder.clockwise.device_name);
+            remember(
+                &encoder.counterclockwise.device_id,
+                &encoder.counterclockwise.device_name,
+            );
+            if let Some(cycle) = &encoder.cycle {
+                remember(&cycle.device_id, &cycle.device_name);
+            }
+        }
+        (mapping.buttons.len(), mapping.encoder_groups.len(), devices)
+    };
+    let missing_devices = missing_virtual_profile_devices(&required_devices)?;
+    let mut warnings = Vec::new();
+    if mapping_count == 0 && encoder_count == 0 {
+        warnings.push(
+            "This profile has no Virtual Input mappings. Add at least one physical control before starting it live."
+                .to_owned(),
+        );
+    }
+    if !missing_devices.is_empty() {
+        warnings.push(format!(
+            "These mapped devices are not currently detected: {}. Their controls will not work until they reconnect.",
+            missing_devices.join(", ")
+        ));
+    }
+    Ok(VirtualProfileReadiness {
+        mapping_count,
+        encoder_count,
+        missing_devices,
+        warnings,
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn missing_virtual_profile_devices(
+    required_devices: &BTreeMap<String, String>,
+) -> Result<Vec<String>, String> {
+    let available = lmukit_virtual::direct_input::list_devices()
+        .map_err(|error| format!("Could not inspect connected controllers: {error}"))?
+        .into_iter()
+        .map(|device| device.device_id)
+        .collect::<std::collections::HashSet<_>>();
+    Ok(required_devices
+        .iter()
+        .filter(|(device_id, _)| !available.contains(*device_id))
+        .map(|(_, device_name)| device_name.clone())
+        .collect())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn missing_virtual_profile_devices(
+    _required_devices: &BTreeMap<String, String>,
+) -> Result<Vec<String>, String> {
+    Ok(Vec::new())
 }
 
 #[tauri::command]
@@ -3279,16 +3465,75 @@ fn request_exit_confirmation(app: &tauri::AppHandle) {
     let _ = app.emit("request-exit-confirmation", ());
 }
 
+fn tray_tooltip(app: &tauri::AppHandle) -> String {
+    let workspace = app
+        .state::<AppState>()
+        .0
+        .lock()
+        .map(|store| store.active_workspace().name.clone())
+        .unwrap_or_else(|_| "Workspace unavailable".to_owned());
+    let routing = app
+        .state::<VirtualRoutingState>()
+        .status
+        .lock()
+        .map(|status| status.clone())
+        .unwrap_or_default();
+    if routing.active {
+        format!(
+            "Pivot — {workspace} — {}",
+            routing
+                .profile_name
+                .as_deref()
+                .unwrap_or("Remapping active")
+        )
+    } else {
+        format!("Pivot — {workspace} — Remapping off")
+    }
+}
+
+fn refresh_tray_status(app: &tauri::AppHandle) {
+    if let Some(tray) = app.tray_by_id("lmukit") {
+        let _ = tray.set_tooltip(Some(tray_tooltip(app)));
+    }
+}
+
+fn stop_routing_from_tray(app: tauri::AppHandle) {
+    let result = (|| {
+        let auto_state = app.state::<AutoProfileState>();
+        pause_auto_profile_selection(&auto_state, "tray routing stop");
+        let state = app.state::<VirtualRoutingState>();
+        let _operation = state.operation.lock().map_err(|error| error.to_string())?;
+        let was_active = state
+            .status
+            .lock()
+            .map_err(|error| error.to_string())?
+            .active;
+        stop_virtual_routing_inner(&state)?;
+        Ok::<_, String>(if was_active {
+            "Live remapping stopped from the notification area."
+        } else {
+            "Live remapping was already stopped."
+        })
+    })();
+    refresh_tray_status(&app);
+    let _ = app.emit("tray-routing-result", result);
+}
+
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show-lmukit", "Show Pivot", true, None::<&str>)?;
+    let stop = MenuItem::with_id(app, "stop-routing", "Stop remapping", true, None::<&str>)?;
     let exit = MenuItem::with_id(app, "exit-lmukit", "Exit Pivot", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &exit])?;
+    let menu = Menu::with_items(app, &[&show, &stop, &exit])?;
     let mut tray = TrayIconBuilder::with_id("lmukit")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .tooltip("Pivot")
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show-lmukit" => show_main_window(app),
+            "stop-routing" => {
+                let app = app.clone();
+                std::thread::spawn(move || stop_routing_from_tray(app));
+            }
             "exit-lmukit" => request_exit_confirmation(app),
             _ => {}
         })
@@ -3308,6 +3553,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         tray = tray.icon(icon);
     }
     tray.build(app)?;
+    refresh_tray_status(app.handle());
     Ok(())
 }
 
@@ -3364,6 +3610,14 @@ pub fn run() {
             setup_tray(app)?;
             let handle = app.handle().clone();
             std::thread::spawn(move || poll_hotkeys(handle, hotkey_rx, shortcuts));
+            let handle = app.handle().clone();
+            let tray_stop = Arc::clone(&handle.state::<CarContextState>().stop);
+            std::thread::spawn(move || {
+                while !tray_stop.load(Ordering::Acquire) {
+                    refresh_tray_status(&handle);
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+            });
             #[cfg(target_os = "windows")]
             {
                 let handle = app.handle().clone();
@@ -3500,6 +3754,8 @@ pub fn run() {
             inspect_virtual_profile_button,
             remove_virtual_profile_button,
             virtual_routing_status,
+            startup_health,
+            virtual_profile_readiness,
             lmu_car_context_status,
             ac_car_context_status,
             auto_profile_selection_status,
