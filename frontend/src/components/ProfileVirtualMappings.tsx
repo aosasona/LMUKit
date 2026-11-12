@@ -475,10 +475,13 @@ export function ProfileVirtualMappings({
             <Star />
             <span>
               <strong>
-                {isLmu ? "Automatic class defaults" : "Automatic car-tag defaults"}
+                {isLmu
+                  ? "Automatic class defaults"
+                  : "Automatic car-tag defaults"}
               </strong>
               <small>
-                One profile is selected for each {isLmu ? "class" : "matching tag"} in this workspace.
+                One profile is selected for each{" "}
+                {isLmu ? "class" : "matching tag"} in this workspace.
               </small>
             </span>
           </span>
@@ -676,6 +679,7 @@ export function ProfileVirtualMappings({
                   {
                     label: "Import controls from LMU bindings…",
                     hidden:
+                      !isLmu ||
                       busy ||
                       routingActive ||
                       migrating ||

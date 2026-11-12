@@ -359,8 +359,7 @@ export function SettingsPage(props: Props) {
             eyebrow="Files"
             title="LMU paths"
           >
-            Choose the live binding and game-settings files Pivot should
-            manage.
+            Choose the live binding and game-settings files Pivot should manage.
           </SettingsHeading>
           <div className="path-fields">
             <PathField
@@ -398,9 +397,9 @@ export function SettingsPage(props: Props) {
             folder. It never edits them.
           </SettingsHeading>
           <div className="path-fields">
-            <label className="path-field">
+            <label className="identity-field">
               <span>Assetto Corsa folder</span>
-              <div>
+              <div className="path-input">
                 <input
                   value={assettoRoot}
                   placeholder="C:\\Program Files (x86)\\Steam\\steamapps\\common\\assettocorsa"
@@ -408,7 +407,11 @@ export function SettingsPage(props: Props) {
                 />
                 <button
                   type="button"
-                  disabled={busy || !assettoRoot.trim() || assettoRoot.trim() === assettoCorsaPath}
+                  disabled={
+                    busy ||
+                    !assettoRoot.trim() ||
+                    assettoRoot.trim() === assettoCorsaPath
+                  }
                   onClick={() => onSaveAssettoCorsaPath(assettoRoot)}
                 >
                   Save
