@@ -55,6 +55,8 @@ export function VirtualInputPage({
   const [setupBusy, setSetupBusy] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [lastPulse, setLastPulse] = useState<VirtualButtonPulse | null>(null);
+  const [setupActionName, setSetupActionName] = useState("");
+  const [setupActionArmed, setSetupActionArmed] = useState(false);
   const [manualActions, setManualActions] = useState<VirtualAction[]>([]);
   const [manualActionName, setManualActionName] = useState("");
   const [manualBusy, setManualBusy] = useState<string | null>(null);
@@ -114,11 +116,19 @@ export function VirtualInputPage({
       );
       setSetupError(null);
       if (announce) {
-        onNotice(`Sent vJoy B${pulse.virtualButton} to LMU.`);
+        onNotice(
+          `Sent vJoy B${pulse.virtualButton} to ${isLmu ? "LMU" : "Assetto Corsa"}.`,
+        );
       }
     },
-    [onNotice],
+    [isLmu, onNotice],
   );
+
+  const refreshManualActions = useCallback(() => {
+    void invoke<VirtualAction[]>("manual_virtual_actions")
+      .then(setManualActions)
+      .catch((reason) => setManualError(String(reason)));
+  }, []);
 
   const preview = useCallback(async (deviceKey: string) => {
     if (!deviceKey) {
@@ -216,13 +226,11 @@ export function VirtualInputPage({
   }, [scan, isLmu]);
 
   useEffect(() => {
-    void invoke<VirtualAction[]>("manual_virtual_actions")
-      .then(setManualActions)
-      .catch((reason) => setManualError(String(reason)));
+    refreshManualActions();
     return () => {
       void invoke("cancel_manual_virtual_action_test");
     };
-  }, []);
+  }, [refreshManualActions, workspaceKind]);
 
   useEffect(() => {
     const result = listen<VirtualSetupEvent>(
@@ -230,6 +238,14 @@ export function VirtualInputPage({
       (event) => {
         if (event.payload.pulse) {
           recordPulse(event.payload.pulse);
+          if (event.payload.action) {
+            setSetupActionName("");
+            setSetupActionArmed(false);
+            refreshManualActions();
+            onNotice(
+              `${event.payload.action} saved as vJoy B${event.payload.pulse.virtualButton}.`,
+            );
+          }
         } else if (event.payload.error) {
           setSetupError(event.payload.error);
           onNotice(event.payload.error);
@@ -240,7 +256,15 @@ export function VirtualInputPage({
       void result.then((unlisten) => unlisten());
       void invoke("stop_virtual_binding_setup");
     };
-  }, [onNotice, recordPulse]);
+  }, [onNotice, recordPulse, refreshManualActions]);
+
+  useEffect(() => {
+    setSetup(null);
+    setSetupActionName("");
+    setSetupActionArmed(false);
+    setLastPulse(null);
+    setSetupError(null);
+  }, [workspaceKind]);
 
   const startSetup = async () => {
     setSetupBusy(true);
@@ -251,9 +275,10 @@ export function VirtualInputPage({
         "start_virtual_binding_setup",
       );
       setSetup(status);
+      setSetupActionArmed(false);
       if (status.buttonCount < RECOMMENDED_VJOY_BUTTON_COUNT) {
         onNotice(
-          `vJoy device 1 exposes only ${status.buttonCount} buttons. Configure it for ${RECOMMENDED_VJOY_BUTTON_COUNT} before assigning LMU actions.`,
+          `vJoy device 1 exposes only ${status.buttonCount} buttons. Configure it for ${RECOMMENDED_VJOY_BUTTON_COUNT} before assigning actions.`,
         );
       } else {
         onNotice("Binding setup ready. Ctrl+Alt+V sends the next vJoy button.");
@@ -271,6 +296,7 @@ export function VirtualInputPage({
     try {
       await invoke("stop_virtual_binding_setup");
       setSetup(null);
+      setSetupActionArmed(false);
       if (rescan) {
         await scan(true);
       } else {
@@ -284,14 +310,55 @@ export function VirtualInputPage({
     }
   };
 
+  const armSetupAction = async () => {
+    const action = setupActionName.trim();
+    if (!action) {
+      setSetupError("Enter the Assetto Corsa action name first.");
+      return false;
+    }
+    setSetupBusy(true);
+    setSetupError(null);
+    try {
+      await invoke("arm_virtual_binding_action", { action });
+      setSetupActionArmed(true);
+      onNotice(
+        `${action} armed. Make Assetto Corsa listen for the binding, then press Ctrl+Alt+V.`,
+      );
+      return true;
+    } catch (reason) {
+      setSetupError(String(reason));
+      onNotice(String(reason));
+      return false;
+    } finally {
+      setSetupBusy(false);
+    }
+  };
+
   const sendNextButton = async () => {
     setSetupBusy(true);
     setSetupError(null);
     try {
+      if (!isLmu && !setupActionArmed) {
+        const action = setupActionName.trim();
+        if (!action)
+          throw new Error("Enter the Assetto Corsa action name first.");
+        await invoke("arm_virtual_binding_action", { action });
+        setSetupActionArmed(true);
+      }
       recordPulse(await invoke<VirtualButtonPulse>("send_next_virtual_button"));
+      if (!isLmu) {
+        const action = setupActionName.trim();
+        setSetupActionName("");
+        setSetupActionArmed(false);
+        refreshManualActions();
+        onNotice(
+          `${action} saved on the last vJoy button. Confirm Assetto Corsa accepted it, then name the next action.`,
+        );
+      }
     } catch (reason) {
-      setSetupError(String(reason));
-      onNotice(String(reason));
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setSetupError(message);
+      onNotice(message);
     } finally {
       setSetupBusy(false);
     }
@@ -392,7 +459,7 @@ export function VirtualInputPage({
   const removeManualAction = async (action: VirtualAction) => {
     if (
       !window.confirm(
-        `Remove “${action.action}” from the shared virtual layout?`,
+        `Remove “${action.action}” from this workspace's virtual layout?`,
       )
     ) {
       return;
@@ -405,7 +472,9 @@ export function VirtualInputPage({
           action: action.action,
         }),
       );
-      onNotice(`${action.action} removed from the shared virtual layout.`);
+      onNotice(
+        `${action.action} removed from this workspace's virtual layout.`,
+      );
     } catch (reason) {
       setManualError(String(reason));
       onNotice(String(reason));
@@ -480,156 +549,221 @@ export function VirtualInputPage({
         </div>
       </div>
 
-      {isLmu && (
-        <details className="virtual-setup-details panel">
-          <summary>
-            <span>
-              <strong>One-time LMU button setup</strong>
-              <small>Configure or change the vJoy buttons LMU receives</small>
-            </span>
-            <span>Open setup</span>
-          </summary>
-          <section className="virtual-wizard">
-            <header className="virtual-wizard-header">
-              <div>
-                <span className="eyebrow">One-time setup</span>
-                <h2>Teach LMU the virtual buttons</h2>
-                <p>
-                  Pivot advances through unused buttons and never edits LMU.
-                </p>
-              </div>
-              <span className={setup ? "active" : ""}>
-                <i /> {setup ? "Setup active" : "Setup stopped"}
-              </span>
-            </header>
-
-            <div className="virtual-wizard-steps">
-              <div>
-                <b>1</b>
-                <span>
-                  <strong>Listen in LMU</strong>
-                  <small>Choose the action you want to bind.</small>
-                </span>
-              </div>
-              <div>
-                <b>2</b>
-                <span>
-                  <strong>Send the next button</strong>
-                  <small>
-                    Press <kbd>Ctrl Alt V</kbd> or use Send below.
-                  </small>
-                </span>
-              </div>
-              <div>
-                <b>3</b>
-                <span>
-                  <strong>Save and rescan</strong>
-                  <small>Pivot names only bindings LMU actually saved.</small>
-                </span>
-              </div>
+      <details className="virtual-setup-details panel">
+        <summary>
+          <span>
+            <strong>
+              One-time {isLmu ? "LMU" : "Assetto Corsa"} button setup
+            </strong>
+            <small>
+              Configure or change the vJoy buttons {isLmu ? "LMU" : "AC"}{" "}
+              receives
+            </small>
+          </span>
+          <span>Open setup</span>
+        </summary>
+        <section className="virtual-wizard">
+          <header className="virtual-wizard-header">
+            <div>
+              <span className="eyebrow">One-time setup</span>
+              <h2>
+                Teach {isLmu ? "LMU" : "Assetto Corsa"} the virtual buttons
+              </h2>
+              <p>
+                Pivot advances through unused buttons and never edits the
+                game&apos;s files.
+              </p>
             </div>
+            <span className={setup ? "active" : ""}>
+              <i /> {setup ? "Setup active" : "Setup stopped"}
+            </span>
+          </header>
 
-            <div className="virtual-wizard-console">
-              {setupError && <div className="virtual-error">{setupError}</div>}
-              {setup ? (
-                <>
-                  {setup.buttonCount < RECOMMENDED_VJOY_BUTTON_COUNT && (
-                    <div className="virtual-capacity-warning">
-                      <AlertTriangle />
-                      <span>
-                        <strong>
-                          Device 1 has only {setup.buttonCount} virtual buttons
-                        </strong>
-                        <small>
-                          Close LMU and Pivot, open Configure vJoy, set Buttons
-                          to
-                          {` ${RECOMMENDED_VJOY_BUTTON_COUNT}`}, apply the
-                          change, then reopen both apps. Windows may
-                          re-enumerate the controller after its capacity
-                          changes, so existing LMU vJoy assignments may need to
-                          be registered again once.
-                        </small>
-                      </span>
-                    </div>
+          <div className="virtual-wizard-steps">
+            <div>
+              <b>1</b>
+              <span>
+                <strong>
+                  {isLmu ? "Listen in LMU" : "Name and arm the action"}
+                </strong>
+                <small>
+                  {isLmu
+                    ? "Choose the action you want to bind."
+                    : "Use the same name you see in Assetto Corsa."}
+                </small>
+              </span>
+            </div>
+            <div>
+              <b>2</b>
+              <span>
+                <strong>
+                  {isLmu ? "Send the next button" : "Listen in Assetto Corsa"}
+                </strong>
+                <small>
+                  {isLmu ? (
+                    <>
+                      Press <kbd>Ctrl Alt V</kbd> or use Send below.
+                    </>
+                  ) : (
+                    "Open AC's binding control and make it wait for input."
                   )}
-                  <div className="virtual-wizard-status">
-                    <Radio />
+                </small>
+              </span>
+            </div>
+            <div>
+              <b>3</b>
+              <span>
+                <strong>{isLmu ? "Save and rescan" : "Send and repeat"}</strong>
+                <small>
+                  {isLmu ? (
+                    "Pivot names only bindings LMU actually saved."
+                  ) : (
+                    <>
+                      Press <kbd>Ctrl Alt V</kbd>, confirm AC accepted it, then
+                      name the next action.
+                    </>
+                  )}
+                </small>
+              </span>
+            </div>
+          </div>
+
+          <div className="virtual-wizard-console">
+            {setupError && <div className="virtual-error">{setupError}</div>}
+            {setup ? (
+              <>
+                {setup.buttonCount < RECOMMENDED_VJOY_BUTTON_COUNT && (
+                  <div className="virtual-capacity-warning">
+                    <AlertTriangle />
                     <span>
-                      <strong>{setup.identity}</strong>
+                      <strong>
+                        Device 1 has only {setup.buttonCount} virtual buttons
+                      </strong>
                       <small>
-                        {setup.usedButtonCount} of {setup.buttonCount} buttons
-                        reserved or already bound
+                        Close {isLmu ? "LMU" : "Assetto Corsa"} and Pivot, open
+                        Configure vJoy, set Buttons to
+                        {` ${RECOMMENDED_VJOY_BUTTON_COUNT}`}, apply the change,
+                        then reopen both apps. Windows may re-enumerate the
+                        controller after its capacity changes, so existing game
+                        assignments may need to be registered again once.
                       </small>
                     </span>
                   </div>
-                  <div className="virtual-next-button">
-                    <span>Next output</span>
-                    <strong>
-                      {setup.nextVirtualButton
-                        ? `B${setup.nextVirtualButton}`
-                        : "None available"}
-                    </strong>
-                    {lastPulse && (
-                      <small>Last sent: B{lastPulse.virtualButton}</small>
-                    )}
-                  </div>
-                  <div className="virtual-wizard-actions">
+                )}
+                {!isLmu && (
+                  <div className="virtual-manual-create virtual-setup-action">
+                    <label>
+                      <span>Assetto Corsa action name</span>
+                      <input
+                        type="text"
+                        maxLength={120}
+                        value={setupActionName}
+                        placeholder="Pit limiter"
+                        disabled={setupBusy || setupActionArmed}
+                        onChange={(event) => {
+                          setSetupActionName(event.target.value);
+                          setSetupActionArmed(false);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") void armSetupAction();
+                        }}
+                      />
+                    </label>
                     <button
                       type="button"
-                      className="primary"
+                      className={setupActionArmed ? "secondary" : "primary"}
                       disabled={
-                        busy || setupBusy || setup.nextVirtualButton === null
+                        busy ||
+                        setupBusy ||
+                        setupActionArmed ||
+                        !setupActionName.trim()
                       }
-                      onClick={() => void sendNextButton()}
+                      onClick={() => void armSetupAction()}
                     >
-                      {setupBusy ? <LoaderCircle className="spin" /> : <Send />}
-                      Send next button
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary"
-                      disabled={busy || setupBusy}
-                      onClick={() => void stopSetup(true)}
-                    >
-                      <Check /> Finish &amp; rescan
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost"
-                      disabled={busy || setupBusy}
-                      onClick={() => void stopSetup(false)}
-                    >
-                      <Square /> Stop
+                      {setupActionArmed ? <Check /> : <Radio />}
+                      {setupActionArmed ? "Armed" : "Arm hotkey"}
                     </button>
                   </div>
-                </>
-              ) : (
-                <>
-                  <div className="virtual-wizard-status idle">
-                    <Gamepad2 />
-                    <span>
-                      <strong>Ready to check vJoy device 1</strong>
-                      <small>
-                        The global shortcut is enabled only while setup is
-                        active.
-                      </small>
-                    </span>
-                  </div>
+                )}
+                <div className="virtual-wizard-status">
+                  <Radio />
+                  <span>
+                    <strong>{setup.identity}</strong>
+                    <small>
+                      {setup.usedButtonCount} of {setup.buttonCount} buttons
+                      reserved or already bound
+                    </small>
+                  </span>
+                </div>
+                <div className="virtual-next-button">
+                  <span>Next output</span>
+                  <strong>
+                    {setup.nextVirtualButton
+                      ? `B${setup.nextVirtualButton}`
+                      : "None available"}
+                  </strong>
+                  {lastPulse && (
+                    <small>Last sent: B{lastPulse.virtualButton}</small>
+                  )}
+                </div>
+                <div className="virtual-wizard-actions">
                   <button
                     type="button"
-                    className="primary virtual-start-button"
-                    disabled={busy || setupBusy || routing.active}
-                    onClick={() => void startSetup()}
+                    className="primary"
+                    disabled={
+                      busy ||
+                      setupBusy ||
+                      setup.nextVirtualButton === null ||
+                      (!isLmu && !setupActionName.trim())
+                    }
+                    onClick={() => void sendNextButton()}
                   >
-                    {setupBusy && <LoaderCircle className="spin" />}
-                    Start binding setup
+                    {setupBusy ? <LoaderCircle className="spin" /> : <Send />}
+                    {isLmu ? "Send next button" : "Send and save"}
                   </button>
-                </>
-              )}
-            </div>
-          </section>
-        </details>
-      )}
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy || setupBusy}
+                    onClick={() => void stopSetup(isLmu)}
+                  >
+                    <Check /> {isLmu ? "Finish & rescan" : "Finish setup"}
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={busy || setupBusy}
+                    onClick={() => void stopSetup(false)}
+                  >
+                    <Square /> Stop
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="virtual-wizard-status idle">
+                  <Gamepad2 />
+                  <span>
+                    <strong>Ready to check vJoy device 1</strong>
+                    <small>
+                      The global shortcut is enabled only while setup is active.
+                    </small>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="primary virtual-start-button"
+                  disabled={busy || setupBusy || routing.active}
+                  onClick={() => void startSetup()}
+                >
+                  {setupBusy && <LoaderCircle className="spin" />}
+                  Start binding setup
+                </button>
+              </>
+            )}
+          </div>
+        </section>
+      </details>
 
       <section className="virtual-router panel">
         {error && (
@@ -808,7 +942,7 @@ export function VirtualInputPage({
             <div key={action.action}>
               <span>
                 <strong>{action.action}</strong>
-                <small>Available in every profile mapping editor</small>
+                <small>Available to profiles in this workspace</small>
               </span>
               <code>B{action.virtualButton}</code>
               <div className="virtual-manual-test-actions">

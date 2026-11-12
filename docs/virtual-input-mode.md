@@ -2,6 +2,8 @@
 
 Virtual Input Mode is an optional, button-only alternative to Pivot's existing JSON profile switching. It keeps one stable virtual DirectInput controller bound in Le Mans Ultimate while Pivot changes how physical wheel controls map onto it. Ordinary virtual-profile changes do not replace LMU's `direct input.json` and should not require an LMU restart once the virtual controller has been configured and validated.
 
+Virtual action catalogues are scoped to workspaces. The LMU workspace retains the legacy persisted layout and can verify names by rescanning `direct input.json`. Assetto Corsa starts with an independent empty catalogue: the user names and arms an action, makes AC listen for input, and presses `Ctrl+Alt+V` to emit and save the next vJoy button. Pivot cannot verify AC's saved binding, so the user must confirm each assignment in game.
+
 The existing Legacy JSON mode remains available and unchanged. Existing profiles, reusable wheels, and class tags are reused by Virtual Input Mode; there is no parallel profile or class system.
 
 ## Stable translation model

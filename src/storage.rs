@@ -197,6 +197,8 @@ pub struct Settings {
     #[serde(default)]
     pub manual_virtual_actions: Vec<String>,
     #[serde(default)]
+    pub workspace_virtual_layouts: Vec<WorkspaceVirtualLayout>,
+    #[serde(default)]
     pub virtual_device_key: Option<String>,
     #[serde(default = "default_virtual_device_id")]
     pub virtual_device_id: u32,
@@ -255,6 +257,15 @@ pub struct VirtualLayoutEntry {
     pub virtual_button: u32,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceVirtualLayout {
+    pub workspace_id: String,
+    #[serde(default)]
+    pub layout: Vec<VirtualLayoutEntry>,
+    #[serde(default)]
+    pub manual_actions: Vec<String>,
+}
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum LaunchMode {
@@ -295,6 +306,7 @@ impl Default for Settings {
             last_virtual_profile: None,
             virtual_layout: Vec::new(),
             manual_virtual_actions: Vec::new(),
+            workspace_virtual_layouts: Vec::new(),
             virtual_device_key: None,
             virtual_device_id: default_virtual_device_id(),
             virtual_profile_defaults: Vec::new(),
@@ -474,6 +486,10 @@ impl Store {
             &self.settings.virtual_layout,
             &self.settings.manual_virtual_actions,
         )?;
+        validate_workspace_virtual_layouts(
+            &self.settings.workspace_virtual_layouts,
+            &self.settings.workspaces,
+        )?;
         self.validate_virtual_profile_defaults()?;
         ensure!(
             (1..=16).contains(&self.settings.virtual_device_id),
@@ -500,6 +516,63 @@ impl Store {
             .iter()
             .find(|workspace| workspace.id == self.settings.active_workspace_id)
             .expect("active workspace is validated when the store opens")
+    }
+
+    pub fn virtual_layout(&self) -> &[VirtualLayoutEntry] {
+        self.virtual_layout_for_workspace(&self.settings.active_workspace_id)
+    }
+
+    pub fn virtual_layout_for_workspace(&self, workspace_id: &str) -> &[VirtualLayoutEntry] {
+        if workspace_id == LMU_WORKSPACE_ID {
+            &self.settings.virtual_layout
+        } else {
+            self.settings
+                .workspace_virtual_layouts
+                .iter()
+                .find(|entry| entry.workspace_id == workspace_id)
+                .map(|entry| entry.layout.as_slice())
+                .unwrap_or_default()
+        }
+    }
+
+    fn active_virtual_layout_mut(&mut self) -> (&mut Vec<VirtualLayoutEntry>, &mut Vec<String>) {
+        if self.settings.active_workspace_id == LMU_WORKSPACE_ID {
+            return (
+                &mut self.settings.virtual_layout,
+                &mut self.settings.manual_virtual_actions,
+            );
+        }
+        let workspace_id = self.settings.active_workspace_id.clone();
+        let index = self
+            .settings
+            .workspace_virtual_layouts
+            .iter()
+            .position(|entry| entry.workspace_id == workspace_id)
+            .unwrap_or_else(|| {
+                self.settings
+                    .workspace_virtual_layouts
+                    .push(WorkspaceVirtualLayout {
+                        workspace_id,
+                        layout: Vec::new(),
+                        manual_actions: Vec::new(),
+                    });
+                self.settings.workspace_virtual_layouts.len() - 1
+            });
+        let entry = &mut self.settings.workspace_virtual_layouts[index];
+        (&mut entry.layout, &mut entry.manual_actions)
+    }
+
+    fn manual_virtual_action_names(&self) -> &[String] {
+        if self.settings.active_workspace_id == LMU_WORKSPACE_ID {
+            &self.settings.manual_virtual_actions
+        } else {
+            self.settings
+                .workspace_virtual_layouts
+                .iter()
+                .find(|entry| entry.workspace_id == self.settings.active_workspace_id)
+                .map(|entry| entry.manual_actions.as_slice())
+                .unwrap_or_default()
+        }
     }
 
     pub fn set_active_workspace(&mut self, workspace_id: &str) -> Result<()> {
@@ -646,14 +719,17 @@ impl Store {
         profile_id: Uuid,
         mapping: Option<VirtualProfileMapping>,
     ) -> Result<()> {
-        if let Some(mapping) = &mapping {
-            validate_virtual_mapping(mapping, &self.settings.virtual_layout)?;
-        }
         let mut profile = self
             .profiles()?
             .into_iter()
             .find(|profile| profile.id == profile_id)
             .context("That profile no longer exists.")?;
+        if let Some(mapping) = &mapping {
+            validate_virtual_mapping(
+                mapping,
+                self.virtual_layout_for_workspace(&profile.workspace_id),
+            )?;
+        }
         profile.virtual_mapping = mapping;
         self.save_profile_metadata(&profile)
     }
@@ -738,8 +814,7 @@ impl Store {
             .context("That profile no longer exists.")?;
         let document = self.load_profile_document(&profile)?;
         let layout = self
-            .settings
-            .virtual_layout
+            .virtual_layout_for_workspace(&profile.workspace_id)
             .iter()
             .map(|entry| {
                 (
@@ -750,7 +825,7 @@ impl Store {
             .collect::<BTreeMap<_, _>>();
         ensure!(
             !layout.is_empty(),
-            "Set up and save the LMU virtual-button layout before importing profile buttons."
+            "Set up and save this workspace's virtual-button layout before importing profile buttons."
         );
 
         let mut report = VirtualMappingImportReport {
@@ -1433,6 +1508,10 @@ impl Store {
         device_key: String,
         mut layout: Vec<VirtualLayoutEntry>,
     ) -> Result<()> {
+        ensure!(
+            self.active_workspace().kind == WorkspaceKind::LeMansUltimate,
+            "LMU binding rescans are available only in the Le Mans Ultimate workspace."
+        );
         validate_virtual_label(&device_key, "Virtual device key")?;
         validate_virtual_layout(&layout)?;
         ensure!(
@@ -1461,13 +1540,11 @@ impl Store {
 
     pub fn manual_virtual_layout(&self) -> Vec<VirtualLayoutEntry> {
         let manual_actions = self
-            .settings
-            .manual_virtual_actions
+            .manual_virtual_action_names()
             .iter()
             .map(|action| action.to_lowercase())
             .collect::<BTreeSet<_>>();
-        self.settings
-            .virtual_layout
+        self.virtual_layout()
             .iter()
             .filter(|entry| manual_actions.contains(&entry.logical_action.to_lowercase()))
             .cloned()
@@ -1486,15 +1563,13 @@ impl Store {
         );
         ensure!(
             !self
-                .settings
-                .virtual_layout
+                .virtual_layout()
                 .iter()
                 .any(|entry| entry.logical_action.eq_ignore_ascii_case(logical_action)),
             "An action named '{logical_action}' already exists."
         );
         let used = self
-            .settings
-            .virtual_layout
+            .virtual_layout()
             .iter()
             .map(|entry| entry.virtual_button)
             .collect::<BTreeSet<_>>();
@@ -1511,8 +1586,7 @@ impl Store {
         validate_virtual_label(&logical_action, "Action name")?;
         ensure!(
             !self
-                .settings
-                .virtual_layout
+                .virtual_layout()
                 .iter()
                 .any(|entry| entry.logical_action.eq_ignore_ascii_case(&logical_action)),
             "An action named '{logical_action}' already exists."
@@ -1523,31 +1597,32 @@ impl Store {
         );
         ensure!(
             !self
-                .settings
-                .virtual_layout
+                .virtual_layout()
                 .iter()
                 .any(|entry| entry.virtual_button == virtual_button),
             "Virtual button B{virtual_button} is already assigned."
         );
-        self.settings.virtual_layout.push(VirtualLayoutEntry {
+        let (layout, manual_actions) = self.active_virtual_layout_mut();
+        layout.push(VirtualLayoutEntry {
             logical_action: logical_action.clone(),
             virtual_button,
         });
-        self.settings.manual_virtual_actions.push(logical_action);
+        manual_actions.push(logical_action);
         self.save_settings()
     }
 
     pub fn remove_manual_virtual_action(&mut self, logical_action: &str) -> Result<()> {
         ensure!(
-            self.settings
-                .manual_virtual_actions
+            self.manual_virtual_action_names()
                 .iter()
                 .any(|action| action.eq_ignore_ascii_case(logical_action)),
             "That manually named action no longer exists."
         );
+        let active_workspace_id = self.settings.active_workspace_id.clone();
         let referencing_profiles = self
             .profiles()?
             .into_iter()
+            .filter(|profile| profile.workspace_id == active_workspace_id)
             .filter(|profile| {
                 profile.virtual_mapping.as_ref().is_some_and(|mapping| {
                     mapping
@@ -1571,12 +1646,9 @@ impl Store {
             "Remove this action from these profiles first: {}.",
             referencing_profiles.join(", ")
         );
-        self.settings
-            .virtual_layout
-            .retain(|entry| !entry.logical_action.eq_ignore_ascii_case(logical_action));
-        self.settings
-            .manual_virtual_actions
-            .retain(|action| !action.eq_ignore_ascii_case(logical_action));
+        let (layout, manual_actions) = self.active_virtual_layout_mut();
+        layout.retain(|entry| !entry.logical_action.eq_ignore_ascii_case(logical_action));
+        manual_actions.retain(|action| !action.eq_ignore_ascii_case(logical_action));
         self.save_settings()
     }
 
@@ -2287,6 +2359,35 @@ fn validate_virtual_layout(layout: &[VirtualLayoutEntry]) -> Result<()> {
             "Virtual button {} is assigned more than once.",
             entry.virtual_button
         );
+    }
+    Ok(())
+}
+
+fn validate_workspace_virtual_layouts(
+    layouts: &[WorkspaceVirtualLayout],
+    workspaces: &[Workspace],
+) -> Result<()> {
+    let workspace_ids = workspaces
+        .iter()
+        .map(|workspace| workspace.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut seen = BTreeSet::new();
+    for entry in layouts {
+        validate_virtual_label(&entry.workspace_id, "Workspace layout ID")?;
+        ensure!(
+            entry.workspace_id != LMU_WORKSPACE_ID,
+            "The LMU virtual layout must remain in its compatibility fields."
+        );
+        ensure!(
+            workspace_ids.contains(entry.workspace_id.as_str()),
+            "A virtual layout references a missing workspace."
+        );
+        ensure!(
+            seen.insert(entry.workspace_id.to_lowercase()),
+            "A workspace has more than one virtual layout."
+        );
+        validate_virtual_layout(&entry.layout)?;
+        validate_manual_virtual_actions(&entry.layout, &entry.manual_actions)?;
     }
     Ok(())
 }
@@ -3282,6 +3383,7 @@ mod tests {
         assert_eq!(store.settings.last_virtual_profile, None);
         assert!(store.settings.virtual_layout.is_empty());
         assert!(store.settings.manual_virtual_actions.is_empty());
+        assert!(store.settings.workspace_virtual_layouts.is_empty());
         assert_eq!(store.settings.virtual_device_key, None);
         assert_eq!(store.settings.virtual_device_id, 1);
     }
@@ -3397,6 +3499,53 @@ mod tests {
         assert_eq!(saved_mapping.encoder_groups.len(), 1);
         assert_eq!(saved_mapping.encoder_groups[0].name, "Encoder 1");
         assert_eq!(saved_mapping.encoder_groups[0].modes[0].name, "Race");
+    }
+
+    #[test]
+    fn keeps_virtual_action_layouts_separate_between_workspaces() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("lmukit");
+        let mut store = Store::open_at(root.clone()).unwrap();
+        store.settings.virtual_layout = vec![VirtualLayoutEntry {
+            logical_action: "LMU Pit Limiter".into(),
+            virtual_button: 1,
+        }];
+        store.save_settings().unwrap();
+
+        store.set_active_workspace(AC_WORKSPACE_ID).unwrap();
+        assert!(store.virtual_layout().is_empty());
+        store
+            .add_manual_virtual_action("AC Pit Limiter".into(), 1)
+            .unwrap();
+        let ac_profile = store.create_virtual_profile("AC GT3").unwrap();
+        store
+            .set_profile_virtual_mapping(
+                ac_profile.id,
+                Some(VirtualProfileMapping {
+                    buttons: vec![VirtualButtonMapping {
+                        device_id: "wheel".into(),
+                        device_name: "Wheel".into(),
+                        physical_button: 1,
+                        modifiers: Vec::new(),
+                        logical_action: "AC Pit Limiter".into(),
+                    }],
+                    encoder_groups: Vec::new(),
+                }),
+            )
+            .unwrap();
+
+        store.set_active_workspace(LMU_WORKSPACE_ID).unwrap();
+        assert_eq!(store.virtual_layout()[0].logical_action, "LMU Pit Limiter");
+        assert!(store.manual_virtual_layout().is_empty());
+        drop(store);
+
+        let mut reopened = Store::open_at(root).unwrap();
+        reopened.set_active_workspace(AC_WORKSPACE_ID).unwrap();
+        assert_eq!(
+            reopened.virtual_layout()[0].logical_action,
+            "AC Pit Limiter"
+        );
+        assert_eq!(reopened.manual_virtual_layout().len(), 1);
     }
 
     #[test]

@@ -5680,6 +5680,11 @@ textarea,
 .virtual-manual-create button {
   min-height: 40px;
 }
+.virtual-wizard-console > .virtual-setup-action {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin-top: 0;
+}
 .virtual-manual-note {
   margin-top: 12px;
   color: #d7b477;

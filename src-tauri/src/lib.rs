@@ -111,6 +111,9 @@ struct VirtualSetupSession {
     active: bool,
     device_id: u32,
     identity: String,
+    workspace_id: String,
+    workspace_kind: WorkspaceKind,
+    pending_action: Option<String>,
     allocator: Option<SetupButtonAllocator>,
 }
 
@@ -120,6 +123,9 @@ impl Default for VirtualSetupSession {
             active: false,
             device_id: 1,
             identity: String::new(),
+            workspace_id: String::new(),
+            workspace_kind: WorkspaceKind::LeMansUltimate,
+            pending_action: None,
             allocator: None,
         }
     }
@@ -567,6 +573,7 @@ struct VirtualSetupStatus {
 #[serde(rename_all = "camelCase")]
 struct VirtualSetupEvent {
     pulse: Option<VirtualButtonPulse>,
+    action: Option<String>,
     error: Option<String>,
 }
 
@@ -638,6 +645,7 @@ fn set_active_workspace(
     workspace_id: String,
     state: State<'_, AppState>,
     routing_state: State<'_, VirtualRoutingState>,
+    setup_state: State<'_, VirtualSetupState>,
     hotkey_state: State<'_, HotkeyState>,
     auto_state: State<'_, AutoProfileState>,
 ) -> Result<(), String> {
@@ -646,6 +654,11 @@ fn set_active_workspace(
         .lock()
         .map_err(|error| error.to_string())?;
     stop_virtual_routing_inner(&routing_state)?;
+    {
+        let mut setup = setup_state.0.lock().map_err(|error| error.to_string())?;
+        setup.active = false;
+        setup.pending_action = None;
+    }
     let profiles = {
         let mut store = state.0.lock().map_err(|error| error.to_string())?;
         store
@@ -658,6 +671,10 @@ fn set_active_workspace(
     hotkey_state
         .0
         .send(HotkeyUpdate::Profiles(profile_shortcuts(&profiles)))
+        .map_err(|_| "The shortcut worker is not running.".to_owned())?;
+    hotkey_state
+        .0
+        .send(HotkeyUpdate::VirtualSetup(false))
         .map_err(|_| "The shortcut worker is not running.".to_owned())?;
     pause_auto_profile_selection(&auto_state, "workspace changed");
     Ok(())
@@ -961,8 +978,7 @@ fn virtual_profile_mapping(
 fn saved_virtual_layout(state: State<'_, AppState>) -> Result<Vec<VirtualActionSummary>, String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
     Ok(store
-        .settings
-        .virtual_layout
+        .virtual_layout()
         .iter()
         .map(|entry| VirtualActionSummary {
             action: entry.logical_action.clone(),
@@ -1008,7 +1024,7 @@ fn ensure_manual_pulse_available(
         .map_err(|error| error.to_string())?
         .active
     {
-        return Err("Stop the LMU binding setup before sending a manual action.".to_owned());
+        return Err("Stop the guided binding setup before sending a manual action.".to_owned());
     }
     Ok(())
 }
@@ -1290,13 +1306,13 @@ async fn capture_virtual_profile_button(
 ) -> Result<VirtualButtonCaptureSummary, String> {
     let learned = wait_for_direct_input_mapping().await?;
     let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
     if !store
-        .settings
-        .virtual_layout
+        .virtual_layout_for_workspace(&profile.workspace_id)
         .iter()
         .any(|entry| entry.logical_action == logical_action)
     {
-        return Err("That action is not in the saved LMU button layout.".to_owned());
+        return Err("That action is not in this workspace's saved button layout.".to_owned());
     }
     let (pressed, modifiers) = match learned {
         LearnedPhysicalMapping::Button(pressed) => (pressed, Vec::new()),
@@ -1334,13 +1350,13 @@ fn save_virtual_profile_button(
     state: State<'_, AppState>,
 ) -> Result<Vec<VirtualProfileMappingSummary>, String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
     if !store
-        .settings
-        .virtual_layout
+        .virtual_layout_for_workspace(&profile.workspace_id)
         .iter()
         .any(|entry| entry.logical_action == proposed.logical_action)
     {
-        return Err("That action is not in the saved LMU button layout.".to_owned());
+        return Err("That action is not in this workspace's saved button layout.".to_owned());
     }
     let proposed = stored_button_mapping(proposed);
     if replace_conflict && also_trigger {
@@ -1399,8 +1415,7 @@ async fn inspect_virtual_profile_button(
         .into_iter()
         .filter_map(|mapping| {
             store
-                .settings
-                .virtual_layout
+                .virtual_layout_for_workspace(&profile.workspace_id)
                 .iter()
                 .find(|entry| entry.logical_action == mapping.logical_action)
                 .map(|layout| VirtualControlInspectionMatch {
@@ -1824,8 +1839,7 @@ fn start_virtual_routing_inner(
             })?;
         let layout = VirtualLayout::new(
             store
-                .settings
-                .virtual_layout
+                .virtual_layout()
                 .iter()
                 .map(|entry| {
                     LogicalAction::new(entry.logical_action.clone())
@@ -2158,10 +2172,15 @@ async fn start_virtual_binding_setup(
         "setup.start.requested",
         "Starting guided virtual binding setup",
     );
-    let (device_id, used_buttons) = {
+    let (device_id, used_buttons, workspace_id, workspace_kind) = {
         let store = state.0.lock().map_err(|error| error.to_string())?;
         let used_buttons = existing_vjoy_buttons(&store)?;
-        (store.settings.virtual_device_id, used_buttons)
+        (
+            store.settings.virtual_device_id,
+            used_buttons,
+            store.active_workspace().id.clone(),
+            store.active_workspace().kind,
+        )
     };
 
     let capabilities =
@@ -2183,6 +2202,9 @@ async fn start_virtual_binding_setup(
         active: true,
         device_id,
         identity: capabilities.identity.clone(),
+        workspace_id,
+        workspace_kind,
+        pending_action: None,
         allocator: Some(allocator),
     };
     let next_virtual_button = session
@@ -2245,19 +2267,61 @@ fn stop_virtual_binding_setup(
 }
 
 #[tauri::command]
+fn arm_virtual_binding_action(
+    action: String,
+    state: State<'_, AppState>,
+    setup_state: State<'_, VirtualSetupState>,
+) -> Result<(), String> {
+    let action = action.trim().to_owned();
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let mut session = setup_state.0.lock().map_err(|error| error.to_string())?;
+    if !session.active {
+        return Err("Start the virtual binding setup first.".to_owned());
+    }
+    if session.workspace_kind == WorkspaceKind::LeMansUltimate {
+        return Err("LMU action names are read from its saved binding file.".to_owned());
+    }
+    if store.settings.active_workspace_id != session.workspace_id {
+        return Err("The active workspace changed. Restart binding setup.".to_owned());
+    }
+    let button_count = session
+        .allocator
+        .as_ref()
+        .ok_or_else(|| "The virtual binding setup is not initialised.".to_owned())?
+        .button_count();
+    store
+        .next_manual_virtual_button(&action, button_count)
+        .map_err(|error| error.to_string())?;
+    session.pending_action = Some(action);
+    Ok(())
+}
+
+#[tauri::command]
 async fn send_next_virtual_button(
+    state: State<'_, AppState>,
     setup_state: State<'_, VirtualSetupState>,
 ) -> Result<VirtualButtonPulse, String> {
-    let (device_id, virtual_button) = reserve_virtual_setup_button(&setup_state)?;
+    let (device_id, virtual_button, action) = reserve_virtual_setup_button(&setup_state)?;
     let result = tauri::async_runtime::spawn_blocking(move || {
         pulse_virtual_button(device_id, virtual_button)
     })
     .await
     .map_err(|error| format!("Virtual button worker stopped unexpectedly: {error}"))?;
-    finish_virtual_setup_pulse(&setup_state, virtual_button, result)
+    let pulse = finish_virtual_setup_pulse(&setup_state, virtual_button, result)?;
+    if let Some(action) = action {
+        persist_virtual_setup_action(&state, &setup_state, action, virtual_button)?;
+    }
+    Ok(pulse)
 }
 
 fn existing_vjoy_buttons(store: &Store) -> Result<Vec<u32>, String> {
+    if store.active_workspace().kind != WorkspaceKind::LeMansUltimate {
+        return Ok(store
+            .virtual_layout()
+            .iter()
+            .map(|entry| entry.virtual_button)
+            .collect());
+    }
     let document = store
         .load_live_bindings_document()
         .map_err(|error| error.to_string())?;
@@ -2298,18 +2362,54 @@ fn existing_vjoy_buttons(store: &Store) -> Result<Vec<u32>, String> {
 
 fn reserve_virtual_setup_button(
     setup_state: &State<'_, VirtualSetupState>,
-) -> Result<(u32, u32), String> {
+) -> Result<(u32, u32, Option<String>), String> {
     let mut session = setup_state.0.lock().map_err(|error| error.to_string())?;
     if !session.active {
         return Err("Start the virtual binding setup first.".to_owned());
     }
+    let action = if session.workspace_kind == WorkspaceKind::LeMansUltimate {
+        None
+    } else {
+        Some(
+            session
+                .pending_action
+                .clone()
+                .ok_or_else(|| "Name and arm the action before sending a button.".to_owned())?,
+        )
+    };
     let virtual_button = session
         .allocator
         .as_mut()
         .ok_or_else(|| "The virtual binding setup is not initialised.".to_owned())?
         .reserve_next()
         .map_err(|error| error.to_string())?;
-    Ok((session.device_id, virtual_button))
+    Ok((session.device_id, virtual_button, action))
+}
+
+fn persist_virtual_setup_action(
+    state: &State<'_, AppState>,
+    setup_state: &State<'_, VirtualSetupState>,
+    action: String,
+    virtual_button: u32,
+) -> Result<(), String> {
+    let workspace_id = setup_state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())?
+        .workspace_id
+        .clone();
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    if store.settings.active_workspace_id != workspace_id {
+        return Err("The active workspace changed before the action could be saved.".to_owned());
+    }
+    store
+        .add_manual_virtual_action(action.clone(), virtual_button)
+        .map_err(|error| error.to_string())?;
+    let mut session = setup_state.0.lock().map_err(|error| error.to_string())?;
+    if session.pending_action.as_deref() == Some(action.as_str()) {
+        session.pending_action = None;
+    }
+    Ok(())
 }
 
 fn finish_virtual_setup_pulse(
@@ -3410,6 +3510,7 @@ pub fn run() {
             stop_virtual_routing,
             start_virtual_binding_setup,
             stop_virtual_binding_setup,
+            arm_virtual_binding_action,
             send_next_virtual_button
         ])
         .build(tauri::generate_context!())
@@ -3857,6 +3958,7 @@ fn poll_hotkeys(
                             "virtual-setup-result",
                             VirtualSetupEvent {
                                 pulse: None,
+                                action: None,
                                 error: Some(format!(
                                     "The setup hotkey could not be registered: {error}. Use the on-screen button instead."
                                 )),
@@ -3949,19 +4051,32 @@ fn poll_hotkeys(
             }
             Some(hotkeys::HotkeyAction::SendVirtualSetupButton) => {
                 let setup_state = app.state::<VirtualSetupState>();
+                let app_state = app.state::<AppState>();
                 let result = reserve_virtual_setup_button(&setup_state).and_then(
-                    |(device_id, virtual_button)| {
+                    |(device_id, virtual_button, action)| {
                         let result = pulse_virtual_button(device_id, virtual_button);
-                        finish_virtual_setup_pulse(&setup_state, virtual_button, result)
+                        let pulse =
+                            finish_virtual_setup_pulse(&setup_state, virtual_button, result)?;
+                        if let Some(action) = action.as_ref() {
+                            persist_virtual_setup_action(
+                                &app_state,
+                                &setup_state,
+                                action.clone(),
+                                virtual_button,
+                            )?;
+                        }
+                        Ok((pulse, action))
                     },
                 );
                 let event = match result {
-                    Ok(pulse) => VirtualSetupEvent {
+                    Ok((pulse, action)) => VirtualSetupEvent {
                         pulse: Some(pulse),
+                        action,
                         error: None,
                     },
                     Err(error) => VirtualSetupEvent {
                         pulse: None,
+                        action: None,
                         error: Some(error),
                     },
                 };

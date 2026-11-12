@@ -194,6 +194,7 @@ export type VirtualButtonPulse = {
 };
 export type VirtualSetupEvent = {
   pulse: VirtualButtonPulse | null;
+  action: string | null;
   error: string | null;
 };
 export type DiagnosticDevice = {

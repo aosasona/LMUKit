@@ -67,12 +67,12 @@ Assetto Corsa uses the existing button-only Virtual Input engine and a one-time 
 
 1. Select **Assetto Corsa** and create a profile under **Profiles**.
 2. Assign a shared wheel, then open **Virtual input**.
-3. Under **External app actions**, name the AC action, choose **Send now** or **In 5s**, and make Assetto Corsa listen for that vJoy button.
+3. Open **One-time Assetto Corsa button setup**, name and arm an action, make AC listen for input, then press `Ctrl+Alt+V`. Pivot sends the next unused vJoy button and saves that name after the pulse succeeds; confirm AC accepted it and repeat.
 4. Open **Profile editor** and bind the physical wheel control to the named action.
 5. Start that profile's live remapping from Profiles.
 6. Add one or more exact tags from the car's `content/cars/<car-id>/ui/ui_car.json`, make the appropriate profile the default for each tag, and optionally enable **Auto-select** on the AC overview.
 
-While AC is running, Pivot reads the active car ID from the documented `Local\acpmf_static` and `Local\acpmf_graphics` shared-memory pages, then reads that car's Content Manager tags from `ui_car.json`. Matching is case-insensitive but otherwise exact. If several matching tags point to different profile defaults, Pivot refuses to guess and asks for a more specific tag. Configure a non-default Steam library under **Settings → Assetto Corsa installation**. Pivot never edits AC or Content Manager files and does not route axes or FFB; steering, pedals and force feedback stay directly connected to the game. The virtual action catalogue remains shared between workspaces for now.
+While AC is running, Pivot reads the active car ID from the documented `Local\acpmf_static` and `Local\acpmf_graphics` shared-memory pages, then reads that car's Content Manager tags from `ui_car.json`. Matching is case-insensitive but otherwise exact. If several matching tags point to different profile defaults, Pivot refuses to guess and asks for a more specific tag. Configure a non-default Steam library under **Settings → Assetto Corsa installation**. Pivot never edits AC or Content Manager files and does not route axes or FFB; steering, pedals and force feedback stay directly connected to the game. Each workspace has an independent virtual action catalogue, so AC starts clean and LMU actions never leak into its profile editor.
 
 ### Profiles
 
