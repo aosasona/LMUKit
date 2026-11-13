@@ -3,6 +3,8 @@ rust = "1.91.1"
 "cargo:cargo-xwin" = "latest"
 node = "22"
 pnpm = "10"
+clang = "22"
+"conda:llvm-tools" = "22"
 
 [env]
 WINDOWS_TARGET = "x86_64-pc-windows-msvc"

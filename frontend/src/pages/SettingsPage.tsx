@@ -29,6 +29,7 @@ import type {
   Profile,
   Workspace,
 } from "../models";
+import type { AppUpdateState } from "../hooks/useAppUpdater";
 
 const MIN_SCALE = 0.85;
 const MAX_SCALE = 1.4;
@@ -52,6 +53,7 @@ type Props = {
   launchMode: "desktop" | "vr";
   autoStartVirtualProfile: boolean;
   workspaceKind: Workspace["kind"];
+  appUpdate: AppUpdateState;
   onSaveFontScale: (scale: number) => void;
   onSetVirtualAutoStart: (enabled: boolean) => void;
   onSaveAssettoCorsaPath: (path: string) => void;
@@ -62,6 +64,8 @@ type Props = {
     launchMode: "desktop" | "vr",
   ) => Promise<void>;
   onSetHotkey: (profile: Profile, slot: number | null) => void;
+  onCheckForUpdates: () => void;
+  onRequestUpdateInstall: () => void;
   onCreateLaunchOption: (
     configPath: string,
     settingsPath: string,
@@ -91,11 +95,14 @@ export function SettingsPage(props: Props) {
     launchMode,
     autoStartVirtualProfile,
     workspaceKind,
+    appUpdate,
     onSaveFontScale,
     onSetVirtualAutoStart,
     onSaveAssettoCorsaPath,
     onSaveSettings,
     onSetHotkey,
+    onCheckForUpdates,
+    onRequestUpdateInstall,
     onCreateLaunchOption,
     onBrowse,
   } = props;
@@ -642,6 +649,97 @@ export function SettingsPage(props: Props) {
           </div>
         </section>
       )}
+
+      <section className="settings-card app-update-card">
+        <SettingsHeading
+          icon={<Download />}
+          eyebrow="Maintenance"
+          title="App updates"
+        >
+          Pivot checks GitHub Releases for signed updates. Installation never
+          changes your profiles or application-data identity.
+        </SettingsHeading>
+        <div className="app-update-summary">
+          <span>
+            <small>Installed version</small>
+            <strong>
+              {appUpdate.currentVersion
+                ? `Pivot ${appUpdate.currentVersion}`
+                : "Reading version…"}
+            </strong>
+          </span>
+          <span className={`app-update-status ${appUpdate.phase}`}>
+            {(appUpdate.phase === "checking" ||
+              appUpdate.phase === "downloading" ||
+              appUpdate.phase === "installing") && (
+              <LoaderCircle className="spin" />
+            )}
+            {appUpdate.phase === "current" && <Check />}
+            {appUpdate.phase === "available" && <Download />}
+            {appUpdate.phase === "error" && <AlertCircle />}
+            {appUpdate.phase === "idle"
+              ? "Automatic checks enabled"
+              : appUpdate.phase === "checking"
+                ? "Checking for updates…"
+                : appUpdate.phase === "current"
+                  ? "You have the latest version"
+                  : appUpdate.phase === "available"
+                    ? `Pivot ${appUpdate.availableVersion} is ready`
+                    : appUpdate.phase === "downloading"
+                      ? "Downloading update…"
+                      : appUpdate.phase === "installing"
+                        ? "Starting the installer…"
+                        : "Update check failed"}
+          </span>
+        </div>
+        {appUpdate.phase === "downloading" && (
+          <div className="app-update-progress">
+            <span
+              style={{
+                width: appUpdate.totalBytes
+                  ? `${Math.min(100, (appUpdate.downloadedBytes / appUpdate.totalBytes) * 100)}%`
+                  : "16%",
+              }}
+            />
+          </div>
+        )}
+        {appUpdate.availableVersion && appUpdate.notes && (
+          <div className="app-update-notes">
+            <strong>What changed</strong>
+            <p>{appUpdate.notes}</p>
+          </div>
+        )}
+        {appUpdate.error && (
+          <div className="app-update-error">{appUpdate.error}</div>
+        )}
+        <div className="app-update-actions">
+          <button
+            type="button"
+            className="secondary"
+            disabled={
+              appUpdate.phase === "checking" ||
+              appUpdate.phase === "downloading" ||
+              appUpdate.phase === "installing"
+            }
+            onClick={onCheckForUpdates}
+          >
+            <RefreshCw /> Check for updates
+          </button>
+          {appUpdate.availableVersion && (
+            <button
+              type="button"
+              className="primary"
+              disabled={
+                appUpdate.phase === "downloading" ||
+                appUpdate.phase === "installing"
+              }
+              onClick={onRequestUpdateInstall}
+            >
+              <Download /> Download and install
+            </button>
+          )}
+        </div>
+      </section>
 
       <section className="settings-card diagnostics-card">
         <SettingsHeading

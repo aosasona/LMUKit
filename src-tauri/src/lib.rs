@@ -807,6 +807,46 @@ fn exit_app(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn prepare_for_update(
+    routing_state: State<'_, VirtualRoutingState>,
+    setup_state: State<'_, VirtualSetupState>,
+    hotkey_state: State<'_, HotkeyState>,
+    pulse_state: State<'_, ManualPulseState>,
+    auto_state: State<'_, AutoProfileState>,
+) -> Result<(), String> {
+    let mut setup = setup_state.0.lock().map_err(|error| error.to_string())?;
+    if setup
+        .allocator
+        .as_ref()
+        .is_some_and(SetupButtonAllocator::is_sending)
+    {
+        return Err(
+            "Wait for the current virtual button test to finish, then install the update again."
+                .to_owned(),
+        );
+    }
+    pause_auto_profile_selection(&auto_state, "application update");
+    pulse_state.0.fetch_add(1, Ordering::AcqRel);
+    setup.active = false;
+    setup.pending_action = None;
+    drop(setup);
+    hotkey_state
+        .0
+        .send(HotkeyUpdate::VirtualSetup(false))
+        .map_err(|_| "The shortcut worker is not running.".to_owned())?;
+    let _operation = routing_state
+        .operation
+        .lock()
+        .map_err(|error| error.to_string())?;
+    stop_virtual_routing_inner(&routing_state)?;
+    diagnostics::info(
+        "app.update.prepared",
+        "Stopped live remapping and released virtual outputs before update installation",
+    );
+    Ok(())
+}
+
+#[tauri::command]
 fn save_app_settings(
     lmu_config_path: String,
     lmu_settings_path: String,
@@ -3609,6 +3649,7 @@ pub fn run() {
             );
             show_main_window(app);
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState(Mutex::new(store)))
         .manage(HotkeyState(hotkey_tx))
         .manage(VirtualSetupState(
@@ -3745,6 +3786,7 @@ pub fn run() {
             set_virtual_auto_start,
             set_log_retention_days,
             exit_app,
+            prepare_for_update,
             save_app_settings,
             set_profile_hotkey,
             companion_launch_option,

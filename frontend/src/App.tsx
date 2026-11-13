@@ -8,6 +8,7 @@ import { InputModeSwitch, type InputMode } from "./components/InputModeSwitch";
 import { TitleBar } from "./components/TitleBar";
 import { QuickProfileSwitcher } from "./components/QuickProfileSwitcher";
 import { StartupHealthBanner } from "./components/StartupHealthBanner";
+import { UpdateBanner } from "./components/UpdateBanner";
 import type {
   Binding,
   BindingAssignmentCandidate,
@@ -33,6 +34,7 @@ import {
   emptySnapshot,
 } from "./models";
 import { pageTitle } from "./lib/navigation";
+import { useAppUpdater } from "./hooks/useAppUpdater";
 import { GameSettingsPage } from "./pages/GameSettingsPage";
 import { HelpPage } from "./pages/HelpPage";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -44,6 +46,7 @@ import { WheelsPage } from "./pages/WheelsPage";
 import { WorkspaceOverviewPage } from "./pages/WorkspaceOverviewPage";
 
 export default function App() {
+  const updater = useAppUpdater();
   const [page, setPage] = useState<Page>("home");
   const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot);
   const [routing, setRouting] = useState<VirtualRoutingStatus>({
@@ -83,6 +86,7 @@ export default function App() {
   const [profileDocumentLoading, setProfileDocumentLoading] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [exitRequested, setExitRequested] = useState(false);
+  const [updateInstallRequested, setUpdateInstallRequested] = useState(false);
   const [startupHealth, setStartupHealth] = useState<StartupHealth | null>(
     null,
   );
@@ -926,6 +930,25 @@ export default function App() {
         },
       }
     : null;
+  const updateConfirmation: Confirmation | null = updateInstallRequested
+    ? {
+        title: `Install Pivot ${updater.state.availableVersion ?? "update"}?`,
+        description: [
+          "Pivot will download the signed Windows installer, verify it, and restart after installation.",
+          routing.active
+            ? "Live remapping will stop and every virtual button will be released immediately before installation."
+            : "Your profiles and settings will remain in place.",
+        ].join(" "),
+        confirmLabel: "Download and install",
+        onConfirm: () => {
+          setUpdateInstallRequested(false);
+          void updater.installUpdate();
+        },
+      }
+    : null;
+  const updateBusy =
+    updater.state.phase === "downloading" ||
+    updater.state.phase === "installing";
 
   return (
     <div className="window-shell">
@@ -981,6 +1004,10 @@ export default function App() {
             </div>
           </header>
           <div className="content">
+            <UpdateBanner
+              update={updater.state}
+              onReview={() => navigate("settings")}
+            />
             {page === "home" && snapshot.inputMode === "virtual" && (
               <StartupHealthBanner
                 health={startupHealth}
@@ -1129,11 +1156,14 @@ export default function App() {
                 launchMode={snapshot.lmuLaunchMode}
                 autoStartVirtualProfile={snapshot.autoStartVirtualProfile}
                 workspaceKind={snapshot.activeWorkspaceKind}
+                appUpdate={updater.state}
                 onSaveFontScale={saveFontScale}
                 onSetVirtualAutoStart={setVirtualAutoStart}
                 onSaveAssettoCorsaPath={saveAssettoCorsaPath}
                 onSaveSettings={saveAppSettings}
                 onSetHotkey={setProfileHotkey}
+                onCheckForUpdates={() => void updater.checkForUpdates()}
+                onRequestUpdateInstall={() => setUpdateInstallRequested(true)}
                 onCreateLaunchOption={createLaunchOption}
                 onBrowse={browseForPath}
               />
@@ -1166,9 +1196,12 @@ export default function App() {
         />
       )}
       <ConfirmDialog
-        confirmation={exitConfirmation}
-        busy={busy}
-        onClose={() => setExitRequested(false)}
+        confirmation={exitConfirmation ?? updateConfirmation}
+        busy={busy || updateBusy}
+        onClose={() => {
+          setExitRequested(false);
+          setUpdateInstallRequested(false);
+        }}
       />
     </div>
   );
