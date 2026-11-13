@@ -5,7 +5,7 @@
 
 Pivot is a modern Windows toolkit for Le Mans Ultimate and button-only virtual remapping in Assetto Corsa. It brings isolated sim workspaces, binding profiles, reusable wheel metadata, control inspection, LMU game settings, and companion-app launching into one focused application.
 
-Left-clicking the title-bar close button hides Pivot in the Windows notification area so live remapping can continue without a taskbar button. Right-click the close button to request a permanent exit. The tray shows the active workspace and live profile, and its menu provides **Show Pivot**, **Stop remapping**, and **Exit Pivot**. Exit always requires confirmation, stops routing, and releases virtual buttons before shutdown.
+Left-clicking the title-bar close button hides Pivot in the Windows notification area so live remapping can continue without a taskbar button. Right-click the close button to request a permanent exit. The tray shows the active workspace and live profile. Its menu can show Pivot, start or stop the last live profile, open the profile switcher, check for updates, or request exit. Exit always requires confirmation, stops routing, and releases virtual buttons before shutdown.
 
 Pivot runs as a single instance. Launching it again restores the existing window instead of starting another input-routing process or tray icon.
 
@@ -50,7 +50,7 @@ _Assetto Corsa keeps its profiles and named actions separate while reusing the g
 - Autosave LMU paths, launch mode, and companion-app setup.
 - Follow an in-app Help & Setup guide for wheels, DirectInput-visible controllers, button boxes, Legacy JSON, Virtual Input, and common recovery steps.
 - Scale the entire interface from Settings.
-- Hide to the Windows notification area while live remapping continues, see the active workspace/profile in its tooltip, or stop remapping directly from the tray.
+- Hide to the Windows notification area while live remapping continues, see the active workspace/profile, start or stop the last live profile, switch profiles, or check for updates directly from the tray.
 - Check vJoy capacity, workspace profiles, and the current route in a compact Overview health banner; starting a profile warns when one of its mapped physical devices is disconnected.
 - Inspect virtual-input health and attached controllers, open rotating local logs, and export a privacy-redacted diagnostic report from Settings.
 - Check for signed Pivot updates automatically or manually from Settings, review release notes, and install without losing profiles or settings. Pivot stops remapping and releases virtual outputs immediately before starting the installer.

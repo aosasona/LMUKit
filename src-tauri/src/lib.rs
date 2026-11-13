@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{
     Emitter, Manager, State,
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 use uuid::Uuid;
@@ -58,6 +58,21 @@ struct AcContextState {
 }
 
 struct AutoProfileState(Mutex<AutoProfileRuntime>);
+
+struct TrayMenuState {
+    status: MenuItem<tauri::Wry>,
+    routing_toggle: MenuItem<tauri::Wry>,
+    switch_profile: MenuItem<tauri::Wry>,
+    presentation: Mutex<Option<TrayMenuPresentation>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TrayMenuPresentation {
+    status: String,
+    routing_toggle_text: &'static str,
+    routing_toggle_enabled: bool,
+    switch_profile_enabled: bool,
+}
 
 struct AutoProfileRuntime {
     paused: bool,
@@ -1961,6 +1976,39 @@ fn hold_manual_profile_for_context(
     }
 }
 
+fn hold_manual_profile_for_active_context(
+    app_state: &AppState,
+    auto_state: &AutoProfileState,
+    car_context: &CarContextState,
+    ac_context: &AcContextState,
+) -> Result<(), String> {
+    let workspace_kind = app_state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())?
+        .active_workspace()
+        .kind;
+    match workspace_kind {
+        WorkspaceKind::AssettoCorsa => {
+            let context = ac_context.status.lock().ok();
+            let context_key = context.as_ref().and_then(|context| context.car_id.clone());
+            let context_label = context
+                .as_ref()
+                .and_then(|context| context.car_name.clone().or_else(|| context.car_id.clone()));
+            hold_manual_profile_for_context(auto_state, context_key.as_deref(), context_label);
+        }
+        _ => {
+            let class_tag = car_context
+                .status
+                .lock()
+                .ok()
+                .and_then(|context| confirmed_class(&context).map(str::to_owned));
+            hold_manual_profile_for_class(auto_state, class_tag.as_deref());
+        }
+    }
+    Ok(())
+}
+
 fn confirmed_class(context: &CarContextSummary) -> Option<&str> {
     (context.connected
         && context.status == LmuCarContextStatus::Confirmed
@@ -1987,30 +2035,7 @@ fn start_virtual_routing(
         &app_state,
         &routing_state,
     )?;
-    let workspace_kind = app_state
-        .0
-        .lock()
-        .map_err(|error| error.to_string())?
-        .active_workspace()
-        .kind;
-    match workspace_kind {
-        WorkspaceKind::AssettoCorsa => {
-            let context = ac_context.status.lock().ok();
-            let context_key = context.as_ref().and_then(|context| context.car_id.clone());
-            let context_label = context
-                .as_ref()
-                .and_then(|context| context.car_name.clone().or_else(|| context.car_id.clone()));
-            hold_manual_profile_for_context(&auto_state, context_key.as_deref(), context_label);
-        }
-        _ => {
-            let class_tag = car_context
-                .status
-                .lock()
-                .ok()
-                .and_then(|context| confirmed_class(&context).map(str::to_owned));
-            hold_manual_profile_for_class(&auto_state, class_tag.as_deref());
-        }
-    }
+    hold_manual_profile_for_active_context(&app_state, &auto_state, &car_context, &ac_context)?;
     Ok(status)
 }
 
@@ -2743,7 +2768,7 @@ fn pick_file_dialog(kind: &str, initial_path: Option<&str>) -> Result<Option<Str
 #[cfg(target_os = "windows")]
 fn run_picker_script(script: &str) -> Result<Option<String>, String> {
     let output = std::process::Command::new("powershell.exe")
-        .args(["-NoProfile", "-Command", &script])
+        .args(["-NoProfile", "-Command", script])
         .output()
         .map_err(|error| error.to_string())?;
     if !output.status.success() {
@@ -3553,9 +3578,107 @@ fn tray_tooltip(app: &tauri::AppHandle) -> String {
     }
 }
 
+fn tray_menu_presentation(app: &tauri::AppHandle) -> TrayMenuPresentation {
+    let (workspace, input_mode, can_start, can_switch) = app
+        .state::<AppState>()
+        .0
+        .lock()
+        .map(|store| {
+            let profiles = store.active_workspace_profiles().unwrap_or_default();
+            let can_start = store.settings.input_mode == InputMode::Virtual
+                && store
+                    .settings
+                    .last_virtual_profile
+                    .is_some_and(|profile_id| {
+                        profiles.iter().any(|profile| profile.id == profile_id)
+                    });
+            (
+                store.active_workspace().name.clone(),
+                store.settings.input_mode,
+                can_start,
+                !profiles.is_empty(),
+            )
+        })
+        .unwrap_or_else(|_| {
+            (
+                "Workspace unavailable".to_owned(),
+                InputMode::Legacy,
+                false,
+                false,
+            )
+        });
+    let routing = app
+        .state::<VirtualRoutingState>()
+        .status
+        .lock()
+        .map(|status| status.clone())
+        .unwrap_or_default();
+    build_tray_menu_presentation(&workspace, input_mode, can_start, can_switch, &routing)
+}
+
+fn build_tray_menu_presentation(
+    workspace: &str,
+    input_mode: InputMode,
+    can_start: bool,
+    can_switch: bool,
+    routing: &VirtualRoutingStatus,
+) -> TrayMenuPresentation {
+    let workspace = workspace.replace('&', "&&");
+    TrayMenuPresentation {
+        status: if routing.active {
+            format!(
+                "{workspace} · {}",
+                routing
+                    .profile_name
+                    .as_deref()
+                    .unwrap_or("Remapping active")
+                    .replace('&', "&&")
+            )
+        } else if input_mode == InputMode::Virtual {
+            format!("{workspace} · Remapping off")
+        } else {
+            format!("{workspace} · Legacy JSON")
+        },
+        routing_toggle_text: if routing.active {
+            "Stop remapping"
+        } else {
+            "Start remapping"
+        },
+        routing_toggle_enabled: routing.active || can_start,
+        switch_profile_enabled: can_switch,
+    }
+}
+
 fn refresh_tray_status(app: &tauri::AppHandle) {
     if let Some(tray) = app.tray_by_id("lmukit") {
         let _ = tray.set_tooltip(Some(tray_tooltip(app)));
+    }
+    let Some(menu) = app.try_state::<TrayMenuState>() else {
+        return;
+    };
+    let presentation = tray_menu_presentation(app);
+    let unchanged = menu
+        .presentation
+        .lock()
+        .is_ok_and(|current| current.as_ref() == Some(&presentation));
+    if unchanged {
+        return;
+    }
+    let updated = menu.status.set_text(&presentation.status).is_ok()
+        && menu
+            .routing_toggle
+            .set_text(presentation.routing_toggle_text)
+            .is_ok()
+        && menu
+            .routing_toggle
+            .set_enabled(presentation.routing_toggle_enabled)
+            .is_ok()
+        && menu
+            .switch_profile
+            .set_enabled(presentation.switch_profile_enabled)
+            .is_ok();
+    if updated && let Ok(mut current) = menu.presentation.lock() {
+        *current = Some(presentation);
     }
 }
 
@@ -3581,20 +3704,130 @@ fn stop_routing_from_tray(app: tauri::AppHandle) {
     let _ = app.emit("tray-routing-result", result);
 }
 
+fn start_routing_from_tray(app: tauri::AppHandle) {
+    let result = (|| {
+        let profile_id = {
+            let state = app.state::<AppState>();
+            let store = state.0.lock().map_err(|error| error.to_string())?;
+            if store.settings.input_mode != InputMode::Virtual {
+                return Err("Switch Pivot to Virtual Input before starting remapping.".to_owned());
+            }
+            let profile_id = store.settings.last_virtual_profile.ok_or_else(|| {
+                "Choose a mapped profile in Pivot before starting from the notification area."
+                    .to_owned()
+            })?;
+            store
+                .active_workspace_profiles()
+                .map_err(|error| error.to_string())?
+                .iter()
+                .any(|profile| profile.id == profile_id)
+                .then_some(profile_id)
+                .ok_or_else(|| {
+                    "The last live profile belongs to another workspace. Choose a profile first."
+                        .to_owned()
+                })?
+        };
+        let app_state = app.state::<AppState>();
+        let routing_state = app.state::<VirtualRoutingState>();
+        let status = start_virtual_routing_inner(
+            profile_id,
+            "Started from the notification area".to_owned(),
+            &app_state,
+            &routing_state,
+        )?;
+        hold_manual_profile_for_active_context(
+            &app_state,
+            &app.state::<AutoProfileState>(),
+            &app.state::<CarContextState>(),
+            &app.state::<AcContextState>(),
+        )?;
+        Ok::<_, String>(format!(
+            "{} is now remapping live.",
+            status.profile_name.as_deref().unwrap_or("The last profile")
+        ))
+    })();
+    refresh_tray_status(&app);
+    let _ = app.emit("tray-routing-result", result);
+}
+
+fn toggle_routing_from_tray(app: tauri::AppHandle) {
+    let active = app
+        .state::<VirtualRoutingState>()
+        .status
+        .lock()
+        .is_ok_and(|status| status.active);
+    if active {
+        stop_routing_from_tray(app);
+    } else {
+        start_routing_from_tray(app);
+    }
+}
+
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+    let status = MenuItem::with_id(
+        app,
+        "routing-status",
+        "Workspace · Remapping off",
+        false,
+        None::<&str>,
+    )?;
     let show = MenuItem::with_id(app, "show-lmukit", "Show Pivot", true, None::<&str>)?;
-    let stop = MenuItem::with_id(app, "stop-routing", "Stop remapping", true, None::<&str>)?;
+    let routing_toggle = MenuItem::with_id(
+        app,
+        "toggle-routing",
+        "Start remapping",
+        false,
+        None::<&str>,
+    )?;
+    let switch_profile = MenuItem::with_id(
+        app,
+        "switch-profile",
+        "Switch profile…",
+        false,
+        None::<&str>,
+    )?;
+    let check_updates = MenuItem::with_id(
+        app,
+        "check-updates",
+        "Check for updates…",
+        true,
+        None::<&str>,
+    )?;
     let exit = MenuItem::with_id(app, "exit-lmukit", "Exit Pivot", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &stop, &exit])?;
+    let separator_one = PredefinedMenuItem::separator(app)?;
+    let separator_two = PredefinedMenuItem::separator(app)?;
+    let separator_three = PredefinedMenuItem::separator(app)?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &status,
+            &separator_one,
+            &show,
+            &routing_toggle,
+            &switch_profile,
+            &separator_two,
+            &check_updates,
+            &separator_three,
+            &exit,
+        ],
+    )?;
     let mut tray = TrayIconBuilder::with_id("lmukit")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .tooltip("Pivot")
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show-lmukit" => show_main_window(app),
-            "stop-routing" => {
+            "toggle-routing" => {
                 let app = app.clone();
-                std::thread::spawn(move || stop_routing_from_tray(app));
+                std::thread::spawn(move || toggle_routing_from_tray(app));
+            }
+            "switch-profile" => {
+                show_main_window(app);
+                let _ = app.emit("open-profile-switcher", ());
+            }
+            "check-updates" => {
+                show_main_window(app);
+                let _ = app.emit("open-update-settings", ());
             }
             "exit-lmukit" => request_exit_confirmation(app),
             _ => {}
@@ -3615,6 +3848,12 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         tray = tray.icon(icon);
     }
     tray.build(app)?;
+    app.manage(TrayMenuState {
+        status,
+        routing_toggle,
+        switch_profile,
+        presentation: Mutex::new(None),
+    });
     refresh_tray_status(app.handle());
     Ok(())
 }
@@ -4300,9 +4539,9 @@ fn poll_hotkeys(
                 let mode = app_state
                     .0
                     .lock()
-                    .map(|store| (store.settings.input_mode, store.active_workspace().kind))
+                    .map(|store| store.settings.input_mode)
                     .map_err(|error| error.to_string());
-                let result = mode.and_then(|(mode, workspace_kind)| match mode {
+                let result = mode.and_then(|mode| match mode {
                     InputMode::Legacy => ensure_lmu_file_write_allowed(false).and_then(|_| {
                         app_state
                             .0
@@ -4336,26 +4575,12 @@ fn poll_hotkeys(
                             &routing_state,
                         );
                         if result.is_ok() {
-                            if workspace_kind == WorkspaceKind::AssettoCorsa {
-                                let context = app.state::<AcContextState>();
-                                let context = context.status.lock().ok();
-                                let context_key =
-                                    context.as_ref().and_then(|context| context.car_id.clone());
-                                let context_label = context.as_ref().and_then(|context| {
-                                    context.car_name.clone().or_else(|| context.car_id.clone())
-                                });
-                                hold_manual_profile_for_context(
-                                    &auto_state,
-                                    context_key.as_deref(),
-                                    context_label,
-                                );
-                            } else {
-                                let class_tag =
-                                    app.state::<CarContextState>().status.lock().ok().and_then(
-                                        |context| confirmed_class(&context).map(str::to_owned),
-                                    );
-                                hold_manual_profile_for_class(&auto_state, class_tag.as_deref());
-                            }
+                            let _ = hold_manual_profile_for_active_context(
+                                &app_state,
+                                &auto_state,
+                                &app.state::<CarContextState>(),
+                                &app.state::<AcContextState>(),
+                            );
                         }
                         result.map(|status| {
                             format!(
@@ -4405,5 +4630,75 @@ fn poll_hotkeys(
             }
             None => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tray_menu_describes_legacy_mode_without_offering_live_routing() {
+        let presentation = build_tray_menu_presentation(
+            "Le Mans Ultimate",
+            InputMode::Legacy,
+            false,
+            true,
+            &VirtualRoutingStatus::default(),
+        );
+
+        assert_eq!(presentation.status, "Le Mans Ultimate · Legacy JSON");
+        assert_eq!(presentation.routing_toggle_text, "Start remapping");
+        assert!(!presentation.routing_toggle_enabled);
+        assert!(presentation.switch_profile_enabled);
+    }
+
+    #[test]
+    fn tray_menu_offers_the_last_virtual_profile_when_available() {
+        let presentation = build_tray_menu_presentation(
+            "Assetto Corsa",
+            InputMode::Virtual,
+            true,
+            true,
+            &VirtualRoutingStatus::default(),
+        );
+
+        assert_eq!(presentation.status, "Assetto Corsa · Remapping off");
+        assert_eq!(presentation.routing_toggle_text, "Start remapping");
+        assert!(presentation.routing_toggle_enabled);
+        assert!(presentation.switch_profile_enabled);
+    }
+
+    #[test]
+    fn tray_menu_shows_and_can_stop_the_live_profile() {
+        let routing = VirtualRoutingStatus {
+            active: true,
+            profile_name: Some("GT Neo · LMGT3".to_owned()),
+            ..VirtualRoutingStatus::default()
+        };
+        let presentation = build_tray_menu_presentation(
+            "Le Mans Ultimate",
+            InputMode::Virtual,
+            true,
+            true,
+            &routing,
+        );
+
+        assert_eq!(presentation.status, "Le Mans Ultimate · GT Neo · LMGT3");
+        assert_eq!(presentation.routing_toggle_text, "Stop remapping");
+        assert!(presentation.routing_toggle_enabled);
+    }
+
+    #[test]
+    fn tray_menu_escapes_windows_menu_mnemonics_in_user_names() {
+        let routing = VirtualRoutingStatus {
+            active: true,
+            profile_name: Some("Wheel & Pedals".to_owned()),
+            ..VirtualRoutingStatus::default()
+        };
+        let presentation =
+            build_tray_menu_presentation("Cars & Sims", InputMode::Virtual, true, true, &routing);
+
+        assert_eq!(presentation.status, "Cars && Sims · Wheel && Pedals");
     }
 }

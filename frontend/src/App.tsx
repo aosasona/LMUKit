@@ -250,12 +250,17 @@ export default function App() {
           .catch(() => undefined);
       },
     );
+    const openUpdateSettings = listen("open-update-settings", () => {
+      setPage("settings");
+      void updater.checkForUpdates();
+    });
     return () => {
       void switcher.then((unlisten) => unlisten());
       void activation.then((unlisten) => unlisten());
       void virtualAutoStart.then((unlisten) => unlisten());
       void exitRequest.then((unlisten) => unlisten());
       void trayRouting.then((unlisten) => unlisten());
+      void openUpdateSettings.then((unlisten) => unlisten());
     };
   }, []);
   useEffect(() => {
