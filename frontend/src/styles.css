@@ -3521,6 +3521,16 @@ textarea,
   cursor: pointer;
   font-size: calc(12px * var(--font-scale));
 }
+.path-input button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.path-input button svg {
+  width: 14px;
+  height: 14px;
+}
 .shortcut-list {
   display: grid;
   gap: 7px;

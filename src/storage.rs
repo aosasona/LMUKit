@@ -2286,6 +2286,22 @@ pub fn default_assetto_corsa_path() -> PathBuf {
     PathBuf::from(r"C:\Program Files (x86)\Steam\steamapps\common\assettocorsa")
 }
 
+pub fn validate_assetto_corsa_root(path: &Path) -> Result<()> {
+    ensure!(
+        path.is_dir(),
+        "The Assetto Corsa installation folder does not exist."
+    );
+    ensure!(
+        path.join("acs.exe").is_file(),
+        "The selected folder does not contain acs.exe. Choose Assetto Corsa's installation folder."
+    );
+    ensure!(
+        path.join("content").join("cars").is_dir(),
+        "The selected folder does not contain content\\cars. Choose Assetto Corsa's installation folder."
+    );
+    Ok(())
+}
+
 fn validate_lmu_file(path: &Path) -> Result<()> {
     if !path.is_file() {
         bail!("No LMU config was found at {}", path.display());
@@ -2601,6 +2617,20 @@ fn unix_time() -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validates_an_assetto_corsa_installation_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("assettocorsa");
+        fs::create_dir_all(root.join("content").join("cars")).unwrap();
+
+        let missing_executable = validate_assetto_corsa_root(&root).unwrap_err();
+        assert!(missing_executable.to_string().contains("acs.exe"));
+
+        fs::write(root.join("acs.exe"), []).unwrap();
+        validate_assetto_corsa_root(&root).unwrap();
+        assert!(validate_assetto_corsa_root(&root.join("content")).is_err());
+    }
 
     #[test]
     fn resolves_the_most_specific_virtual_button_mapping() {

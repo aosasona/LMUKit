@@ -271,7 +271,9 @@ export function HelpPage({
               Select the Assetto Corsa workspace, open Virtual Input, and start
               its one-time setup. Name and arm the action, make AC listen for a
               controller input, then press Ctrl+Alt+V. Confirm AC accepted the
-              vJoy button before repeating for the next action.
+              vJoy button before repeating for the next action. If car tags do
+              not appear, use Settings → Assetto Corsa installation → Browse and
+              choose the folder containing acs.exe.
             </p>
           </details>
           <details>

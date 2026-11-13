@@ -852,10 +852,11 @@ export default function App() {
     }
   };
   const browseForPath = async (
-    kind: "bindings" | "settings" | "executable",
+    kind: "bindings" | "settings" | "executable" | "assetto_corsa_folder",
+    initialPath?: string,
   ) => {
     try {
-      return await invoke<string | null>("pick_file", { kind });
+      return await invoke<string | null>("pick_file", { kind, initialPath });
     } catch (error) {
       setNotice(String(error));
       return null;

@@ -69,7 +69,8 @@ type Props = {
     launchMode: "desktop" | "vr",
   ) => Promise<string | null>;
   onBrowse: (
-    kind: "bindings" | "settings" | "executable",
+    kind: "bindings" | "settings" | "executable" | "assetto_corsa_folder",
+    initialPath?: string,
   ) => Promise<string | null>;
 };
 
@@ -405,6 +406,21 @@ export function SettingsPage(props: Props) {
                   placeholder="C:\\Program Files (x86)\\Steam\\steamapps\\common\\assettocorsa"
                   onChange={(event) => setAssettoRoot(event.target.value)}
                 />
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void onBrowse("assetto_corsa_folder", assettoRoot).then(
+                      (path) => {
+                        if (!path) return;
+                        setAssettoRoot(path);
+                        onSaveAssettoCorsaPath(path);
+                      },
+                    )
+                  }
+                >
+                  <FolderOpen /> Browse
+                </button>
                 <button
                   type="button"
                   disabled={

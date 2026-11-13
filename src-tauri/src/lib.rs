@@ -8,7 +8,7 @@ use lmukit_core::storage::{
     VirtualButtonConflictResolution, VirtualButtonMapping, VirtualButtonModifier,
     VirtualEncoderControl, VirtualEncoderGroup, VirtualEncoderMode as StoredEncoderMode,
     VirtualProfileMapping, Wheel, WorkspaceKind, resolve_virtual_button_mappings,
-    validate_companion_apps,
+    validate_assetto_corsa_root, validate_companion_apps,
 };
 use lmukit_virtual::{
     EncoderGroup, EncoderMode, LogicalAction, PhysicalButton, ProfileBinding, ProfileMapping,
@@ -259,6 +259,14 @@ impl AcContextSummary {
         next.connected = false;
         next.session_state = "unknown".to_owned();
         next.message = "Assetto Corsa shared memory is unavailable.".to_owned();
+        next
+    }
+
+    fn metadata_unavailable(previous: &Self) -> Self {
+        let mut next = previous.clone();
+        next.connected = true;
+        next.session_state = "unknown".to_owned();
+        next.message = "AC shared memory is connected, but the active car metadata could not be read. Check Settings → Assetto Corsa installation.".to_owned();
         next
     }
 }
@@ -715,8 +723,10 @@ fn set_assetto_corsa_path(path: String, state: State<'_, AppState>) -> Result<()
     if path.is_empty() {
         return Err("Choose the Assetto Corsa installation folder.".to_owned());
     }
+    let path = std::path::PathBuf::from(path);
+    validate_assetto_corsa_root(&path).map_err(|error| error.to_string())?;
     let mut store = state.0.lock().map_err(|error| error.to_string())?;
-    store.settings.assetto_corsa_path = path.into();
+    store.settings.assetto_corsa_path = path;
     store.save_settings().map_err(|error| error.to_string())
 }
 
@@ -848,8 +858,8 @@ fn validate_companion_launch_setup(companion_apps: Vec<CompanionApp>) -> Vec<Com
 }
 
 #[tauri::command]
-fn pick_file(kind: String) -> Result<Option<String>, String> {
-    pick_file_dialog(&kind)
+fn pick_file(kind: String, initial_path: Option<String>) -> Result<Option<String>, String> {
+    pick_file_dialog(&kind, initial_path.as_deref())
 }
 
 #[tauri::command]
@@ -2670,7 +2680,14 @@ fn pulse_virtual_button(_device_id: u32, _virtual_button: u32) -> Result<String,
 }
 
 #[cfg(target_os = "windows")]
-fn pick_file_dialog(kind: &str) -> Result<Option<String>, String> {
+fn pick_file_dialog(kind: &str, initial_path: Option<&str>) -> Result<Option<String>, String> {
+    if kind == "assetto_corsa_folder" {
+        let selected_path = initial_path.unwrap_or_default().replace('\'', "''");
+        let script = format!(
+            "Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description='Choose the Assetto Corsa installation folder'; $d.ShowNewFolderButton=$false; $d.SelectedPath='{selected_path}'; if($d.ShowDialog() -eq 'OK'){{[Console]::Write($d.SelectedPath)}}"
+        );
+        return run_picker_script(&script);
+    }
     let (filter, filename) = match kind {
         "bindings" => ("JSON files (*.json)|*.json", "direct input.json"),
         "settings" => ("JSON files (*.json)|*.json", "Settings.JSON"),
@@ -2680,6 +2697,11 @@ fn pick_file_dialog(kind: &str) -> Result<Option<String>, String> {
     let script = format!(
         "Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.OpenFileDialog; $d.Filter='{filter}'; $d.FileName='{filename}'; if($d.ShowDialog() -eq 'OK'){{[Console]::Write($d.FileName)}}"
     );
+    run_picker_script(&script)
+}
+
+#[cfg(target_os = "windows")]
+fn run_picker_script(script: &str) -> Result<Option<String>, String> {
     let output = std::process::Command::new("powershell.exe")
         .args(["-NoProfile", "-Command", &script])
         .output()
@@ -2692,7 +2714,7 @@ fn pick_file_dialog(kind: &str) -> Result<Option<String>, String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn pick_file_dialog(_kind: &str) -> Result<Option<String>, String> {
+fn pick_file_dialog(_kind: &str, _initial_path: Option<&str>) -> Result<Option<String>, String> {
     Err("File browsing is available in the Windows build.".to_owned())
 }
 
@@ -3824,10 +3846,11 @@ fn poll_game_car_context(
         match workspace {
             Some((WorkspaceKind::AssettoCorsa, assetto_corsa_path)) => {
                 let observation = WindowsAcCarContextProvider::connect()
-                    .and_then(|provider| provider.current_context(&assetto_corsa_path));
+                    .map(|provider| provider.current_context(&assetto_corsa_path));
                 let summary = if let Ok(current) = ac_status.lock() {
                     match observation {
-                        Ok(context) => AcContextSummary::observed(context),
+                        Ok(Ok(context)) => AcContextSummary::observed(context),
+                        Ok(Err(_)) => AcContextSummary::metadata_unavailable(&current),
                         Err(_) => AcContextSummary::unavailable(&current),
                     }
                 } else {
