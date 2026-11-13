@@ -73,7 +73,18 @@ jobs:
             throw "Tag version $tagVersion does not match Tauri package version $tauriVersion"
           }
 
+      - name: Validate updater signing secret
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            throw "TAURI_SIGNING_PRIVATE_KEY is required to publish signed Pivot updates"
+          }
+
       - name: Build executable and NSIS installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: pnpm tauri build --ci -- --locked
 
       - name: Package release
@@ -83,6 +94,8 @@ jobs:
           $version = "${{ github.ref_name }}".Substring(1)
           $archive = "Pivot-$version-windows-x86_64-portable.zip"
           $installerName = "Pivot-$version-windows-x86_64-setup.exe"
+          $installerSignature = "$installerName.sig"
+          $latest = "latest.json"
           Compress-Archive -Path "target/release/lmukit.exe" -DestinationPath $archive
 
           $installer = Get-ChildItem "target/release/bundle/nsis" -Filter "*-setup.exe" |
@@ -90,7 +103,28 @@ jobs:
           if (-not $installer) {
             throw "Tauri did not produce an NSIS installer"
           }
+          $signaturePath = "$($installer.FullName).sig"
+          if (-not (Test-Path $signaturePath)) {
+            throw "Tauri did not produce a signed NSIS updater artifact"
+          }
           Copy-Item $installer.FullName $installerName
+          Copy-Item $signaturePath $installerSignature
+
+          $tag = "${{ github.ref_name }}"
+          $signature = (Get-Content $installerSignature -Raw).Trim()
+          $downloadUrl = "https://github.com/aosasona/LMUKit/releases/download/$tag/$installerName"
+          $manifest = [ordered]@{
+            version = $version
+            notes = "See the full Pivot $tag release notes on GitHub."
+            pub_date = (Get-Date).ToUniversalTime().ToString("o")
+            platforms = [ordered]@{
+              "windows-x86_64" = [ordered]@{
+                signature = $signature
+                url = $downloadUrl
+              }
+            }
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path $latest -Encoding utf8
 
           foreach ($asset in @($archive, $installerName)) {
             $hash = (Get-FileHash -Algorithm SHA256 $asset).Hash.ToLowerInvariant()
@@ -100,6 +134,8 @@ jobs:
           "archive_checksum=$archive.sha256" >> $env:GITHUB_OUTPUT
           "installer=$installerName" >> $env:GITHUB_OUTPUT
           "installer_checksum=$installerName.sha256" >> $env:GITHUB_OUTPUT
+          "installer_signature=$installerSignature" >> $env:GITHUB_OUTPUT
+          "latest=$latest" >> $env:GITHUB_OUTPUT
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
@@ -111,6 +147,8 @@ jobs:
             ${{ steps.package.outputs.archive_checksum }}
             ${{ steps.package.outputs.installer }}
             ${{ steps.package.outputs.installer_checksum }}
+            ${{ steps.package.outputs.installer_signature }}
+            ${{ steps.package.outputs.latest }}
 
       - name: Create GitHub release
         shell: pwsh
@@ -122,7 +160,9 @@ jobs:
             "${{ steps.package.outputs.archive }}",
             "${{ steps.package.outputs.archive_checksum }}",
             "${{ steps.package.outputs.installer }}",
-            "${{ steps.package.outputs.installer_checksum }}"
+            "${{ steps.package.outputs.installer_checksum }}",
+            "${{ steps.package.outputs.installer_signature }}",
+            "${{ steps.package.outputs.latest }}"
           )
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {

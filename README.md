@@ -53,6 +53,7 @@ _Assetto Corsa keeps its profiles and named actions separate while reusing the g
 - Hide to the Windows notification area while live remapping continues, see the active workspace/profile in its tooltip, or stop remapping directly from the tray.
 - Check vJoy capacity, workspace profiles, and the current route in a compact Overview health banner; starting a profile warns when one of its mapped physical devices is disconnected.
 - Inspect virtual-input health and attached controllers, open rotating local logs, and export a privacy-redacted diagnostic report from Settings.
+- Check for signed Pivot updates automatically or manually from Settings, review release notes, and install without losing profiles or settings. Pivot stops remapping and releases virtual outputs immediately before starting the installer.
 - Observe LMU's current player car, normalized class, session state, data source, and freshness on Overview through the game's read-only shared-memory interface.
 - Guide one-time vJoy binding setup, save LMU's named action layout, learn and test physical buttons and modifier combinations per profile, warn before replacing conflicting mappings, configure digital encoder modes, assign one automatic default profile per car class, and switch experimental live DirectInput-to-vJoy routing without recreating the virtual controller.
 - Name and pulse unused vJoy buttons for external tools such as RaceLab, then map those shared actions—with the same modifier support—independently in every profile.
@@ -187,11 +188,17 @@ Open **Settings → Diagnostics and logs** to check vJoy routing health, the act
 
 Pivot keeps date-named logs in its application-data `logs` folder. Entries use readable ISO-style UTC timestamps. Each file is capped at 2 MB, with at most three same-day segments, so repeated failures cannot grow storage without bound. Logs are retained for five days by default; change the period from 1 to 30 days in the diagnostics panel. Normal logs record application and routing lifecycle events, not individual button presses. Exported reports omit configured filesystem paths and DirectInput device-instance identifiers; review any report before sharing it.
 
+### App updates
+
+Pivot checks the latest stable GitHub Release shortly after launch. Open **Settings → App updates** to check manually, review the available version and release notes, or begin installation. Update packages are cryptographically signed and verified against the public key built into Pivot; a downloaded package that fails verification is never installed.
+
+After the download completes, Pivot pauses automatic selection, cancels pending virtual-button tests, stops live remapping, and releases every routed output before starting the Windows installer. The installer restarts Pivot when it finishes. The stable application identifier and `LMUKit` data directory are deliberately preserved, so profiles, wheels, mappings, backups, and settings remain in place.
+
 ## Development
 
 The primary runtime is Windows, while development commonly happens in WSL. The desktop shell uses Tauri 2, the interface uses React and TypeScript, and compatibility-sensitive storage behavior lives in the independent `lmukit-core` Rust crate.
 
-The repository uses [mise](https://mise.jdx.dev/) to pin Rust, Node.js, pnpm, and the supported commands:
+The repository uses [mise](https://mise.jdx.dev/) to pin Rust, Node.js, pnpm, the LLVM tools required by Windows updater dependencies, and the supported commands:
 
 ```sh
 mise trust
@@ -244,7 +251,10 @@ Pushing a tag matching `v*` runs the Windows release workflow. The tag version m
 
 - a portable Windows x86-64 ZIP;
 - the Tauri NSIS installer;
-- SHA-256 checksum files for both packages.
+- SHA-256 checksum files for both packages;
+- the signed NSIS updater artifact and `latest.json` update manifest.
+
+Updater-enabled releases require the repository secret `TAURI_SIGNING_PRIVATE_KEY`. It must contain the permanent Tauri updater private key matching the public key in `src-tauri/tauri.conf.json`. Keep an offline backup: replacing or losing that key prevents installed copies from accepting future updates.
 
 ```sh
 git tag v0.4.6
