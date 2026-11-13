@@ -63,6 +63,7 @@ struct TrayMenuState {
     status: MenuItem<tauri::Wry>,
     routing_toggle: MenuItem<tauri::Wry>,
     switch_profile: MenuItem<tauri::Wry>,
+    resume_auto: MenuItem<tauri::Wry>,
     presentation: Mutex<Option<TrayMenuPresentation>>,
 }
 
@@ -72,6 +73,7 @@ struct TrayMenuPresentation {
     routing_toggle_text: &'static str,
     routing_toggle_enabled: bool,
     switch_profile_enabled: bool,
+    resume_auto_enabled: bool,
 }
 
 struct AutoProfileRuntime {
@@ -1920,19 +1922,34 @@ fn resume_auto_profile_selection(
     app_state: State<'_, AppState>,
     auto_state: State<'_, AutoProfileState>,
 ) -> Result<AutoProfileSummary, String> {
-    let enabled = app_state
+    resume_auto_profile_selection_inner(&app_state, &auto_state)
+}
+
+fn resume_auto_profile_selection_inner(
+    app_state: &AppState,
+    auto_state: &AutoProfileState,
+) -> Result<AutoProfileSummary, String> {
+    let (enabled, workspace_kind) = app_state
         .0
         .lock()
-        .map_err(|error| error.to_string())?
-        .settings
-        .auto_profile_selection;
+        .map(|store| {
+            (
+                store.settings.auto_profile_selection,
+                store.active_workspace().kind,
+            )
+        })
+        .map_err(|error| error.to_string())?;
     if !enabled {
         return Err("Enable automatic profile selection first.".to_owned());
     }
     let mut runtime = auto_state.0.lock().map_err(|error| error.to_string())?;
     runtime.paused = false;
     runtime.manual_override_context = None;
-    runtime.reset("Waiting for LMU to confirm a car class.");
+    runtime.reset(if workspace_kind == WorkspaceKind::AssettoCorsa {
+        "Waiting for Assetto Corsa to confirm a car."
+    } else {
+        "Waiting for LMU to confirm a car class."
+    });
     diagnostics::info(
         "routing.auto.resumed",
         "Automatic class profile selection resumed",
@@ -3579,7 +3596,7 @@ fn tray_tooltip(app: &tauri::AppHandle) -> String {
 }
 
 fn tray_menu_presentation(app: &tauri::AppHandle) -> TrayMenuPresentation {
-    let (workspace, input_mode, can_start, can_switch) = app
+    let (workspace, input_mode, auto_enabled, can_start, can_switch) = app
         .state::<AppState>()
         .0
         .lock()
@@ -3595,6 +3612,7 @@ fn tray_menu_presentation(app: &tauri::AppHandle) -> TrayMenuPresentation {
             (
                 store.active_workspace().name.clone(),
                 store.settings.input_mode,
+                store.settings.auto_profile_selection,
                 can_start,
                 !profiles.is_empty(),
             )
@@ -3605,6 +3623,7 @@ fn tray_menu_presentation(app: &tauri::AppHandle) -> TrayMenuPresentation {
                 InputMode::Legacy,
                 false,
                 false,
+                false,
             )
         });
     let routing = app
@@ -3613,7 +3632,21 @@ fn tray_menu_presentation(app: &tauri::AppHandle) -> TrayMenuPresentation {
         .lock()
         .map(|status| status.clone())
         .unwrap_or_default();
-    build_tray_menu_presentation(&workspace, input_mode, can_start, can_switch, &routing)
+    let auto_override_active = app
+        .state::<AutoProfileState>()
+        .0
+        .lock()
+        .is_ok_and(|runtime| runtime.paused || runtime.manual_override_context.is_some());
+    let can_resume_auto =
+        routing.active && input_mode == InputMode::Virtual && auto_enabled && auto_override_active;
+    build_tray_menu_presentation(
+        &workspace,
+        input_mode,
+        can_start,
+        can_switch,
+        can_resume_auto,
+        &routing,
+    )
 }
 
 fn build_tray_menu_presentation(
@@ -3621,6 +3654,7 @@ fn build_tray_menu_presentation(
     input_mode: InputMode,
     can_start: bool,
     can_switch: bool,
+    can_resume_auto: bool,
     routing: &VirtualRoutingStatus,
 ) -> TrayMenuPresentation {
     let workspace = workspace.replace('&', "&&");
@@ -3646,6 +3680,7 @@ fn build_tray_menu_presentation(
         },
         routing_toggle_enabled: routing.active || can_start,
         switch_profile_enabled: can_switch,
+        resume_auto_enabled: can_resume_auto,
     }
 }
 
@@ -3676,6 +3711,10 @@ fn refresh_tray_status(app: &tauri::AppHandle) {
         && menu
             .switch_profile
             .set_enabled(presentation.switch_profile_enabled)
+            .is_ok()
+        && menu
+            .resume_auto
+            .set_enabled(presentation.resume_auto_enabled)
             .is_ok();
     if updated && let Ok(mut current) = menu.presentation.lock() {
         *current = Some(presentation);
@@ -3763,6 +3802,27 @@ fn toggle_routing_from_tray(app: tauri::AppHandle) {
     }
 }
 
+fn resume_auto_from_tray(app: tauri::AppHandle) {
+    let result = (|| {
+        let routing_active = app
+            .state::<VirtualRoutingState>()
+            .status
+            .lock()
+            .map_err(|error| error.to_string())?
+            .active;
+        if !routing_active {
+            return Err("Start remapping before resuming automatic profile selection.".to_owned());
+        }
+        resume_auto_profile_selection_inner(
+            &app.state::<AppState>(),
+            &app.state::<AutoProfileState>(),
+        )?;
+        Ok::<_, String>("Automatic profile selection resumed.".to_owned())
+    })();
+    refresh_tray_status(&app);
+    let _ = app.emit("tray-routing-result", result);
+}
+
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let status = MenuItem::with_id(
         app,
@@ -3786,6 +3846,13 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         false,
         None::<&str>,
     )?;
+    let resume_auto = MenuItem::with_id(
+        app,
+        "resume-auto",
+        "Resume automatic selection",
+        false,
+        None::<&str>,
+    )?;
     let check_updates = MenuItem::with_id(
         app,
         "check-updates",
@@ -3805,6 +3872,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
             &show,
             &routing_toggle,
             &switch_profile,
+            &resume_auto,
             &separator_two,
             &check_updates,
             &separator_three,
@@ -3824,6 +3892,10 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
             "switch-profile" => {
                 show_main_window(app);
                 let _ = app.emit("open-profile-switcher", ());
+            }
+            "resume-auto" => {
+                let app = app.clone();
+                std::thread::spawn(move || resume_auto_from_tray(app));
             }
             "check-updates" => {
                 show_main_window(app);
@@ -3852,6 +3924,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         status,
         routing_toggle,
         switch_profile,
+        resume_auto,
         presentation: Mutex::new(None),
     });
     refresh_tray_status(app.handle());
@@ -4644,6 +4717,7 @@ mod tests {
             InputMode::Legacy,
             false,
             true,
+            false,
             &VirtualRoutingStatus::default(),
         );
 
@@ -4651,6 +4725,7 @@ mod tests {
         assert_eq!(presentation.routing_toggle_text, "Start remapping");
         assert!(!presentation.routing_toggle_enabled);
         assert!(presentation.switch_profile_enabled);
+        assert!(!presentation.resume_auto_enabled);
     }
 
     #[test]
@@ -4660,6 +4735,7 @@ mod tests {
             InputMode::Virtual,
             true,
             true,
+            false,
             &VirtualRoutingStatus::default(),
         );
 
@@ -4681,12 +4757,14 @@ mod tests {
             InputMode::Virtual,
             true,
             true,
+            true,
             &routing,
         );
 
         assert_eq!(presentation.status, "Le Mans Ultimate · GT Neo · LMGT3");
         assert_eq!(presentation.routing_toggle_text, "Stop remapping");
         assert!(presentation.routing_toggle_enabled);
+        assert!(presentation.resume_auto_enabled);
     }
 
     #[test]
@@ -4696,8 +4774,14 @@ mod tests {
             profile_name: Some("Wheel & Pedals".to_owned()),
             ..VirtualRoutingStatus::default()
         };
-        let presentation =
-            build_tray_menu_presentation("Cars & Sims", InputMode::Virtual, true, true, &routing);
+        let presentation = build_tray_menu_presentation(
+            "Cars & Sims",
+            InputMode::Virtual,
+            true,
+            true,
+            false,
+            &routing,
+        );
 
         assert_eq!(presentation.status, "Cars && Sims · Wheel && Pedals");
     }
