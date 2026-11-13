@@ -2101,7 +2101,7 @@ checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
 
 [[package]]
 name = "lmukit"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "global-hotkey",
  "lmukit-context",
@@ -2119,7 +2119,7 @@ dependencies = [
 
 [[package]]
 name = "lmukit-context"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "anyhow",
  "lmukit-core",
@@ -2130,7 +2130,7 @@ dependencies = [
 
 [[package]]
 name = "lmukit-core"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "anyhow",
  "directories",
@@ -2142,7 +2142,7 @@ dependencies = [
 
 [[package]]
 name = "lmukit-virtual"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "anyhow",
  "libloading 0.8.9",
