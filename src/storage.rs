@@ -957,11 +957,30 @@ impl Store {
         Ok(backup)
     }
 
-    pub fn companion_launch_option(&self, lmukit_exe: &Path) -> Result<String> {
-        if !lmukit_exe.is_file() {
+    pub fn companion_launch_option(&self, pivot_exe: &Path) -> Result<String> {
+        let launcher = self.write_companion_launcher(pivot_exe)?;
+        Ok(format!("cmd /c \"\"{}\" %command%\"", launcher.display()))
+    }
+
+    pub fn refresh_companion_launcher_if_exists(&self, pivot_exe: &Path) -> Result<bool> {
+        if !self.companion_launcher_path().is_file() {
+            return Ok(false);
+        }
+        self.write_companion_launcher(pivot_exe)?;
+        Ok(true)
+    }
+
+    fn companion_launcher_path(&self) -> PathBuf {
+        // Keep this filename and its legacy application-data parent stable:
+        // existing Steam launch options must continue to work after upgrades.
+        self.root.join("launch-lmu-with-companions.cmd")
+    }
+
+    fn write_companion_launcher(&self, pivot_exe: &Path) -> Result<PathBuf> {
+        if !pivot_exe.is_file() {
             bail!(
                 "Pivot's executable could not be found at {}",
-                lmukit_exe.display()
+                pivot_exe.display()
             );
         }
         let issues = validate_companion_apps(&self.settings.companion_apps);
@@ -975,17 +994,17 @@ impl Store {
                     .join("; ")
             );
         }
-        let launcher = self.root.join("launch-lmu-with-companions.cmd");
-        let lmukit = batch_path(lmukit_exe);
-        let lmukit_working_dir = batch_path(
-            lmukit_exe
+        let launcher = self.companion_launcher_path();
+        let pivot = batch_path(pivot_exe);
+        let pivot_working_dir = batch_path(
+            pivot_exe
                 .parent()
                 .context("Pivot's executable has no parent directory")?,
         );
         let mut script = format!(
             "@echo off\r\n\
              tasklist /FI \"IMAGENAME eq lmukit.exe\" 2>NUL | find /I \"lmukit.exe\" >NUL\r\n\
-             if errorlevel 1 start \"\" /D \"{lmukit_working_dir}\" \"{lmukit}\"\r\n"
+             if errorlevel 1 start \"\" /D \"{pivot_working_dir}\" \"{pivot}\"\r\n"
         );
         for app in self
             .settings
@@ -1013,8 +1032,13 @@ impl Store {
             LaunchMode::Desktop => "%*\r\n",
             LaunchMode::Vr => "%* +XR\r\n",
         });
-        fs::write(&launcher, script).context("could not create the companion launcher")?;
-        Ok(format!("cmd /c \"\"{}\" %command%\"", launcher.display()))
+        let staged = self.root.join(".launch-lmu-with-companions.tmp");
+        fs::write(&staged, script).context("could not stage the companion launcher")?;
+        if let Err(error) = replace_file(&staged, &launcher) {
+            let _ = fs::remove_file(&staged);
+            return Err(error).context("could not refresh the companion launcher");
+        }
+        Ok(launcher)
     }
 
     pub fn profiles_dir(&self) -> PathBuf {
@@ -3808,6 +3832,75 @@ mod tests {
         store.companion_launch_option(&lmukit).unwrap();
         let script = fs::read_to_string(store.root.join("launch-lmu-with-companions.cmd")).unwrap();
         assert!(script.ends_with("%* +XR\r\n"));
+    }
+
+    #[test]
+    fn refreshes_the_existing_launcher_when_launch_settings_change() {
+        let temp = tempfile::tempdir().unwrap();
+        let pivot = temp.path().join("lmukit.exe");
+        let helper = temp.path().join("RaceLab.exe");
+        fs::write(&pivot, []).unwrap();
+        fs::write(&helper, []).unwrap();
+        let mut store = Store::open_at(temp.path().join("data")).unwrap();
+        store.settings.companion_apps = vec![CompanionApp {
+            name: "RaceLab".into(),
+            path: helper,
+            enabled: true,
+        }];
+        store.settings.lmu_launch_mode = LaunchMode::Vr;
+        let option = store.companion_launch_option(&pivot).unwrap();
+
+        store.settings.companion_apps[0].enabled = false;
+        store.settings.lmu_launch_mode = LaunchMode::Desktop;
+        assert!(store.refresh_companion_launcher_if_exists(&pivot).unwrap());
+
+        let launcher = store.root.join("launch-lmu-with-companions.cmd");
+        let script = fs::read_to_string(&launcher).unwrap();
+        assert!(!script.contains("RaceLab.exe"));
+        assert!(!script.contains("+XR"));
+        assert!(script.ends_with("%*\r\n"));
+        assert_eq!(
+            option,
+            format!("cmd /c \"\"{}\" %command%\"", launcher.display())
+        );
+    }
+
+    #[test]
+    fn refreshes_the_launcher_with_the_current_pivot_executable() {
+        let temp = tempfile::tempdir().unwrap();
+        let old_dir = temp.path().join("LMUKit");
+        let new_dir = temp.path().join("Pivot");
+        let old_executable = old_dir.join("lmukit.exe");
+        let current_executable = new_dir.join("lmukit.exe");
+        fs::create_dir(&old_dir).unwrap();
+        fs::create_dir(&new_dir).unwrap();
+        fs::write(&old_executable, []).unwrap();
+        fs::write(&current_executable, []).unwrap();
+        let mut store = Store::open_at(temp.path().join("data")).unwrap();
+        store.settings.companion_apps.clear();
+        store.companion_launch_option(&old_executable).unwrap();
+
+        assert!(
+            store
+                .refresh_companion_launcher_if_exists(&current_executable)
+                .unwrap()
+        );
+
+        let script = fs::read_to_string(store.root.join("launch-lmu-with-companions.cmd")).unwrap();
+        assert!(script.contains(&batch_path(&current_executable)));
+        assert!(script.contains(&batch_path(&new_dir)));
+        assert!(!script.contains(&batch_path(&old_executable)));
+    }
+
+    #[test]
+    fn does_not_create_a_launcher_before_the_user_copies_the_steam_option() {
+        let temp = tempfile::tempdir().unwrap();
+        let pivot = temp.path().join("lmukit.exe");
+        fs::write(&pivot, []).unwrap();
+        let store = Store::open_at(temp.path().join("data")).unwrap();
+
+        assert!(!store.refresh_companion_launcher_if_exists(&pivot).unwrap());
+        assert!(!store.root.join("launch-lmu-with-companions.cmd").exists());
     }
 
     #[test]

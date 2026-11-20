@@ -871,12 +871,34 @@ fn save_app_settings(
     launch_mode: LaunchMode,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    let issues = validate_companion_apps(&companion_apps);
+    if !issues.is_empty() {
+        return Err(format!(
+            "Companion app setup is invalid: {}",
+            issues
+                .iter()
+                .map(|issue| format!("app {}: {}", issue.index + 1, issue.message))
+                .collect::<Vec<_>>()
+                .join("; ")
+        ));
+    }
     let mut store = state.0.lock().map_err(|error| error.to_string())?;
     store.settings.lmu_config_path = lmu_config_path.trim().into();
     store.settings.lmu_settings_path = lmu_settings_path.trim().into();
     store.settings.companion_apps = companion_apps;
     store.settings.lmu_launch_mode = launch_mode;
-    store.save_settings().map_err(|error| error.to_string())
+    store.save_settings().map_err(|error| error.to_string())?;
+    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+    let refreshed = store
+        .refresh_companion_launcher_if_exists(&executable)
+        .map_err(|error| error.to_string())?;
+    if refreshed {
+        diagnostics::info(
+            "launcher.refreshed",
+            "Applied saved launch-mode and companion-app changes to the Steam launcher",
+        );
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -3938,6 +3960,23 @@ pub fn run() {
         diagnostics::initialise(&store.data_dir(), store.settings.log_retention_days)
     {
         eprintln!("Pivot logging could not start: {error}");
+    }
+    match std::env::current_exe() {
+        Ok(executable) => match store.refresh_companion_launcher_if_exists(&executable) {
+            Ok(true) => diagnostics::info(
+                "launcher.refreshed",
+                "Refreshed the existing Steam launcher for this Pivot installation",
+            ),
+            Ok(false) => {}
+            Err(error) => diagnostics::warn(
+                "launcher.refresh.failed",
+                format!("Could not refresh the existing Steam launcher: {error}"),
+            ),
+        },
+        Err(error) => diagnostics::warn(
+            "launcher.refresh.failed",
+            format!("Could not locate Pivot's executable for the Steam launcher: {error}"),
+        ),
     }
     let shortcuts = store
         .active_workspace_profiles()

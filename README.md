@@ -180,7 +180,7 @@ Open **Settings → LMU and companion apps**, choose **Desktop** or **VR (OpenXR
 
 **Steam → Le Mans Ultimate → Properties → Launch Options**
 
-VR mode passes LMU's native `+XR` argument. The launcher avoids opening duplicate Pivot or companion-app processes. Pivot never edits Steam configuration silently.
+This copy is a one-time setup. After the launcher exists, every valid autosaved change to Desktop/VR mode or the enabled companion apps refreshes it automatically; restarting Pivot also updates its executable path after an install or upgrade. Desktop mode removes `+XR`, while VR mode adds LMU's native `+XR` argument. Disabled apps are removed from the launcher. The Steam command may retain the `LMUKit` application-data directory name for upgrade compatibility, but the launcher inside it points to the current Pivot installation. The launcher avoids opening duplicate Pivot or companion-app processes. Pivot never edits Steam configuration silently.
 
 ### Diagnostics and logs
 
