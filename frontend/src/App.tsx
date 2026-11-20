@@ -8,7 +8,7 @@ import { InputModeSwitch, type InputMode } from "./components/InputModeSwitch";
 import { TitleBar } from "./components/TitleBar";
 import { QuickProfileSwitcher } from "./components/QuickProfileSwitcher";
 import { StartupHealthBanner } from "./components/StartupHealthBanner";
-import { UpdateBanner } from "./components/UpdateBanner";
+import { UpdateDialog } from "./components/UpdateDialog";
 import type {
   Binding,
   BindingAssignmentCandidate,
@@ -34,6 +34,7 @@ import {
   emptySnapshot,
 } from "./models";
 import { pageTitle } from "./lib/navigation";
+import { releaseNotesFor } from "./lib/releaseNotes";
 import { useAppUpdater } from "./hooks/useAppUpdater";
 import { GameSettingsPage } from "./pages/GameSettingsPage";
 import { HelpPage } from "./pages/HelpPage";
@@ -87,6 +88,8 @@ export default function App() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [exitRequested, setExitRequested] = useState(false);
   const [updateInstallRequested, setUpdateInstallRequested] = useState(false);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [startupHealth, setStartupHealth] = useState<StartupHealth | null>(
     null,
   );
@@ -127,6 +130,35 @@ export default function App() {
       JSON.stringify(profileDocument) !==
         JSON.stringify(profileDocumentBaseline),
   );
+  const bundledRelease = releaseNotesFor(updater.state.currentVersion);
+
+  useEffect(() => {
+    const version = updater.state.availableVersion;
+    if (updater.state.phase !== "available" || !version) return;
+    const key = "pivot.update-prompted-version";
+    if (window.localStorage.getItem(key) === version) return;
+    window.localStorage.setItem(key, version);
+    setUpdateDialogOpen(true);
+  }, [updater.state.availableVersion, updater.state.phase]);
+
+  useEffect(() => {
+    const version = updater.state.currentVersion;
+    if (!version || !bundledRelease) return;
+    if (window.localStorage.getItem("pivot.whats-new-version") === version)
+      return;
+    setWhatsNewOpen(true);
+  }, [bundledRelease, updater.state.currentVersion]);
+
+  const dismissWhatsNew = () => {
+    if (updater.state.currentVersion) {
+      window.localStorage.setItem(
+        "pivot.whats-new-version",
+        updater.state.currentVersion,
+      );
+    }
+    setWhatsNewOpen(false);
+  };
+
   const navigate = (next: Page) => {
     if (
       page === "game" &&
@@ -143,6 +175,10 @@ export default function App() {
     )
       return;
     setPage(next);
+  };
+  const reviewUpdate = () => {
+    if (updater.state.phase === "available") setUpdateDialogOpen(true);
+    else navigate("settings");
   };
   async function refresh() {
     try {
@@ -966,8 +1002,10 @@ export default function App() {
           activeWorkspaceId={snapshot.activeWorkspaceId}
           activeWorkspaceKind={snapshot.activeWorkspaceKind}
           busy={busy}
+          update={updater.state}
           onWorkspaceChange={changeWorkspace}
           onNavigate={navigate}
+          onReviewUpdate={reviewUpdate}
           onExit={() => setExitRequested(true)}
         />
         <main>
@@ -1009,10 +1047,6 @@ export default function App() {
             </div>
           </header>
           <div className="content">
-            <UpdateBanner
-              update={updater.state}
-              onReview={() => navigate("settings")}
-            />
             {page === "home" && snapshot.inputMode === "virtual" && (
               <StartupHealthBanner
                 health={startupHealth}
@@ -1198,6 +1232,28 @@ export default function App() {
           imageRevision={wheelImageRevision}
           onClose={() => setSwitcherOpen(false)}
           onActivate={activate}
+        />
+      )}
+      {whatsNewOpen && bundledRelease && updater.state.currentVersion && (
+        <UpdateDialog
+          kind="whats-new"
+          version={updater.state.currentVersion}
+          release={bundledRelease}
+          onClose={dismissWhatsNew}
+        />
+      )}
+      {!whatsNewOpen && updateDialogOpen && updater.state.availableVersion && (
+        <UpdateDialog
+          kind="available"
+          version={updater.state.availableVersion}
+          notes={updater.state.notes}
+          publishedAt={updater.state.publishedAt}
+          busy={updateBusy}
+          onClose={() => setUpdateDialogOpen(false)}
+          onInstall={() => {
+            setUpdateDialogOpen(false);
+            setUpdateInstallRequested(true);
+          }}
         />
       )}
       <ConfirmDialog

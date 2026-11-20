@@ -3,12 +3,15 @@ import {
   Disc3,
   LayoutDashboard,
   CircleHelp,
+  Download,
+  LoaderCircle,
   Power,
   Settings,
   SlidersHorizontal,
   Workflow,
   Wrench,
 } from "lucide-react";
+import type { AppUpdateState } from "../hooks/useAppUpdater";
 import type { Page } from "../models";
 import type { Workspace } from "../models";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
@@ -30,8 +33,10 @@ export function Sidebar({
   activeWorkspaceId,
   activeWorkspaceKind,
   busy,
+  update,
   onWorkspaceChange,
   onNavigate,
+  onReviewUpdate,
   onExit,
 }: {
   page: Page;
@@ -40,8 +45,10 @@ export function Sidebar({
   activeWorkspaceId: string;
   activeWorkspaceKind: Workspace["kind"];
   busy: boolean;
+  update: AppUpdateState;
   onWorkspaceChange: (workspaceId: string) => void;
   onNavigate: (page: Page) => void;
+  onReviewUpdate: () => void;
   onExit: () => void;
 }) {
   return (
@@ -81,6 +88,25 @@ export function Sidebar({
           ))}
       </nav>
       <div className="sidebar-foot">
+        {(update.phase === "available" ||
+          update.phase === "downloading" ||
+          update.phase === "installing") && (
+          <button className="nav-item sidebar-update" onClick={onReviewUpdate}>
+            {update.phase === "available" ? (
+              <Download size={18} strokeWidth={1.8} />
+            ) : (
+              <LoaderCircle className="spin" size={18} strokeWidth={1.8} />
+            )}
+            <span>
+              {update.phase === "available"
+                ? "Update available"
+                : update.phase === "downloading"
+                  ? "Downloading update"
+                  : "Installing update"}
+            </span>
+            {update.availableVersion && <em>{update.availableVersion}</em>}
+          </button>
+        )}
         <button
           className={page === "help" ? "nav-item active" : "nav-item"}
           onClick={() => onNavigate("help")}

@@ -1,0 +1,11 @@
+{
+  "version": "0.6.7",
+  "title": "Updates are easier to find",
+  "summary": "This release finishes the Pivot rename and makes app updates visible without hunting through Settings.",
+  "highlights": [
+    "Update availability now opens in a clear dialog and remains visible in the sidebar.",
+    "A one-time What’s new summary appears after installing a new Pivot release.",
+    "Settings now uses the same full content width as the other workspaces.",
+    "The installed application executable is now named Pivot.exe."
+  ]
+}

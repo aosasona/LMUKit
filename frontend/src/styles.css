@@ -445,6 +445,26 @@ nav {
   margin-top: auto;
   display: grid;
 }
+.sidebar-update {
+  margin-bottom: 6px;
+  border: 1px solid rgba(198, 243, 107, 0.3);
+  background: linear-gradient(90deg, rgba(198, 243, 107, 0.14), #181a15);
+  color: #e4f2c8;
+  box-shadow: inset 2px 0 var(--teal);
+}
+.sidebar-update:hover {
+  border-color: rgba(198, 243, 107, 0.52);
+  background: linear-gradient(90deg, rgba(198, 243, 107, 0.2), #1d2018);
+  color: #f2f8e5;
+}
+.sidebar-update > svg {
+  color: var(--teal);
+}
+.sidebar-update em {
+  background: var(--teal);
+  color: #11130d;
+  font-weight: 700;
+}
 .pulse {
   width: 7px;
   height: 7px;
@@ -639,40 +659,6 @@ main {
 
 .startup-health button svg {
   width: 0.95rem;
-}
-.update-banner {
-  min-height: 58px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 13px;
-  margin-bottom: 16px;
-  padding: 11px 13px;
-  border: 1px solid rgba(198, 243, 107, 0.3);
-  background: rgba(31, 37, 21, 0.9);
-  color: var(--teal);
-}
-.update-banner > svg {
-  width: 20px;
-}
-.update-banner strong,
-.update-banner small {
-  display: block;
-}
-.update-banner strong {
-  color: #e2eccd;
-  font-size: calc(13px * var(--font-scale));
-}
-.update-banner small {
-  margin-top: 3px;
-  color: #9aa68e;
-  font-size: calc(11px * var(--font-scale));
-}
-.update-banner button {
-  white-space: nowrap;
-}
-.update-banner button svg {
-  width: 14px;
 }
 .dashboard-grid {
   display: grid;
@@ -2804,6 +2790,116 @@ footer {
   background: #191918;
   box-shadow: 0 25px 70px rgba(0, 0, 0, 0.65);
 }
+.update-dialog-backdrop {
+  z-index: 130;
+}
+.update-dialog {
+  position: relative;
+  width: min(620px, 100%);
+  max-height: min(720px, calc(100vh - 48px));
+  overflow-y: auto;
+  padding: 28px;
+  border: 1px solid rgba(198, 243, 107, 0.3);
+  background:
+    linear-gradient(145deg, rgba(198, 243, 107, 0.055), transparent 42%),
+    #121211;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.72);
+}
+.update-dialog > header {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 16px;
+  padding-right: 26px;
+}
+.update-dialog-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(198, 243, 107, 0.35);
+  background: #22261a;
+  color: var(--teal);
+}
+.update-dialog-icon svg {
+  width: 22px;
+}
+.update-dialog h2 {
+  margin: 5px 0 7px;
+  color: #edf4e8;
+  font-size: calc(24px * var(--font-scale));
+  letter-spacing: -0.35px;
+}
+.update-dialog header p {
+  margin: 0;
+  color: #929e97;
+  font-size: calc(13px * var(--font-scale));
+  line-height: 1.6;
+}
+.update-dialog-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 20px 0 0 64px;
+  color: #758079;
+  font-size: calc(11px * var(--font-scale));
+}
+.update-dialog-date svg {
+  width: 14px;
+}
+.update-dialog-notes {
+  margin-top: 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  background: #0e0f0d;
+}
+.update-dialog-notes strong {
+  color: #dfe8d9;
+  font-size: calc(13px * var(--font-scale));
+}
+.update-dialog-notes p {
+  max-height: 220px;
+  margin: 8px 0 0;
+  overflow-y: auto;
+  color: #96a19b;
+  font-size: calc(12px * var(--font-scale));
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+.update-dialog-notes ul {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.update-dialog-notes li {
+  position: relative;
+  padding-left: 20px;
+  color: #aeb8b2;
+  font-size: calc(12px * var(--font-scale));
+  line-height: 1.55;
+}
+.update-dialog-notes li::before {
+  position: absolute;
+  top: 0.62em;
+  left: 2px;
+  width: 6px;
+  height: 6px;
+  background: var(--teal);
+  content: "";
+  transform: translateY(-50%);
+}
+.update-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+  padding: 0;
+  border: 0;
+}
+.update-dialog-install svg {
+  width: 15px;
+}
 .add-binding-dialog {
   position: relative;
   width: min(520px, 100%);
@@ -3176,7 +3272,7 @@ textarea,
 }
 
 .settings-page {
-  max-width: 920px;
+  max-width: 1180px;
   margin: 0 auto;
 }
 .settings-stack {
