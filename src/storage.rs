@@ -1028,7 +1028,10 @@ impl Store {
         );
         let mut script = format!(
             "@echo off\r\n\
-             tasklist /FI \"IMAGENAME eq lmukit.exe\" 2>NUL | find /I \"lmukit.exe\" >NUL\r\n\
+             tasklist /FI \"IMAGENAME eq Pivot.exe\" 2>NUL | find /I \"Pivot.exe\" >NUL\r\n\
+             if errorlevel 1 (\r\n\
+               tasklist /FI \"IMAGENAME eq lmukit.exe\" 2>NUL | find /I \"lmukit.exe\" >NUL\r\n\
+             )\r\n\
              if errorlevel 1 start \"\" /D \"{pivot_working_dir}\" \"{pivot}\"\r\n"
         );
         for app in self
@@ -3825,23 +3828,25 @@ mod tests {
     #[test]
     fn creates_a_steam_companion_launcher() {
         let temp = tempfile::tempdir().unwrap();
-        let lmukit = temp.path().join("lmukit.exe");
+        let pivot = temp.path().join("Pivot.exe");
         let lmuffb_dir = temp.path().join("LMUFFB");
         let lmuffb = lmuffb_dir.join("LMUFFB.exe");
         fs::create_dir(&lmuffb_dir).unwrap();
-        fs::write(&lmukit, []).unwrap();
+        fs::write(&pivot, []).unwrap();
         fs::write(&lmuffb, []).unwrap();
         let mut store = Store::open_at(temp.path().join("data")).unwrap();
         store.settings.companion_apps[0].path = lmuffb.clone();
 
-        let option = store.companion_launch_option(&lmukit).unwrap();
+        let option = store.companion_launch_option(&pivot).unwrap();
         let launcher = store.root.join("launch-lmu-with-companions.cmd");
 
         assert!(option.starts_with("cmd /c \"\""));
         assert!(option.ends_with(" %command%\""));
         let script = fs::read_to_string(launcher).unwrap();
         assert!(script.contains("LMUFFB.exe"));
-        assert!(script.contains("lmukit.exe"));
+        assert!(script.contains("IMAGENAME eq Pivot.exe"));
+        assert!(script.contains("IMAGENAME eq lmukit.exe"));
+        assert!(script.contains(&batch_path(&pivot)));
         assert!(script.contains("%*"));
         assert!(script.contains(&format!(
             "start \"\" /D \"{}\" \"{}\"",
@@ -3901,7 +3906,7 @@ mod tests {
         let old_dir = temp.path().join("LMUKit");
         let new_dir = temp.path().join("Pivot");
         let old_executable = old_dir.join("lmukit.exe");
-        let current_executable = new_dir.join("lmukit.exe");
+        let current_executable = new_dir.join("Pivot.exe");
         fs::create_dir(&old_dir).unwrap();
         fs::create_dir(&new_dir).unwrap();
         fs::write(&old_executable, []).unwrap();

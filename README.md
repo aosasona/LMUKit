@@ -9,7 +9,7 @@ Left-clicking the title-bar close button hides Pivot in the Windows notification
 
 Pivot runs as a single instance. Launching it again restores the existing window instead of starting another input-routing process or tray icon.
 
-Existing LMUKit installations upgrade in place: Pivot deliberately reuses the existing application identity and data directory, so profiles, wheels, mappings, settings, and backups remain available after the rename.
+Existing LMUKit installations upgrade in place: Pivot deliberately reuses the existing application identity and data directory, so profiles, wheels, mappings, settings, and backups remain available after the rename. The installed Windows executable is `Pivot.exe`; the legacy `lmukit.exe` process name is recognized only for a safe upgrade transition.
 
 <img src="assets/icon/lmukit.png" alt="Pivot icon" width="112">
 
@@ -190,7 +190,7 @@ Pivot keeps date-named logs in its application-data `logs` folder. Entries use r
 
 ### App updates
 
-Pivot checks the latest stable GitHub Release shortly after launch. Open **Settings → App updates** to check manually, review the available version and release notes, or begin installation. Update packages are cryptographically signed and verified against the public key built into Pivot; a downloaded package that fails verification is never installed.
+Pivot checks the latest stable GitHub Release shortly after launch. An available update opens a clear review dialog and remains visible in the sidebar until installed; **Settings → App updates** also supports manual checks. After an upgrade, Pivot shows the bundled **What’s new** summary once on first launch. Update packages are cryptographically signed and verified against the public key built into Pivot; a downloaded package that fails verification is never installed.
 
 After the download completes, Pivot pauses automatic selection, cancels pending virtual-button tests, stops live remapping, and releases every routed output before starting the Windows installer. The installer restarts Pivot when it finishes. The stable application identifier and `LMUKit` data directory are deliberately preserved, so profiles, wheels, mappings, backups, and settings remain in place.
 

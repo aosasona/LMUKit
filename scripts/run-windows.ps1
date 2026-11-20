@@ -1,13 +1,13 @@
 $ErrorActionPreference = "Stop"
 
 $repository = Split-Path -Parent $PSScriptRoot
-$source = Join-Path $repository "target\x86_64-pc-windows-msvc\debug\lmukit.exe"
+$source = Join-Path $repository "target\x86_64-pc-windows-msvc\debug\pivot.exe"
 $runtimeDirectory = Join-Path $env:LOCALAPPDATA "Pivot\development"
-$destination = Join-Path $runtimeDirectory "lmukit.exe"
+$destination = Join-Path $runtimeDirectory "Pivot.exe"
 
 New-Item -ItemType Directory -Force $runtimeDirectory | Out-Null
 
-$running = Get-Process -Name "lmukit" -ErrorAction SilentlyContinue |
+$running = Get-Process -Name "Pivot" -ErrorAction SilentlyContinue |
     Where-Object { [string]::Equals($_.Path, $destination, [System.StringComparison]::OrdinalIgnoreCase) }
 if ($running) {
     $running | Stop-Process -Force
