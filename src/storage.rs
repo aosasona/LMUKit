@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, bail, ensure};
-use directories::ProjectDirs;
+use directories::{BaseDirs, ProjectDirs};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -421,6 +421,7 @@ fn default_companion_apps() -> Vec<CompanionApp> {
 
 pub struct Store {
     root: PathBuf,
+    launcher_root: PathBuf,
     pub settings: Settings,
 }
 
@@ -433,10 +434,19 @@ impl Store {
         // not make existing settings, profiles, wheels, or backups disappear.
         let dirs = ProjectDirs::from("app", "LMUKit", "LMUKit")
             .context("could not determine Pivot's application-data directory")?;
-        Self::open_at(dirs.data_local_dir().to_path_buf())
+        let base_dirs = BaseDirs::new()
+            .context("could not determine Pivot's local application-data directory")?;
+        Self::open_at_with_launcher_root(
+            dirs.data_local_dir().to_path_buf(),
+            base_dirs.data_local_dir().join("Pivot"),
+        )
     }
 
     pub fn open_at(root: PathBuf) -> Result<Self> {
+        Self::open_at_with_launcher_root(root.clone(), root)
+    }
+
+    fn open_at_with_launcher_root(root: PathBuf, launcher_root: PathBuf) -> Result<Self> {
         fs::create_dir_all(root.join("profiles"))?;
         fs::create_dir_all(root.join("backups"))?;
         fs::create_dir_all(root.join("wheels"))?;
@@ -474,7 +484,11 @@ impl Store {
             lmuffb.path = std::mem::take(&mut settings.lmuffb_path);
             lmuffb.enabled = true;
         }
-        let mut store = Self { root, settings };
+        let mut store = Self {
+            root,
+            launcher_root,
+            settings,
+        };
         store.migrate_profile_wheels()?;
         store.migrate_class_profile_defaults()?;
         Ok(store)
@@ -958,25 +972,37 @@ impl Store {
     }
 
     pub fn companion_launch_option(&self, pivot_exe: &Path) -> Result<String> {
-        let launcher = self.write_companion_launcher(pivot_exe)?;
+        let launcher = self.companion_launcher_path();
+        self.write_companion_launcher(pivot_exe, &launcher)?;
         Ok(format!("cmd /c \"\"{}\" %command%\"", launcher.display()))
     }
 
     pub fn refresh_companion_launcher_if_exists(&self, pivot_exe: &Path) -> Result<bool> {
-        if !self.companion_launcher_path().is_file() {
-            return Ok(false);
+        let launchers = [
+            self.companion_launcher_path(),
+            self.legacy_companion_launcher_path(),
+        ];
+        let mut refreshed = false;
+        for launcher in launchers {
+            if launcher.is_file() {
+                self.write_companion_launcher(pivot_exe, &launcher)?;
+                refreshed = true;
+            }
         }
-        self.write_companion_launcher(pivot_exe)?;
-        Ok(true)
+        Ok(refreshed)
     }
 
     fn companion_launcher_path(&self) -> PathBuf {
-        // Keep this filename and its legacy application-data parent stable:
-        // existing Steam launch options must continue to work after upgrades.
+        self.launcher_root.join("launch-lmu-with-companions.cmd")
+    }
+
+    fn legacy_companion_launcher_path(&self) -> PathBuf {
+        // Keep an existing launcher working until the user copies the new
+        // Pivot-named Steam command once.
         self.root.join("launch-lmu-with-companions.cmd")
     }
 
-    fn write_companion_launcher(&self, pivot_exe: &Path) -> Result<PathBuf> {
+    fn write_companion_launcher(&self, pivot_exe: &Path, launcher: &Path) -> Result<()> {
         if !pivot_exe.is_file() {
             bail!(
                 "Pivot's executable could not be found at {}",
@@ -994,7 +1020,6 @@ impl Store {
                     .join("; ")
             );
         }
-        let launcher = self.companion_launcher_path();
         let pivot = batch_path(pivot_exe);
         let pivot_working_dir = batch_path(
             pivot_exe
@@ -1032,13 +1057,18 @@ impl Store {
             LaunchMode::Desktop => "%*\r\n",
             LaunchMode::Vr => "%* +XR\r\n",
         });
-        let staged = self.root.join(".launch-lmu-with-companions.tmp");
+        let launcher_parent = launcher
+            .parent()
+            .context("the companion launcher has no parent directory")?;
+        fs::create_dir_all(launcher_parent)
+            .context("could not create Pivot's launcher directory")?;
+        let staged = launcher_parent.join(".launch-lmu-with-companions.tmp");
         fs::write(&staged, script).context("could not stage the companion launcher")?;
-        if let Err(error) = replace_file(&staged, &launcher) {
+        if let Err(error) = replace_file(&staged, launcher) {
             let _ = fs::remove_file(&staged);
             return Err(error).context("could not refresh the companion launcher");
         }
-        Ok(launcher)
+        Ok(())
     }
 
     pub fn profiles_dir(&self) -> PathBuf {
@@ -3901,6 +3931,58 @@ mod tests {
 
         assert!(!store.refresh_companion_launcher_if_exists(&pivot).unwrap());
         assert!(!store.root.join("launch-lmu-with-companions.cmd").exists());
+    }
+
+    #[test]
+    fn moves_new_steam_commands_to_a_pivot_named_launcher_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let pivot = temp.path().join("lmukit.exe");
+        fs::write(&pivot, []).unwrap();
+        let legacy_root = temp.path().join("LMUKit/LMUKit/data");
+        let launcher_root = temp.path().join("Pivot");
+        let mut store =
+            Store::open_at_with_launcher_root(legacy_root.clone(), launcher_root.clone()).unwrap();
+        store.settings.companion_apps.clear();
+
+        let option = store.companion_launch_option(&pivot).unwrap();
+
+        assert!(option.contains(&batch_path(
+            &launcher_root.join("launch-lmu-with-companions.cmd")
+        )));
+        assert!(
+            launcher_root
+                .join("launch-lmu-with-companions.cmd")
+                .is_file()
+        );
+        assert!(!legacy_root.join("launch-lmu-with-companions.cmd").exists());
+        store.save_settings().unwrap();
+        assert!(legacy_root.join("settings.json").is_file());
+    }
+
+    #[test]
+    fn keeps_the_legacy_launcher_synced_until_the_new_command_is_copied() {
+        let temp = tempfile::tempdir().unwrap();
+        let pivot = temp.path().join("lmukit.exe");
+        fs::write(&pivot, []).unwrap();
+        let legacy_root = temp.path().join("LMUKit/LMUKit/data");
+        let launcher_root = temp.path().join("Pivot");
+        let mut store =
+            Store::open_at_with_launcher_root(legacy_root.clone(), launcher_root.clone()).unwrap();
+        store.settings.companion_apps.clear();
+        store.settings.lmu_launch_mode = LaunchMode::Desktop;
+        let legacy_launcher = legacy_root.join("launch-lmu-with-companions.cmd");
+        fs::write(&legacy_launcher, "old launcher").unwrap();
+
+        assert!(store.refresh_companion_launcher_if_exists(&pivot).unwrap());
+
+        let script = fs::read_to_string(legacy_launcher).unwrap();
+        assert!(script.contains(&batch_path(&pivot)));
+        assert!(!script.contains("+XR"));
+        assert!(
+            !launcher_root
+                .join("launch-lmu-with-companions.cmd")
+                .exists()
+        );
     }
 
     #[test]
