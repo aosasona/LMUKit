@@ -19,7 +19,7 @@ pub struct CaptureDevice {
 enum Request {
     List(SyncSender<Result<Vec<CaptureDevice>, String>>),
     State(AudioDeviceTarget, SyncSender<Result<bool, String>>),
-    Execute(SystemAction, Option<SyncSender<Result<bool, String>>>),
+    Execute(SystemAction, bool, Option<SyncSender<Result<bool, String>>>),
 }
 
 #[derive(Clone)]
@@ -56,18 +56,18 @@ impl AudioService {
         result.recv().map_err(service_stopped)?
     }
 
-    pub fn execute(&self, action: SystemAction) -> Result<bool, String> {
+    pub fn execute(&self, action: SystemAction, play_feedback_sound: bool) -> Result<bool, String> {
         let (reply, result) = mpsc::sync_channel(1);
         self.sender
-            .send(Request::Execute(action, Some(reply)))
+            .send(Request::Execute(action, play_feedback_sound, Some(reply)))
             .map_err(service_stopped)?;
         result.recv().map_err(service_stopped)?
     }
 
     /// Queue an action without blocking the latency-sensitive input worker.
-    pub fn dispatch(&self, action: SystemAction) -> Result<(), String> {
+    pub fn dispatch(&self, action: SystemAction, play_feedback_sound: bool) -> Result<(), String> {
         self.sender
-            .send(Request::Execute(action, None))
+            .send(Request::Execute(action, play_feedback_sound, None))
             .map_err(|error| format!("The audio action queue is unavailable: {error}"))
     }
 
@@ -124,7 +124,7 @@ fn run_worker(receiver: Receiver<Request>, notifier: ChangeNotifier) {
             Some(backend) => match &request {
                 Request::List(_) => backend.list().map(AudioResult::Devices),
                 Request::State(target, _) => backend.mute_state(target).map(AudioResult::State),
-                Request::Execute(action, _) => {
+                Request::Execute(action, _, _) => {
                     execute_microphone_action(backend, action).map(AudioResult::State)
                 }
             },
@@ -147,8 +147,11 @@ fn run_worker(receiver: Receiver<Request>, notifier: ChangeNotifier) {
                     _ => Err("The audio service returned an unexpected response.".to_owned()),
                 }));
             }
-            Request::Execute(_action, reply) => match result {
+            Request::Execute(_action, play_feedback_sound, reply) => match result {
                 Ok(AudioResult::State(muted)) => {
+                    if play_feedback_sound {
+                        play_state_feedback(muted);
+                    }
                     notify_changed(&notifier);
                     crate::diagnostics::info(
                         "audio.microphone.changed",
@@ -173,6 +176,26 @@ fn run_worker(receiver: Receiver<Request>, notifier: ChangeNotifier) {
         }
     }
 }
+
+#[cfg(target_os = "windows")]
+fn play_state_feedback(muted: bool) {
+    use windows::Win32::{
+        System::Diagnostics::Debug::MessageBeep,
+        UI::WindowsAndMessaging::{MB_ICONASTERISK, MB_ICONEXCLAMATION},
+    };
+
+    // MessageBeep queues the configured Windows system sound without blocking the input worker.
+    unsafe {
+        let _ = MessageBeep(if muted {
+            MB_ICONEXCLAMATION
+        } else {
+            MB_ICONASTERISK
+        });
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn play_state_feedback(_muted: bool) {}
 
 fn notify_changed(notifier: &ChangeNotifier) {
     if let Ok(current) = notifier.lock()

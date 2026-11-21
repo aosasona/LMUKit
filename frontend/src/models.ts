@@ -111,10 +111,11 @@ export type SystemActionBinding = {
   operation: "toggle" | "mute" | "unmute";
   targetType: "default" | "communications" | "specific";
   targetId: string | null;
+  playFeedbackSound: boolean;
 };
 export type PhysicalControlCapture = Omit<
   SystemActionBinding,
-  "scope" | "operation" | "targetType" | "targetId"
+  "scope" | "operation" | "targetType" | "targetId" | "playFeedbackSound"
 >;
 export type VirtualControlInspection = {
   control: string;

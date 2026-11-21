@@ -412,6 +412,7 @@ struct SystemActionBindingSummary {
     operation: String,
     target_type: String,
     target_id: Option<String>,
+    play_feedback_sound: bool,
 }
 
 #[derive(Serialize)]
@@ -1140,6 +1141,7 @@ fn system_action_summary(scope: &str, binding: &SystemActionBinding) -> SystemAc
         .to_owned(),
         target_type: target_type.to_owned(),
         target_id,
+        play_feedback_sound: binding.play_feedback_sound,
     }
 }
 
@@ -1180,6 +1182,7 @@ fn stored_system_action(
                 physical_button: modifier.physical_button,
             })
             .collect(),
+        play_feedback_sound: summary.play_feedback_sound,
         action: SystemAction::Microphone { operation, device },
     })
 }
@@ -1406,6 +1409,7 @@ fn microphone_mute_state(
         operation: "toggle".into(),
         target_type,
         target_id,
+        play_feedback_sound: false,
     })?;
     let SystemAction::Microphone { device, .. } = target.action;
     audio.0.mute_state(device)
@@ -1416,6 +1420,7 @@ fn test_microphone_action(
     operation: String,
     target_type: String,
     target_id: Option<String>,
+    play_feedback_sound: bool,
     audio: State<'_, AudioState>,
 ) -> Result<bool, String> {
     let binding = stored_system_action(SystemActionBindingSummary {
@@ -1427,8 +1432,9 @@ fn test_microphone_action(
         operation,
         target_type,
         target_id,
+        play_feedback_sound,
     })?;
-    audio.0.execute(binding.action)
+    audio.0.execute(binding.action, binding.play_feedback_sound)
 }
 
 #[tauri::command]
@@ -2780,14 +2786,16 @@ fn run_virtual_routing_worker(
                     event.pressed,
                 );
                 if changed && event.pressed {
-                    for action in resolve_system_actions(
+                    for binding in resolve_system_actions(
                         &profile_system_actions,
                         &global_system_actions,
                         &event.device_id,
                         event.button_id,
                         &held_system_buttons,
                     ) {
-                        if let Err(error) = audio_service.dispatch(action.clone()) {
+                        if let Err(error) = audio_service
+                            .dispatch(binding.action.clone(), binding.play_feedback_sound)
+                        {
                             diagnostics::warn("audio.microphone.dispatch", error);
                         }
                     }
@@ -2890,13 +2898,13 @@ fn resolve_system_actions<'a>(
     device_id: &str,
     physical_button: u32,
     held: &std::collections::BTreeSet<(String, u32)>,
-) -> Vec<&'a SystemAction> {
+) -> Vec<&'a SystemActionBinding> {
     fn matching<'a>(
         bindings: &'a [SystemActionBinding],
         device_id: &str,
         physical_button: u32,
         held: &std::collections::BTreeSet<(String, u32)>,
-    ) -> Vec<&'a SystemAction> {
+    ) -> Vec<&'a SystemActionBinding> {
         let candidates = bindings
             .iter()
             .filter(|binding| {
@@ -2917,7 +2925,6 @@ fn resolve_system_actions<'a>(
         candidates
             .into_iter()
             .filter(|binding| binding.modifiers.len() == specificity)
-            .map(|binding| &binding.action)
             .collect()
     }
     let profile_matches = matching(profile, device_id, physical_button, held);
@@ -5252,6 +5259,7 @@ mod tests {
                     physical_button,
                 })
                 .collect(),
+            play_feedback_sound: true,
             action: SystemAction::Microphone {
                 operation: MicrophoneOperation::Toggle,
                 device: AudioDeviceTarget::Default {
@@ -5278,7 +5286,7 @@ mod tests {
         let resolved =
             resolve_system_actions(&profile_bindings, &global_bindings, "wheel", 12, &held);
 
-        assert_eq!(resolved, vec![&profile.action]);
+        assert_eq!(resolved, vec![&profile]);
     }
 
     #[test]
@@ -5298,7 +5306,7 @@ mod tests {
         let profile_bindings = [base, modified.clone()];
         let resolved = resolve_system_actions(&profile_bindings, &[], "wheel", 12, &held);
 
-        assert_eq!(resolved, vec![&modified.action]);
+        assert_eq!(resolved, vec![&modified]);
     }
 
     #[test]

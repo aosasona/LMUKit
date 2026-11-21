@@ -5123,6 +5123,17 @@ textarea,
   min-height: 2.65rem;
 }
 
+.system-action-form .system-action-sound-choice {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.system-action-form .system-action-sound-choice > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .system-action-form select {
   appearance: none;
   padding: 0 36px 0 11px;
@@ -5220,6 +5231,34 @@ textarea,
   background: transparent;
   color: var(--muted);
   cursor: pointer;
+}
+
+.system-action-list .system-action-sound {
+  display: inline-grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.system-action-list .system-action-sound:hover:not(:disabled),
+.system-action-list .system-action-sound:focus-visible {
+  border-color: var(--line);
+  background: #22231f;
+  color: var(--teal);
+}
+
+.system-action-list .system-action-sound:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.system-action-list .system-action-sound svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 .system-action-list .system-action-remove:hover:not(:disabled) {

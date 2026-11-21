@@ -60,7 +60,20 @@ pub struct SystemActionBinding {
     pub physical_button: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub modifiers: Vec<VirtualButtonModifier>,
+    #[serde(
+        default = "default_system_action_feedback_sound",
+        skip_serializing_if = "is_true"
+    )]
+    pub play_feedback_sound: bool,
     pub action: SystemAction,
+}
+
+fn default_system_action_feedback_sound() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -2819,6 +2832,7 @@ mod tests {
                 device_name: "Wheel".into(),
                 physical_button: 4,
             }],
+            play_feedback_sound: true,
             action: SystemAction::Microphone {
                 operation: MicrophoneOperation::Toggle,
                 device: AudioDeviceTarget::Default {
@@ -2833,6 +2847,16 @@ mod tests {
             serde_json::from_str::<SystemActionBinding>(&json).unwrap(),
             binding
         );
+    }
+
+    #[test]
+    fn older_system_actions_enable_feedback_sound_by_default() {
+        let binding: SystemActionBinding = serde_json::from_str(
+            r#"{"device_id":"wheel","physical_button":12,"action":{"type":"microphone","operation":"toggle","device":{"type":"default","role":"communications"}}}"#,
+        )
+        .unwrap();
+
+        assert!(binding.play_feedback_sound);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Mic, Radio, Trash2 } from "lucide-react";
+import { Mic, Radio, Trash2, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type {
   CaptureAudioDevice,
@@ -47,6 +47,7 @@ export function SystemActionMappings({
   const [operation, setOperation] =
     useState<SystemActionBinding["operation"]>("toggle");
   const [target, setTarget] = useState("default");
+  const [playFeedbackSound, setPlayFeedbackSound] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
 
@@ -162,6 +163,7 @@ export function SystemActionMappings({
       operation,
       targetType: targetType as SystemActionBinding["targetType"],
       targetId: target.startsWith("specific:") ? target.slice(9) : null,
+      playFeedbackSound,
     };
     void persistBinding(binding);
   };
@@ -201,11 +203,39 @@ export function SystemActionMappings({
         operation: binding.operation,
         targetType: binding.targetType,
         targetId: binding.targetId,
+        playFeedbackSound: binding.playFeedbackSound,
       });
       onNotice(muted ? "Microphone muted." : "Microphone active.");
     } catch (reason) {
       setError(String(reason));
       onNotice(String(reason));
+    }
+  };
+
+  const toggleFeedbackSound = async (binding: SystemActionBinding) => {
+    setSaving(true);
+    setError(null);
+    try {
+      setBindings(
+        await invoke<SystemActionBinding[]>("save_system_action_binding", {
+          profileId,
+          binding: {
+            ...binding,
+            playFeedbackSound: !binding.playFeedbackSound,
+          },
+          replaceExisting: true,
+          alsoTrigger: true,
+        }),
+      );
+      onNotice(
+        binding.playFeedbackSound
+          ? "Microphone confirmation sound disabled."
+          : "Microphone confirmation sound enabled.",
+      );
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -281,6 +311,17 @@ export function SystemActionMappings({
               <option value="global">Every workspace and profile</option>
             </select>
           </label>
+          <label>
+            <span>Audio feedback</span>
+            <strong className="system-action-sound-choice">
+              <span>Play a confirmation sound</span>
+              <input
+                type="checkbox"
+                checked={playFeedbackSound}
+                onChange={(event) => setPlayFeedbackSound(event.target.checked)}
+              />
+            </strong>
+          </label>
           <div>
             <button className="secondary" onClick={() => setCapture(null)}>
               Cancel
@@ -324,6 +365,16 @@ export function SystemActionMappings({
                   onClick={() => void testAction(binding)}
                 >
                   Test
+                </button>
+                <button
+                  type="button"
+                  className="system-action-sound"
+                  aria-label={`${binding.playFeedbackSound ? "Disable" : "Enable"} confirmation sound`}
+                  title={`${binding.playFeedbackSound ? "Disable" : "Enable"} confirmation sound`}
+                  disabled={disabled || saving}
+                  onClick={() => void toggleFeedbackSound(binding)}
+                >
+                  {binding.playFeedbackSound ? <Volume2 /> : <VolumeX />}
                 </button>
                 <button
                   type="button"
