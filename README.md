@@ -58,6 +58,7 @@ _Assetto Corsa keeps its profiles and named actions separate while reusing the g
 - Guide one-time vJoy binding setup, save LMU's named action layout, learn and test physical buttons and modifier combinations per profile, warn before replacing conflicting mappings, configure digital encoder modes, assign one automatic default profile per car class, and switch experimental live DirectInput-to-vJoy routing without recreating the virtual controller.
 - Name and pulse unused vJoy buttons for external tools such as RaceLab, then map those shared actions—with the same modifier support—independently in every profile.
 - Deliberately make one physical button or modifier combination trigger several named actions—for example, recentering VR in both LMU and RaceLab—while retaining replacement warnings for accidental conflicts.
+- Bind a physical button or modifier combination to native Windows microphone Toggle, Mute, or Unmute actions, targeting the current default, communications default, or a specific capture device without keyboard-shortcut emulation.
 
 Pivot stores profiles, managed wheel images, settings, and timestamped recovery backups in the current Windows user's application-data directory. Use the **Folder** button on Profiles to open the exact location.
 
@@ -151,6 +152,14 @@ This is a one-time LMU-side setup for each action: LMU learns that, for example,
 The shared virtual layout can also contain user-named actions that do not belong to LMU. Under **Virtual input → External app actions**, enter a descriptive name such as `RaceLab — Recenter VR` and choose **Send & save action**. Pivot selects the next unused vJoy button, sends an initial test pulse, and adds that name to every profile mapping editor. Saved actions offer **Send now** for an already-open listener and a cancellable **In 5s** pulse for focus-sensitive applications: start the countdown, switch to Discord, and open Edit Keybind before it finishes. The delay runs outside the UI thread, so changing window focus does not stop it. An action cannot be removed while a profile still references it.
 
 External actions use the same per-profile physical controls and modifier combinations as LMU actions. Live remapping must be stopped while registering or testing one because the routing engine owns the vJoy device. Only leave the intended target application listening—the vJoy button remains visible to LMU and other applications even when they have no binding for it.
+
+#### Bind a microphone mute action
+
+Open a profile's **Edit button mappings** workspace and use **System actions → Bind microphone action**. Press a wheel, controller, or button-box control (or hold one modifier and press the trigger), choose Toggle, Mute, or Unmute, then select the default Windows microphone, the default communications microphone, or a specific detected capture device. Choose **This profile** or **Every workspace and profile** and save. Global bindings remain available whenever any Virtual Input profile is live; a profile-specific binding on the same chord takes precedence.
+
+Pivot resolves default targets when the button is pressed, so changing the Windows default microphone does not require rebinding. Specific-device bindings retain the endpoint identifier and show as unavailable if that microphone is disconnected rather than silently switching devices. Windows Core Audio notifications refresh device, default, and mute status, including changes made outside Pivot. Actions run on a dedicated COM worker and execute once per physical press edge, not repeatedly while held.
+
+Core Audio endpoint mute is respected by applications that capture through the normal Windows audio endpoint, including typical Discord and OBS configurations. An application that opens hardware through a proprietary or exclusive path may not honor endpoint mute; Pivot cannot guarantee muting in that application.
 
 #### Map and use profiles
 

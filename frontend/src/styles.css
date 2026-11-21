@@ -5061,6 +5061,125 @@ textarea,
   border-bottom: 1px solid var(--line);
   background: #171716;
 }
+
+.system-action-editor {
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.system-action-editor > header,
+.system-action-editor > header > span,
+.system-action-list > div {
+  display: flex;
+  align-items: center;
+}
+
+.system-action-editor > header {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.system-action-editor > header > span {
+  gap: 0.75rem;
+}
+
+.system-action-editor header svg {
+  width: 1.1rem;
+}
+
+.system-action-editor strong,
+.system-action-editor small {
+  display: block;
+}
+
+.system-action-editor small {
+  color: var(--muted);
+}
+
+.system-action-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.system-action-form label > span {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.system-action-form select,
+.system-action-form label > strong {
+  width: 100%;
+  min-height: 2.65rem;
+}
+
+.system-action-form label > strong {
+  display: flex;
+  align-items: center;
+  padding: 0 0.75rem;
+  border: 1px solid var(--line);
+  background: #141414;
+}
+
+.system-action-form > div {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.system-action-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.system-action-list > div {
+  gap: 0.7rem;
+  padding: 0.7rem;
+  border: 1px solid var(--line);
+  background: #141414;
+}
+
+.system-action-list > div > span {
+  min-width: 0;
+  flex: 1;
+}
+
+.system-action-list i {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.system-action-list i.active {
+  background: var(--accent);
+}
+
+.system-action-list i.muted {
+  background: var(--warning);
+}
+
+.system-action-list button {
+  padding: 0.35rem;
+}
+
+@media (max-width: 760px) {
+  .system-action-form {
+    grid-template-columns: 1fr;
+  }
+}
 .profile-mapping-search {
   height: 38px;
   display: flex;

@@ -28,6 +28,7 @@ import type {
 import { ActionMenu } from "./ActionMenu";
 import { ConfirmDialog, type Confirmation } from "./ConfirmDialog";
 import { ProfileEncoderMappings } from "./ProfileEncoderMappings";
+import { SystemActionMappings } from "./SystemActionMappings";
 import type { InputMode } from "./InputModeSwitch";
 
 function searchTokens(value: string) {
@@ -99,6 +100,7 @@ export function ProfileVirtualMappings({
     activeEncoderModes: [],
   });
   const [error, setError] = useState<string | null>(null);
+  const [systemActionCount, setSystemActionCount] = useState(0);
   const routingActive = routing.active;
   const assignedActions = new Set(
     mappings.map((mapping) => mapping.logicalAction),
@@ -394,7 +396,7 @@ export function ProfileVirtualMappings({
   };
 
   const startRouting = async () => {
-    if (!mappings.length) return;
+    if (!mappings.length && !systemActionCount) return;
     setRoutingBusy(true);
     setError(null);
     try {
@@ -573,7 +575,10 @@ export function ProfileVirtualMappings({
             type="button"
             className="primary compact"
             disabled={
-              busy || routingBusy || !mappings.length || inputMode !== "virtual"
+              busy ||
+              routingBusy ||
+              (!mappings.length && !systemActionCount) ||
+              inputMode !== "virtual"
             }
             onClick={() => void startRouting()}
           >
@@ -648,6 +653,19 @@ export function ProfileVirtualMappings({
               </div>
             )}
             {error && <div className="virtual-error">{error}</div>}
+
+            <SystemActionMappings
+              profileId={profile.id}
+              disabled={
+                busy ||
+                routingActive ||
+                learning !== null ||
+                testing ||
+                savingMapping
+              }
+              onNotice={onNotice}
+              onCountChange={setSystemActionCount}
+            />
 
             <div className="profile-mapping-toolbar">
               <label className="profile-mapping-search">

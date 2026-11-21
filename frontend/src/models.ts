@@ -94,6 +94,28 @@ export type VirtualButtonCapture = {
   mapping: VirtualProfileMapping;
   conflictingActions: string[];
 };
+export type CaptureAudioDevice = {
+  id: string;
+  name: string;
+  active: boolean;
+  muted: boolean | null;
+  default: boolean;
+  defaultCommunications: boolean;
+};
+export type SystemActionBinding = {
+  scope: "profile" | "global";
+  deviceId: string;
+  deviceName: string;
+  physicalButton: number;
+  modifiers: VirtualButtonModifier[];
+  operation: "toggle" | "mute" | "unmute";
+  targetType: "default" | "communications" | "specific";
+  targetId: string | null;
+};
+export type PhysicalControlCapture = Omit<
+  SystemActionBinding,
+  "scope" | "operation" | "targetType" | "targetId"
+>;
 export type VirtualControlInspection = {
   control: string;
   matches: { logicalAction: string; virtualButton: number }[];
