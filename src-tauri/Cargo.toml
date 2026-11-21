@@ -35,11 +35,18 @@ uuid = { version = "1.16", features = ["v4", "serde"] }
 [target.'cfg(windows)'.dependencies]
 global-hotkey = "0.7"
 windows = { version = "0.58", features = [
+    "implement",
     "Foundation_Collections",
     "Gaming_Input",
     "Win32_Foundation",
+    "Win32_Devices_FunctionDiscovery",
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
+    "Win32_System_Com",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_SystemInformation",
     "Win32_System_WinRT",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell_PropertiesSystem",
 ] }
+windows-core = "0.58"

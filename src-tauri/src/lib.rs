@@ -4,7 +4,8 @@ use lmukit_core::car_context::{
     LmuSessionState, display_existing_class,
 };
 use lmukit_core::storage::{
-    CompanionApp, CompanionAppIssue, InputMode, LaunchMode, Profile, Store,
+    AudioDeviceRole, AudioDeviceTarget, CompanionApp, CompanionAppIssue, InputMode, LaunchMode,
+    MicrophoneOperation, Profile, Store, SystemAction, SystemActionBinding,
     VirtualButtonConflictResolution, VirtualButtonMapping, VirtualButtonModifier,
     VirtualEncoderControl, VirtualEncoderGroup, VirtualEncoderMode as StoredEncoderMode,
     VirtualProfileMapping, Wheel, WorkspaceKind, resolve_virtual_button_mappings,
@@ -25,6 +26,7 @@ use tauri::{
 };
 use uuid::Uuid;
 
+mod audio;
 mod diagnostics;
 mod lmu_process;
 
@@ -39,6 +41,7 @@ mod hotkeys;
 mod input;
 
 struct AppState(Mutex<Store>);
+struct AudioState(audio::AudioService);
 struct HotkeyState(std::sync::mpsc::Sender<HotkeyUpdate>);
 struct VirtualSetupState(Mutex<VirtualSetupSession>);
 struct ManualPulseState(Arc<AtomicU64>);
@@ -396,6 +399,28 @@ struct VirtualButtonModifierSummary {
     device_id: String,
     device_name: String,
     physical_button: u32,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SystemActionBindingSummary {
+    scope: String,
+    device_id: String,
+    device_name: String,
+    physical_button: u32,
+    modifiers: Vec<VirtualButtonModifierSummary>,
+    operation: String,
+    target_type: String,
+    target_id: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PhysicalControlCaptureSummary {
+    device_id: String,
+    device_name: String,
+    physical_button: u32,
+    modifiers: Vec<VirtualButtonModifierSummary>,
 }
 
 #[derive(Serialize)]
@@ -1082,6 +1107,330 @@ fn virtual_profile_mapping(
     Ok(mapping_summaries(profile.virtual_mapping.as_ref()))
 }
 
+fn system_action_summary(scope: &str, binding: &SystemActionBinding) -> SystemActionBindingSummary {
+    let SystemAction::Microphone { operation, device } = &binding.action;
+    let (target_type, target_id) = match device {
+        AudioDeviceTarget::Default {
+            role: AudioDeviceRole::Console,
+        } => ("default", None),
+        AudioDeviceTarget::Default {
+            role: AudioDeviceRole::Communications,
+        } => ("communications", None),
+        AudioDeviceTarget::Specific { device_id } => ("specific", Some(device_id.clone())),
+    };
+    SystemActionBindingSummary {
+        scope: scope.to_owned(),
+        device_id: binding.device_id.clone(),
+        device_name: binding.device_name.clone(),
+        physical_button: binding.physical_button,
+        modifiers: binding
+            .modifiers
+            .iter()
+            .map(|modifier| VirtualButtonModifierSummary {
+                device_id: modifier.device_id.clone(),
+                device_name: modifier.device_name.clone(),
+                physical_button: modifier.physical_button,
+            })
+            .collect(),
+        operation: match operation {
+            MicrophoneOperation::Toggle => "toggle",
+            MicrophoneOperation::Mute => "mute",
+            MicrophoneOperation::Unmute => "unmute",
+        }
+        .to_owned(),
+        target_type: target_type.to_owned(),
+        target_id,
+    }
+}
+
+fn stored_system_action(
+    summary: SystemActionBindingSummary,
+) -> Result<SystemActionBinding, String> {
+    let operation = match summary.operation.as_str() {
+        "toggle" => MicrophoneOperation::Toggle,
+        "mute" => MicrophoneOperation::Mute,
+        "unmute" => MicrophoneOperation::Unmute,
+        _ => return Err("Unknown microphone operation.".to_owned()),
+    };
+    let device = match summary.target_type.as_str() {
+        "default" => AudioDeviceTarget::Default {
+            role: AudioDeviceRole::Console,
+        },
+        "communications" => AudioDeviceTarget::Default {
+            role: AudioDeviceRole::Communications,
+        },
+        "specific" => AudioDeviceTarget::Specific {
+            device_id: summary
+                .target_id
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| "Choose a specific microphone.".to_owned())?,
+        },
+        _ => return Err("Unknown microphone target.".to_owned()),
+    };
+    Ok(SystemActionBinding {
+        device_id: summary.device_id,
+        device_name: summary.device_name,
+        physical_button: summary.physical_button,
+        modifiers: summary
+            .modifiers
+            .into_iter()
+            .map(|modifier| VirtualButtonModifier {
+                device_id: modifier.device_id,
+                device_name: modifier.device_name,
+                physical_button: modifier.physical_button,
+            })
+            .collect(),
+        action: SystemAction::Microphone { operation, device },
+    })
+}
+
+#[tauri::command]
+fn system_action_bindings(
+    profile_id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<Vec<SystemActionBindingSummary>, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    let mut result = store
+        .settings
+        .global_system_actions
+        .iter()
+        .map(|binding| system_action_summary("global", binding))
+        .collect::<Vec<_>>();
+    result.extend(
+        profile
+            .virtual_mapping
+            .as_ref()
+            .into_iter()
+            .flat_map(|mapping| mapping.system_actions.iter())
+            .map(|binding| system_action_summary("profile", binding)),
+    );
+    Ok(result)
+}
+
+#[tauri::command]
+async fn capture_system_action_control() -> Result<PhysicalControlCaptureSummary, String> {
+    let learned = wait_for_direct_input_mapping().await?;
+    let (trigger, modifiers) = match learned {
+        LearnedPhysicalMapping::Button(trigger) => (trigger, Vec::new()),
+        LearnedPhysicalMapping::Modified { modifier, trigger } => (trigger, vec![modifier]),
+    };
+    Ok(PhysicalControlCaptureSummary {
+        device_id: trigger.device_id,
+        device_name: trigger.device_name,
+        physical_button: trigger.button_id,
+        modifiers: modifiers
+            .into_iter()
+            .map(|modifier| VirtualButtonModifierSummary {
+                device_id: modifier.device_id,
+                device_name: modifier.device_name,
+                physical_button: modifier.button_id,
+            })
+            .collect(),
+    })
+}
+
+#[tauri::command]
+fn save_system_action_binding(
+    profile_id: Uuid,
+    binding: SystemActionBindingSummary,
+    replace_existing: bool,
+    also_trigger: bool,
+    state: State<'_, AppState>,
+) -> Result<Vec<SystemActionBindingSummary>, String> {
+    let scope = binding.scope.clone();
+    let binding = stored_system_action(binding)?;
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    if scope == "global" {
+        let profile_mappings = store
+            .profiles()
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .filter_map(|profile| profile.virtual_mapping)
+            .collect::<Vec<_>>();
+        let profile_conflict = profile_mappings.iter().any(|mapping| {
+            mapping.buttons.iter().any(|entry| {
+                entry.device_id == binding.device_id
+                    && entry.physical_button == binding.physical_button
+                    && entry.modifiers == binding.modifiers
+            })
+        });
+        if profile_conflict && !also_trigger {
+            return Err("That global control already triggers a virtual action in at least one profile. Confirm that it should trigger both actions to continue.".to_owned());
+        }
+        let global_controls =
+            std::iter::once((binding.device_id.as_str(), binding.physical_button))
+                .chain(
+                    binding
+                        .modifiers
+                        .iter()
+                        .map(|modifier| (modifier.device_id.as_str(), modifier.physical_button)),
+                )
+                .collect::<std::collections::BTreeSet<_>>();
+        let encoder_conflict = profile_mappings.iter().any(|mapping| {
+            mapping.encoder_groups.iter().any(|encoder| {
+                [&encoder.clockwise, &encoder.counterclockwise]
+                    .into_iter()
+                    .chain(encoder.cycle.iter())
+                    .any(|control| {
+                        global_controls
+                            .contains(&(control.device_id.as_str(), control.physical_button))
+                    })
+            })
+        });
+        if encoder_conflict {
+            return Err("That global control is part of a profile's digital encoder and cannot also trigger a system action.".to_owned());
+        }
+        let mut actions = store.settings.global_system_actions.clone();
+        let conflict = actions.iter().any(|entry| {
+            entry.device_id == binding.device_id
+                && entry.physical_button == binding.physical_button
+                && entry.modifiers == binding.modifiers
+                && entry.action != binding.action
+        });
+        if conflict && !replace_existing {
+            return Err("That global control already triggers another system action. Confirm replacement to continue.".to_owned());
+        }
+        actions.retain(|entry| {
+            !(entry.device_id == binding.device_id
+                && entry.physical_button == binding.physical_button
+                && entry.modifiers == binding.modifiers)
+        });
+        actions.push(binding);
+        store
+            .set_global_system_actions(actions)
+            .map_err(|error| error.to_string())?;
+    } else {
+        let profile = find_profile(&store, profile_id)?;
+        let mapping = profile.virtual_mapping.unwrap_or_default();
+        let system_controls =
+            std::iter::once((binding.device_id.as_str(), binding.physical_button))
+                .chain(
+                    binding
+                        .modifiers
+                        .iter()
+                        .map(|modifier| (modifier.device_id.as_str(), modifier.physical_button)),
+                )
+                .collect::<std::collections::BTreeSet<_>>();
+        let conflicts_encoder = mapping.encoder_groups.iter().any(|encoder| {
+            [&encoder.clockwise, &encoder.counterclockwise]
+                .into_iter()
+                .chain(encoder.cycle.iter())
+                .any(|control| {
+                    system_controls.contains(&(control.device_id.as_str(), control.physical_button))
+                })
+        });
+        if conflicts_encoder {
+            return Err(
+                "That control is already part of a digital encoder and cannot also trigger a system action."
+                    .to_owned(),
+            );
+        }
+        let conflicts_virtual = mapping.buttons.iter().any(|entry| {
+            entry.device_id == binding.device_id
+                && entry.physical_button == binding.physical_button
+                && entry.modifiers == binding.modifiers
+        });
+        if conflicts_virtual && !also_trigger {
+            return Err("That profile control already triggers a virtual action. Confirm that it should trigger both actions to continue.".to_owned());
+        }
+        let mut actions = mapping.system_actions;
+        let conflicts_system = actions.iter().any(|entry| {
+            entry.device_id == binding.device_id
+                && entry.physical_button == binding.physical_button
+                && entry.modifiers == binding.modifiers
+                && entry.action != binding.action
+        });
+        if conflicts_system && !replace_existing {
+            return Err("That profile control already triggers another system action. Confirm replacement to continue.".to_owned());
+        }
+        actions.retain(|entry| {
+            !(entry.device_id == binding.device_id
+                && entry.physical_button == binding.physical_button
+                && entry.modifiers == binding.modifiers)
+        });
+        actions.push(binding);
+        store
+            .set_profile_system_actions(profile_id, actions)
+            .map_err(|error| error.to_string())?;
+    }
+    drop(store);
+    system_action_bindings(profile_id, state)
+}
+
+#[tauri::command]
+fn remove_system_action_binding(
+    profile_id: Uuid,
+    binding: SystemActionBindingSummary,
+    state: State<'_, AppState>,
+) -> Result<Vec<SystemActionBindingSummary>, String> {
+    let stored = stored_system_action(binding.clone())?;
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    if binding.scope == "global" {
+        let mut actions = store.settings.global_system_actions.clone();
+        actions.retain(|entry| entry != &stored);
+        store
+            .set_global_system_actions(actions)
+            .map_err(|error| error.to_string())?;
+    } else {
+        let profile = find_profile(&store, profile_id)?;
+        let mut actions = profile.virtual_mapping.unwrap_or_default().system_actions;
+        actions.retain(|entry| entry != &stored);
+        store
+            .set_profile_system_actions(profile_id, actions)
+            .map_err(|error| error.to_string())?;
+    }
+    drop(store);
+    system_action_bindings(profile_id, state)
+}
+
+#[tauri::command]
+fn capture_audio_devices(
+    audio: State<'_, AudioState>,
+) -> Result<Vec<audio::CaptureDevice>, String> {
+    audio.0.list_capture_devices()
+}
+
+#[tauri::command]
+fn microphone_mute_state(
+    target_type: String,
+    target_id: Option<String>,
+    audio: State<'_, AudioState>,
+) -> Result<bool, String> {
+    let target = stored_system_action(SystemActionBindingSummary {
+        scope: String::new(),
+        device_id: "query".into(),
+        device_name: String::new(),
+        physical_button: 1,
+        modifiers: vec![],
+        operation: "toggle".into(),
+        target_type,
+        target_id,
+    })?;
+    let SystemAction::Microphone { device, .. } = target.action;
+    audio.0.mute_state(device)
+}
+
+#[tauri::command]
+fn test_microphone_action(
+    operation: String,
+    target_type: String,
+    target_id: Option<String>,
+    audio: State<'_, AudioState>,
+) -> Result<bool, String> {
+    let binding = stored_system_action(SystemActionBindingSummary {
+        scope: String::new(),
+        device_id: "test".into(),
+        device_name: String::new(),
+        physical_button: 1,
+        modifiers: vec![],
+        operation,
+        target_type,
+        target_id,
+    })?;
+    audio.0.execute(binding.action)
+}
+
 #[tauri::command]
 fn saved_virtual_layout(state: State<'_, AppState>) -> Result<Vec<VirtualActionSummary>, String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
@@ -1398,8 +1747,10 @@ fn remove_virtual_profile_encoder_group(
     if mapping.encoder_groups.len() == before {
         return Err("That encoder no longer exists.".to_owned());
     }
-    let saved = (!mapping.buttons.is_empty() || !mapping.encoder_groups.is_empty())
-        .then_some(mapping.clone());
+    let saved = (!mapping.buttons.is_empty()
+        || !mapping.encoder_groups.is_empty()
+        || !mapping.system_actions.is_empty())
+    .then_some(mapping.clone());
     store
         .set_profile_virtual_mapping(profile_id, saved)
         .map_err(|error| error.to_string())?;
@@ -1561,8 +1912,10 @@ fn remove_virtual_profile_button(
             && entry.modifiers == modifiers
             && entry.logical_action == logical_action)
     });
-    let saved = (!mapping.buttons.is_empty() || !mapping.encoder_groups.is_empty())
-        .then_some(mapping.clone());
+    let saved = (!mapping.buttons.is_empty()
+        || !mapping.encoder_groups.is_empty()
+        || !mapping.system_actions.is_empty())
+    .then_some(mapping.clone());
     store
         .set_profile_virtual_mapping(profile_id, saved)
         .map_err(|error| error.to_string())?;
@@ -2118,7 +2471,15 @@ fn start_virtual_routing_inner(
         "routing.start.requested",
         format!("Profile {profile_id} · {selection_reason}"),
     );
-    let (profile_name, device_id, layout, mapping) = {
+    let (
+        profile_name,
+        device_id,
+        layout,
+        mapping,
+        has_virtual_outputs,
+        profile_system_actions,
+        global_system_actions,
+    ) = {
         let store = app_state.0.lock().map_err(|error| error.to_string())?;
         if store.settings.input_mode != InputMode::Virtual {
             return Err(
@@ -2130,13 +2491,14 @@ fn start_virtual_routing_inner(
         if profile.workspace_id != store.settings.active_workspace_id {
             return Err("That profile belongs to another workspace.".to_owned());
         }
-        let persisted_mapping = profile
-            .virtual_mapping
-            .as_ref()
-            .filter(|mapping| !mapping.buttons.is_empty() || !mapping.encoder_groups.is_empty())
-            .ok_or_else(|| {
-                "Learn at least one physical button for this profile first.".to_owned()
-            })?;
+        let persisted_mapping = profile.virtual_mapping.clone().unwrap_or_default();
+        if persisted_mapping.buttons.is_empty()
+            && persisted_mapping.encoder_groups.is_empty()
+            && persisted_mapping.system_actions.is_empty()
+            && store.settings.global_system_actions.is_empty()
+        {
+            return Err("Learn at least one physical button for this profile first.".to_owned());
+        }
         let layout = VirtualLayout::new(
             store
                 .virtual_layout()
@@ -2210,11 +2572,16 @@ fn start_virtual_routing_inner(
                 .collect::<Result<Vec<_>, String>>()?,
         )
         .map_err(|error| error.to_string())?;
+        let has_virtual_outputs =
+            !persisted_mapping.buttons.is_empty() || !persisted_mapping.encoder_groups.is_empty();
         (
             profile.name,
             store.settings.virtual_device_id,
             layout,
             mapping,
+            has_virtual_outputs,
+            persisted_mapping.system_actions,
+            store.settings.global_system_actions.clone(),
         )
     };
     stop_virtual_routing_inner(routing_state)?;
@@ -2232,6 +2599,10 @@ fn start_virtual_routing_inner(
             device_id,
             layout,
             mapping,
+            has_virtual_outputs,
+            profile_system_actions,
+            global_system_actions,
+            audio::service(),
             worker_stop,
             status,
             ready_tx,
@@ -2337,6 +2708,10 @@ fn run_virtual_routing_worker(
     device_id: u32,
     layout: VirtualLayout,
     mapping: ProfileMapping,
+    has_virtual_outputs: bool,
+    profile_system_actions: Vec<SystemActionBinding>,
+    global_system_actions: Vec<SystemActionBinding>,
+    audio_service: audio::AudioService,
     stop: Arc<std::sync::atomic::AtomicBool>,
     status: Arc<Mutex<VirtualRoutingStatus>>,
     ready: std::sync::mpsc::SyncSender<Result<(String, Vec<ActiveEncoderModeSummary>), String>>,
@@ -2355,16 +2730,30 @@ fn run_virtual_routing_worker(
                 format!("{name} · {button_count} buttons"),
             );
         }
-        let backend = VJoyBackend::new(device_id).map_err(|error| error.to_string())?;
-        let mut engine =
-            MappingEngine::connect(backend, layout, mapping).map_err(|error| error.to_string())?;
+        let mut engine = if has_virtual_outputs {
+            let backend = VJoyBackend::new(device_id).map_err(|error| error.to_string())?;
+            Some(
+                MappingEngine::connect(backend, layout, mapping)
+                    .map_err(|error| error.to_string())?,
+            )
+        } else {
+            None
+        };
+        let mut held_system_buttons = std::collections::BTreeSet::<(String, u32)>::new();
         let identity = engine
-            .capabilities()
+            .as_ref()
+            .map(|engine| {
+                engine
+                    .capabilities()
+                    .map(|capabilities| capabilities.identity)
+            })
+            .transpose()
             .map_err(|error| error.to_string())?
-            .identity;
+            .unwrap_or_else(|| "Native system actions".to_owned());
         let encoder_modes = engine
-            .active_encoder_modes()
+            .as_ref()
             .into_iter()
+            .flat_map(|engine| engine.active_encoder_modes())
             .map(|(encoder_name, mode_name)| ActiveEncoderModeSummary {
                 encoder_name: encoder_name.to_owned(),
                 mode_name: mode_name.to_owned(),
@@ -2384,11 +2773,34 @@ fn run_virtual_routing_worker(
         }
         while !stop.load(Ordering::SeqCst) {
             for event in listener.poll().map_err(|error| error.to_string())? {
+                let system_source = (event.device_id.clone(), event.button_id);
+                let changed = update_pressed_system_buttons(
+                    &mut held_system_buttons,
+                    system_source,
+                    event.pressed,
+                );
+                if changed && event.pressed {
+                    for action in resolve_system_actions(
+                        &profile_system_actions,
+                        &global_system_actions,
+                        &event.device_id,
+                        event.button_id,
+                        &held_system_buttons,
+                    ) {
+                        if let Err(error) = audio_service.dispatch(action.clone()) {
+                            diagnostics::warn("audio.microphone.dispatch", error);
+                        }
+                    }
+                }
                 let source = PhysicalButton::new(event.device_id, event.button_id)
                     .map_err(|error| error.to_string())?;
-                let routed = engine
-                    .handle_button(&source, event.pressed)
-                    .map_err(|error| error.to_string())?;
+                let routed = if let Some(engine) = engine.as_mut() {
+                    engine
+                        .handle_button(&source, event.pressed)
+                        .map_err(|error| error.to_string())?
+                } else {
+                    false
+                };
                 if routed && let Ok(mut current) = status.lock() {
                     current.routed_event_count += 1;
                     current.last_event = Some(format!(
@@ -2397,8 +2809,9 @@ fn run_virtual_routing_worker(
                         if event.pressed { "pressed" } else { "released" }
                     ));
                     current.active_encoder_modes = engine
-                        .active_encoder_modes()
+                        .as_ref()
                         .into_iter()
+                        .flat_map(|engine| engine.active_encoder_modes())
                         .map(|(encoder_name, mode_name)| ActiveEncoderModeSummary {
                             encoder_name: encoder_name.to_owned(),
                             mode_name: mode_name.to_owned(),
@@ -2425,10 +2838,15 @@ fn run_virtual_routing_worker(
                 }
             }
             known_devices = current_devices;
-            engine.tick().map_err(|error| error.to_string())?;
+            if let Some(engine) = engine.as_mut() {
+                engine.tick().map_err(|error| error.to_string())?;
+            }
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
-        engine.disconnect().map_err(|error| error.to_string())
+        if let Some(engine) = engine.as_mut() {
+            engine.disconnect().map_err(|error| error.to_string())?;
+        }
+        Ok(())
     })();
 
     if let Err(error) = result {
@@ -2452,6 +2870,10 @@ fn run_virtual_routing_worker(
     _device_id: u32,
     _layout: VirtualLayout,
     _mapping: ProfileMapping,
+    _has_virtual_outputs: bool,
+    _profile_system_actions: Vec<SystemActionBinding>,
+    _global_system_actions: Vec<SystemActionBinding>,
+    _audio_service: audio::AudioService,
     _stop: Arc<std::sync::atomic::AtomicBool>,
     _status: Arc<Mutex<VirtualRoutingStatus>>,
     ready: std::sync::mpsc::SyncSender<Result<(String, Vec<ActiveEncoderModeSummary>), String>>,
@@ -2460,6 +2882,62 @@ fn run_virtual_routing_worker(
     let _ = ready.send(Err(
         "Virtual routing is only available in the Windows build.".to_owned(),
     ));
+}
+
+fn resolve_system_actions<'a>(
+    profile: &'a [SystemActionBinding],
+    global: &'a [SystemActionBinding],
+    device_id: &str,
+    physical_button: u32,
+    held: &std::collections::BTreeSet<(String, u32)>,
+) -> Vec<&'a SystemAction> {
+    fn matching<'a>(
+        bindings: &'a [SystemActionBinding],
+        device_id: &str,
+        physical_button: u32,
+        held: &std::collections::BTreeSet<(String, u32)>,
+    ) -> Vec<&'a SystemAction> {
+        let candidates = bindings
+            .iter()
+            .filter(|binding| {
+                binding.device_id == device_id
+                    && binding.physical_button == physical_button
+                    && binding.modifiers.iter().all(|modifier| {
+                        held.contains(&(modifier.device_id.clone(), modifier.physical_button))
+                    })
+            })
+            .collect::<Vec<_>>();
+        let Some(specificity) = candidates
+            .iter()
+            .map(|binding| binding.modifiers.len())
+            .max()
+        else {
+            return Vec::new();
+        };
+        candidates
+            .into_iter()
+            .filter(|binding| binding.modifiers.len() == specificity)
+            .map(|binding| &binding.action)
+            .collect()
+    }
+    let profile_matches = matching(profile, device_id, physical_button, held);
+    if profile_matches.is_empty() {
+        matching(global, device_id, physical_button, held)
+    } else {
+        profile_matches
+    }
+}
+
+fn update_pressed_system_buttons(
+    held: &mut std::collections::BTreeSet<(String, u32)>,
+    source: (String, u32),
+    pressed: bool,
+) -> bool {
+    if pressed {
+        held.insert(source)
+    } else {
+        held.remove(&source)
+    }
 }
 
 #[tauri::command]
@@ -4002,6 +4480,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState(Mutex::new(store)))
+        .manage(AudioState(audio::service()))
         .manage(HotkeyState(hotkey_tx))
         .manage(VirtualSetupState(
             Mutex::new(VirtualSetupSession::default()),
@@ -4022,6 +4501,10 @@ pub fn run() {
         })
         .setup(move |app| {
             setup_tray(app)?;
+            let audio_handle = app.handle().clone();
+            app.state::<AudioState>().0.set_change_notifier(move || {
+                let _ = audio_handle.emit("audio-devices-changed", ());
+            });
             let handle = app.handle().clone();
             std::thread::spawn(move || poll_hotkeys(handle, hotkey_rx, shortcuts));
             let handle = app.handle().clone();
@@ -4150,6 +4633,13 @@ pub fn run() {
             preview_virtual_layout,
             import_virtual_layout,
             virtual_profile_mapping,
+            system_action_bindings,
+            capture_system_action_control,
+            save_system_action_binding,
+            remove_system_action_binding,
+            capture_audio_devices,
+            microphone_mute_state,
+            test_microphone_action,
             saved_virtual_layout,
             import_profile_virtual_mapping,
             virtual_profile_defaults,
@@ -4748,6 +5238,96 @@ fn poll_hotkeys(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn microphone_binding(button: u32, modifiers: Vec<u32>) -> SystemActionBinding {
+        SystemActionBinding {
+            device_id: "wheel".into(),
+            device_name: "Wheel".into(),
+            physical_button: button,
+            modifiers: modifiers
+                .into_iter()
+                .map(|physical_button| VirtualButtonModifier {
+                    device_id: "wheel".into(),
+                    device_name: "Wheel".into(),
+                    physical_button,
+                })
+                .collect(),
+            action: SystemAction::Microphone {
+                operation: MicrophoneOperation::Toggle,
+                device: AudioDeviceTarget::Default {
+                    role: AudioDeviceRole::Communications,
+                },
+            },
+        }
+    }
+
+    #[test]
+    fn profile_system_actions_take_precedence_over_global_bindings() {
+        let profile = microphone_binding(12, vec![]);
+        let mut global = microphone_binding(12, vec![]);
+        global.action = SystemAction::Microphone {
+            operation: MicrophoneOperation::Mute,
+            device: AudioDeviceTarget::Default {
+                role: AudioDeviceRole::Console,
+            },
+        };
+        let held = [("wheel".to_owned(), 12)].into_iter().collect();
+
+        let profile_bindings = [profile.clone()];
+        let global_bindings = [global];
+        let resolved =
+            resolve_system_actions(&profile_bindings, &global_bindings, "wheel", 12, &held);
+
+        assert_eq!(resolved, vec![&profile.action]);
+    }
+
+    #[test]
+    fn system_actions_use_the_most_specific_satisfied_modifier_chord() {
+        let base = microphone_binding(12, vec![]);
+        let mut modified = microphone_binding(12, vec![4]);
+        modified.action = SystemAction::Microphone {
+            operation: MicrophoneOperation::Unmute,
+            device: AudioDeviceTarget::Default {
+                role: AudioDeviceRole::Console,
+            },
+        };
+        let held = [("wheel".to_owned(), 4), ("wheel".to_owned(), 12)]
+            .into_iter()
+            .collect();
+
+        let profile_bindings = [base, modified.clone()];
+        let resolved = resolve_system_actions(&profile_bindings, &[], "wheel", 12, &held);
+
+        assert_eq!(resolved, vec![&modified.action]);
+    }
+
+    #[test]
+    fn held_system_action_controls_execute_once_per_press_edge() {
+        let mut held = std::collections::BTreeSet::new();
+        let source = ("wheel".to_owned(), 12);
+
+        assert!(update_pressed_system_buttons(
+            &mut held,
+            source.clone(),
+            true
+        ));
+        assert!(!update_pressed_system_buttons(
+            &mut held,
+            source.clone(),
+            true
+        ));
+        assert!(update_pressed_system_buttons(
+            &mut held,
+            source.clone(),
+            false
+        ));
+        assert!(!update_pressed_system_buttons(
+            &mut held,
+            source.clone(),
+            false
+        ));
+        assert!(update_pressed_system_buttons(&mut held, source, true));
+    }
 
     #[test]
     fn tray_menu_describes_legacy_mode_without_offering_live_routing() {
