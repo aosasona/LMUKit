@@ -5032,8 +5032,8 @@ textarea,
 }
 .profile-mapping-dialog.inline {
   width: 100%;
-  height: min(720px, calc(100vh - 270px));
-  min-height: 520px;
+  height: min(920px, max(760px, calc(100vh - 180px)));
+  min-height: 760px;
   box-shadow: none;
 }
 .profile-mapping-dialog > header {
