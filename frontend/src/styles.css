@@ -5211,6 +5211,38 @@ textarea,
   padding: 0.35rem;
 }
 
+.system-action-list .system-action-remove {
+  display: inline-grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.system-action-list .system-action-remove:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.system-action-list .system-action-remove:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--danger) 58%, transparent);
+  outline-offset: 2px;
+}
+
+.system-action-list .system-action-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.system-action-list .system-action-remove svg {
+  width: 1rem;
+  height: 1rem;
+}
+
 @media (max-width: 760px) {
   .system-action-form {
     grid-template-columns: 1fr;

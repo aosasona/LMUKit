@@ -42,6 +42,7 @@ export function SystemActionMappings({
   const [capture, setCapture] = useState<PhysicalControlCapture | null>(null);
   const [listening, setListening] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [scope, setScope] = useState<"profile" | "global">("profile");
   const [operation, setOperation] =
     useState<SystemActionBinding["operation"]>("toggle");
@@ -166,6 +167,8 @@ export function SystemActionMappings({
   };
 
   const remove = async (binding: SystemActionBinding) => {
+    setRemoving(true);
+    setError(null);
     try {
       setBindings(
         await invoke<SystemActionBinding[]>("remove_system_action_binding", {
@@ -173,10 +176,23 @@ export function SystemActionMappings({
           binding,
         }),
       );
+      setConfirmation(null);
       onNotice("System action binding removed.");
     } catch (reason) {
       setError(String(reason));
+    } finally {
+      setRemoving(false);
     }
+  };
+
+  const requestRemove = (binding: SystemActionBinding) => {
+    setConfirmation({
+      title: "Remove microphone binding?",
+      description: `${operationLabel(binding.operation)} for ${targetLabel(binding)} will no longer be triggered by ${controlLabel(binding)}${binding.scope === "global" ? " anywhere in Pivot" : " in this profile"}.`,
+      confirmLabel: "Remove binding",
+      danger: true,
+      onConfirm: () => void remove(binding),
+    });
   };
 
   const testAction = async (binding: SystemActionBinding) => {
@@ -310,9 +326,12 @@ export function SystemActionMappings({
                   Test
                 </button>
                 <button
+                  type="button"
+                  className="system-action-remove"
                   aria-label="Remove system action"
-                  disabled={disabled}
-                  onClick={() => void remove(binding)}
+                  title="Remove system action"
+                  disabled={disabled || removing}
+                  onClick={() => requestRemove(binding)}
                 >
                   <Trash2 />
                 </button>
@@ -323,7 +342,7 @@ export function SystemActionMappings({
       )}
       <ConfirmDialog
         confirmation={confirmation}
-        busy={saving}
+        busy={saving || removing}
         onClose={() => setConfirmation(null)}
       />
     </section>
