@@ -7,6 +7,7 @@ import type {
   PhysicalControlCapture,
   SystemActionBinding,
 } from "../models";
+import { ConfirmDialog, type Confirmation } from "./ConfirmDialog";
 
 function controlLabel(binding: PhysicalControlCapture) {
   return [
@@ -46,6 +47,7 @@ export function SystemActionMappings({
     useState<SystemActionBinding["operation"]>("toggle");
   const [target, setTarget] = useState("default");
   const [error, setError] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
 
   const load = () =>
     Promise.all([
@@ -107,57 +109,60 @@ export function SystemActionMappings({
     }
   };
 
-  const save = async () => {
-    if (!capture) return;
+  const persistBinding = async (
+    binding: SystemActionBinding,
+    replaceExisting = false,
+    alsoTrigger = false,
+  ) => {
     setSaving(true);
     setError(null);
     try {
-      const targetType = target.startsWith("specific:") ? "specific" : target;
-      const binding: SystemActionBinding = {
-        ...capture,
-        scope,
-        operation,
-        targetType: targetType as SystemActionBinding["targetType"],
-        targetId: target.startsWith("specific:") ? target.slice(9) : null,
-      };
-      const persist = (replaceExisting = false, alsoTrigger = false) =>
-        invoke<SystemActionBinding[]>("save_system_action_binding", {
+      setBindings(
+        await invoke<SystemActionBinding[]>("save_system_action_binding", {
           profileId,
           binding,
           replaceExisting,
           alsoTrigger,
-        });
-      const persistWithConfirmation = async (
-        replaceExisting = false,
-        alsoTrigger = false,
-      ): Promise<SystemActionBinding[]> => {
-        try {
-          return await persist(replaceExisting, alsoTrigger);
-        } catch (reason) {
-          const message = String(reason);
-          if (
-            message.includes("triggers another system action") &&
-            window.confirm(`${message}\n\nReplace the existing system action?`)
-          ) {
-            return persistWithConfirmation(true, alsoTrigger);
-          }
-          if (
-            message.includes("already triggers a virtual action") &&
-            window.confirm(`${message}\n\nTrigger both actions?`)
-          ) {
-            return persistWithConfirmation(replaceExisting, true);
-          }
-          throw reason;
-        }
-      };
-      setBindings(await persistWithConfirmation());
+        }),
+      );
       setCapture(null);
+      setConfirmation(null);
       onNotice(`${operationLabel(operation)} binding saved.`);
     } catch (reason) {
-      setError(String(reason));
+      const message = String(reason);
+      if (message.includes("triggers another system action")) {
+        setConfirmation({
+          title: "Replace this system action?",
+          description: `${message} The existing system action will be removed from this control.`,
+          confirmLabel: "Replace mapping",
+          onConfirm: () => void persistBinding(binding, true, alsoTrigger),
+        });
+      } else if (message.includes("already triggers a virtual action")) {
+        setConfirmation({
+          title: "Trigger both actions?",
+          description: `${message} One press will send the virtual action and run this microphone action.`,
+          confirmLabel: "Trigger both",
+          onConfirm: () => void persistBinding(binding, replaceExisting, true),
+        });
+      } else {
+        setError(message);
+      }
     } finally {
       setSaving(false);
     }
+  };
+
+  const save = () => {
+    if (!capture) return;
+    const targetType = target.startsWith("specific:") ? "specific" : target;
+    const binding: SystemActionBinding = {
+      ...capture,
+      scope,
+      operation,
+      targetType: targetType as SystemActionBinding["targetType"],
+      targetId: target.startsWith("specific:") ? target.slice(9) : null,
+    };
+    void persistBinding(binding);
   };
 
   const remove = async (binding: SystemActionBinding) => {
@@ -264,11 +269,7 @@ export function SystemActionMappings({
             <button className="secondary" onClick={() => setCapture(null)}>
               Cancel
             </button>
-            <button
-              className="primary"
-              disabled={saving}
-              onClick={() => void save()}
-            >
+            <button className="primary" disabled={saving} onClick={save}>
               {saving ? "Saving…" : "Save binding"}
             </button>
           </div>
@@ -320,6 +321,11 @@ export function SystemActionMappings({
           })}
         </div>
       )}
+      <ConfirmDialog
+        confirmation={confirmation}
+        busy={saving}
+        onClose={() => setConfirmation(null)}
+      />
     </section>
   );
 }

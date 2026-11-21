@@ -5123,6 +5123,42 @@ textarea,
   min-height: 2.65rem;
 }
 
+.system-action-form select {
+  appearance: none;
+  padding: 0 36px 0 11px;
+  border: 1px solid #353a35;
+  outline: 0;
+  background-color: #111210;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #9daa9f 50%),
+    linear-gradient(135deg, #9daa9f 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 17px,
+    calc(100% - 11px) 17px;
+  background-repeat: no-repeat;
+  background-size: 5px 5px;
+  color: #e1e8e3;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.system-action-form select:hover {
+  border-color: #59644e;
+  background-color: #161814;
+}
+
+.system-action-form select:focus-visible {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 2px rgba(198, 243, 107, 0.12);
+}
+
+.system-action-form select option {
+  color: #e1e8e3;
+  background: #151615;
+}
+
 .system-action-form label > strong {
   display: flex;
   align-items: center;
