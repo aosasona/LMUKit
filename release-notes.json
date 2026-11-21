@@ -1,11 +1,12 @@
 {
-  "version": "0.6.7",
-  "title": "Updates are easier to find",
-  "summary": "This release finishes the Pivot rename and makes app updates visible without hunting through Settings.",
+  "version": "0.6.8",
+  "title": "Wheel-controlled microphone mute",
+  "summary": "This release adds native Windows microphone actions to Pivot's existing wheel and controller mappings.",
   "highlights": [
-    "Update availability now opens in a clear dialog and remains visible in the sidebar.",
-    "A one-time What's new summary appears after installing a new Pivot release.",
-    "Settings now uses the same full content width as the other workspaces.",
-    "The installed application executable is now named Pivot.exe."
+    "Bind a wheel, controller, or button-box control to toggle, mute, or unmute a microphone without keyboard shortcuts.",
+    "Target the current default microphone, communications microphone, or a specific Windows capture device.",
+    "Use profile-specific or global microphone bindings with existing modifier support and press-edge handling.",
+    "Optional Pivot-owned ascending and descending chimes confirm the verified microphone state.",
+    "The profile mapping editor now has clearer confirmations, correctly styled controls, and a taller bindings list."
   ]
 }
