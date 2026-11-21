@@ -179,23 +179,97 @@ fn run_worker(receiver: Receiver<Request>, notifier: ChangeNotifier) {
 
 #[cfg(target_os = "windows")]
 fn play_state_feedback(muted: bool) {
-    use windows::Win32::{
-        System::Diagnostics::Debug::MessageBeep,
-        UI::WindowsAndMessaging::{MB_ICONASTERISK, MB_ICONEXCLAMATION},
-    };
-
-    // MessageBeep queues the configured Windows system sound without blocking the input worker.
-    unsafe {
-        let _ = MessageBeep(if muted {
-            MB_ICONEXCLAMATION
-        } else {
-            MB_ICONASTERISK
-        });
-    }
+    static FEEDBACK: OnceLock<SyncSender<bool>> = OnceLock::new();
+    let sender = FEEDBACK.get_or_init(|| {
+        let (sender, receiver) = mpsc::sync_channel(4);
+        std::thread::Builder::new()
+            .name("pivot-microphone-feedback".to_owned())
+            .spawn(move || run_feedback_worker(receiver))
+            .expect("could not start the microphone feedback worker");
+        sender
+    });
+    // Audio feedback is best-effort and must never hold up microphone or input work.
+    let _ = sender.try_send(muted);
 }
 
 #[cfg(not(target_os = "windows"))]
 fn play_state_feedback(_muted: bool) {}
+
+#[cfg(target_os = "windows")]
+fn run_feedback_worker(receiver: Receiver<bool>) {
+    use windows::{
+        Win32::{
+            Foundation::HMODULE,
+            Media::Audio::{PlaySoundA, SND_MEMORY, SND_NODEFAULT},
+        },
+        core::PCSTR,
+    };
+
+    let muted_wave = feedback_wave(true);
+    let active_wave = feedback_wave(false);
+    while let Ok(muted) = receiver.recv() {
+        let wave = if muted { &muted_wave } else { &active_wave };
+        // Synchronous playback is intentional on this isolated worker: the in-memory WAV must
+        // remain valid until Windows finishes reading it, while input and Core Audio stay free.
+        unsafe {
+            let _ = PlaySoundA(
+                PCSTR(wave.as_ptr()),
+                HMODULE::default(),
+                SND_MEMORY | SND_NODEFAULT,
+            );
+        }
+    }
+}
+
+fn feedback_wave(muted: bool) -> Vec<u8> {
+    const SAMPLE_RATE: u32 = 22_050;
+    const NOTE_MS: u32 = 82;
+    const GAP_MS: u32 = 8;
+    const RELEASE_MS: u32 = 22;
+    let frequencies = if muted {
+        [784.0_f32, 523.25_f32]
+    } else {
+        [523.25_f32, 784.0_f32]
+    };
+    let note_samples = (SAMPLE_RATE * NOTE_MS / 1_000) as usize;
+    let gap_samples = (SAMPLE_RATE * GAP_MS / 1_000) as usize;
+    let release_samples = (SAMPLE_RATE * RELEASE_MS / 1_000) as usize;
+    let attack_samples = (SAMPLE_RATE * 6 / 1_000) as usize;
+    let sample_count = note_samples * frequencies.len() + gap_samples;
+    let data_size = (sample_count * std::mem::size_of::<i16>()) as u32;
+    let mut wave = Vec::with_capacity(44 + data_size as usize);
+
+    wave.extend_from_slice(b"RIFF");
+    wave.extend_from_slice(&(36 + data_size).to_le_bytes());
+    wave.extend_from_slice(b"WAVEfmt ");
+    wave.extend_from_slice(&16_u32.to_le_bytes());
+    wave.extend_from_slice(&1_u16.to_le_bytes());
+    wave.extend_from_slice(&1_u16.to_le_bytes());
+    wave.extend_from_slice(&SAMPLE_RATE.to_le_bytes());
+    wave.extend_from_slice(&(SAMPLE_RATE * 2).to_le_bytes());
+    wave.extend_from_slice(&2_u16.to_le_bytes());
+    wave.extend_from_slice(&16_u16.to_le_bytes());
+    wave.extend_from_slice(b"data");
+    wave.extend_from_slice(&data_size.to_le_bytes());
+
+    for (note_index, frequency) in frequencies.into_iter().enumerate() {
+        for sample_index in 0..note_samples {
+            let attack = (sample_index as f32 / attack_samples.max(1) as f32).min(1.0);
+            let remaining = note_samples - sample_index;
+            let release = (remaining as f32 / release_samples.max(1) as f32).min(1.0);
+            let envelope = attack * release;
+            let time = sample_index as f32 / SAMPLE_RATE as f32;
+            let phase = std::f32::consts::TAU * frequency * time;
+            let tone = phase.sin() + 0.16 * (phase * 2.0).sin();
+            let sample = (tone * envelope * 4_800.0) as i16;
+            wave.extend_from_slice(&sample.to_le_bytes());
+        }
+        if note_index == 0 {
+            wave.resize(wave.len() + gap_samples * 2, 0);
+        }
+    }
+    wave
+}
 
 fn notify_changed(notifier: &ChangeNotifier) {
     if let Ok(current) = notifier.lock()
@@ -496,6 +570,17 @@ mod windows_backend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn feedback_cues_are_valid_distinct_pcm_waves() {
+        let muted = feedback_wave(true);
+        let active = feedback_wave(false);
+
+        assert_eq!(&muted[0..4], b"RIFF");
+        assert_eq!(&muted[8..12], b"WAVE");
+        assert_eq!(muted.len(), active.len());
+        assert_ne!(muted, active);
+    }
 
     #[test]
     fn microphone_operations_are_idempotent_except_for_toggle() {
