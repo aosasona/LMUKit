@@ -206,7 +206,7 @@ mod windows_backend {
             },
             System::Com::{
                 CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree,
-                STGM_READ,
+                CoUninitialize, STGM_READ,
             },
         },
         core::{PCWSTR, implement},
@@ -274,22 +274,28 @@ mod windows_backend {
                 CoInitializeEx(None, COINIT_MULTITHREADED)
                     .ok()
                     .map_err(format_windows_error)?;
-                let enumerator: IMMDeviceEnumerator =
-                    CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
+                let result = (|| {
+                    let enumerator: IMMDeviceEnumerator =
+                        CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
+                            .map_err(format_windows_error)?;
+                    let device_notification: IMMNotificationClient = DeviceNotification {
+                        notifier: Arc::clone(&notifier),
+                    }
+                    .into();
+                    enumerator
+                        .RegisterEndpointNotificationCallback(&device_notification)
                         .map_err(format_windows_error)?;
-                let device_notification: IMMNotificationClient = DeviceNotification {
-                    notifier: Arc::clone(&notifier),
+                    Ok(Self {
+                        enumerator,
+                        device_notification,
+                        volume_notifications: Vec::new(),
+                        notifier,
+                    })
+                })();
+                if result.is_err() {
+                    CoUninitialize();
                 }
-                .into();
-                enumerator
-                    .RegisterEndpointNotificationCallback(&device_notification)
-                    .map_err(format_windows_error)?;
-                Ok(Self {
-                    enumerator,
-                    device_notification,
-                    volume_notifications: Vec::new(),
-                    notifier,
-                })
+                result
             }
         }
 
@@ -435,6 +441,7 @@ mod windows_backend {
                 let _ = self
                     .enumerator
                     .UnregisterEndpointNotificationCallback(&self.device_notification);
+                CoUninitialize();
             }
         }
     }
