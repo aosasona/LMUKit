@@ -48,6 +48,50 @@ pub struct VirtualProfileMapping {
     pub buttons: Vec<VirtualButtonMapping>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub encoder_groups: Vec<VirtualEncoderGroup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub system_actions: Vec<SystemActionBinding>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SystemActionBinding {
+    pub device_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub device_name: String,
+    pub physical_button: u32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modifiers: Vec<VirtualButtonModifier>,
+    pub action: SystemAction,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SystemAction {
+    Microphone {
+        operation: MicrophoneOperation,
+        device: AudioDeviceTarget,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum MicrophoneOperation {
+    Toggle,
+    Mute,
+    Unmute,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AudioDeviceTarget {
+    Default { role: AudioDeviceRole },
+    Specific { device_id: String },
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum AudioDeviceRole {
+    Console,
+    Communications,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -210,6 +254,8 @@ pub struct Settings {
     pub workspaces: Vec<Workspace>,
     #[serde(default = "default_active_workspace_id")]
     pub active_workspace_id: String,
+    #[serde(default)]
+    pub global_system_actions: Vec<SystemActionBinding>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -313,6 +359,7 @@ impl Default for Settings {
             class_profile_defaults: Vec::new(),
             workspaces: default_workspaces(),
             active_workspace_id: default_active_workspace_id(),
+            global_system_actions: Vec::new(),
         }
     }
 }
@@ -504,6 +551,7 @@ impl Store {
             &self.settings.workspace_virtual_layouts,
             &self.settings.workspaces,
         )?;
+        validate_system_action_bindings(&self.settings.global_system_actions)?;
         self.validate_virtual_profile_defaults()?;
         ensure!(
             (1..=16).contains(&self.settings.virtual_device_id),
@@ -815,6 +863,29 @@ impl Store {
         mapping.buttons.push(proposed);
         self.set_profile_virtual_mapping(profile_id, Some(mapping.clone()))?;
         Ok(mapping)
+    }
+
+    pub fn set_profile_system_actions(
+        &self,
+        profile_id: Uuid,
+        actions: Vec<SystemActionBinding>,
+    ) -> Result<VirtualProfileMapping> {
+        validate_system_action_bindings(&actions)?;
+        let profile = self
+            .profiles()?
+            .into_iter()
+            .find(|profile| profile.id == profile_id)
+            .context("That profile no longer exists.")?;
+        let mut mapping = profile.virtual_mapping.unwrap_or_default();
+        mapping.system_actions = actions;
+        self.set_profile_virtual_mapping(profile_id, Some(mapping.clone()))?;
+        Ok(mapping)
+    }
+
+    pub fn set_global_system_actions(&mut self, actions: Vec<SystemActionBinding>) -> Result<()> {
+        validate_system_action_bindings(&actions)?;
+        self.settings.global_system_actions = actions;
+        self.save_settings()
     }
 
     pub fn import_profile_virtual_mapping(
@@ -2554,6 +2625,7 @@ fn validate_virtual_mapping(
             entry.logical_action
         );
     }
+    validate_system_action_bindings(&mapping.system_actions)?;
     ensure!(
         mapping.encoder_groups.len() <= 8,
         "A virtual profile cannot contain more than eight encoders."
@@ -2602,6 +2674,59 @@ fn validate_virtual_mapping(
                 );
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_system_action_bindings(bindings: &[SystemActionBinding]) -> Result<()> {
+    ensure!(
+        bindings.len() <= 128,
+        "There cannot be more than 128 system action bindings."
+    );
+    let mut seen = BTreeSet::new();
+    for binding in bindings {
+        validate_virtual_label(&binding.device_id, "Input device ID")?;
+        ensure!(
+            binding.physical_button > 0,
+            "Physical button IDs must be greater than zero."
+        );
+        ensure!(
+            binding.modifiers.len() <= 4,
+            "A system action cannot have more than four modifiers."
+        );
+        let mut modifiers = BTreeSet::new();
+        for modifier in &binding.modifiers {
+            validate_virtual_label(&modifier.device_id, "Modifier device ID")?;
+            ensure!(
+                modifier.physical_button > 0,
+                "Modifier button IDs must be greater than zero."
+            );
+            ensure!(
+                !(modifier.device_id == binding.device_id
+                    && modifier.physical_button == binding.physical_button),
+                "A physical button cannot modify itself."
+            );
+            ensure!(
+                modifiers.insert((modifier.device_id.clone(), modifier.physical_button)),
+                "The same modifier button cannot appear twice."
+            );
+        }
+        if let SystemAction::Microphone {
+            device: AudioDeviceTarget::Specific { device_id },
+            ..
+        } = &binding.action
+        {
+            validate_virtual_label(device_id, "Microphone device ID")?;
+        }
+        ensure!(
+            seen.insert((
+                binding.device_id.clone(),
+                binding.physical_button,
+                modifiers.into_iter().collect::<Vec<_>>(),
+                binding.action.clone(),
+            )),
+            "The same physical button chord cannot target the same system action more than once."
+        );
     }
     Ok(())
 }
@@ -2676,6 +2801,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn older_virtual_mappings_load_without_system_actions() {
+        let mapping: VirtualProfileMapping =
+            serde_json::from_str(r#"{"buttons":[],"encoder_groups":[]}"#).unwrap();
+
+        assert!(mapping.system_actions.is_empty());
+    }
+
+    #[test]
+    fn system_microphone_actions_round_trip_without_transient_mute_state() {
+        let binding = SystemActionBinding {
+            device_id: "wheel".into(),
+            device_name: "Wheel".into(),
+            physical_button: 12,
+            modifiers: vec![VirtualButtonModifier {
+                device_id: "wheel".into(),
+                device_name: "Wheel".into(),
+                physical_button: 4,
+            }],
+            action: SystemAction::Microphone {
+                operation: MicrophoneOperation::Toggle,
+                device: AudioDeviceTarget::Default {
+                    role: AudioDeviceRole::Communications,
+                },
+            },
+        };
+
+        let json = serde_json::to_string(&binding).unwrap();
+        assert!(!json.contains("muted"));
+        assert_eq!(
+            serde_json::from_str::<SystemActionBinding>(&json).unwrap(),
+            binding
+        );
+    }
+
+    #[test]
     fn validates_an_assetto_corsa_installation_root() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("assettocorsa");
@@ -2713,6 +2873,7 @@ mod tests {
                 },
             ],
             encoder_groups: Vec::new(),
+            system_actions: Vec::new(),
         };
 
         let base = resolve_virtual_button_mappings(&mapping, "wheel", 5, &[]);
@@ -3541,6 +3702,7 @@ mod tests {
                             counterclockwise_action: "headlights".into(),
                         }],
                     }],
+                    system_actions: Vec::new(),
                 }),
             )
             .unwrap();
@@ -3617,6 +3779,7 @@ mod tests {
                         logical_action: "AC Pit Limiter".into(),
                     }],
                     encoder_groups: Vec::new(),
+                    system_actions: Vec::new(),
                 }),
             )
             .unwrap();
@@ -3709,6 +3872,7 @@ mod tests {
                         logical_action: "RaceLab — Toggle overlay".into(),
                     }],
                     encoder_groups: Vec::new(),
+                    system_actions: Vec::new(),
                 }),
             )
             .unwrap();
@@ -3811,6 +3975,7 @@ mod tests {
                 logical_action: "headlights".into(),
             }],
             encoder_groups: Vec::new(),
+            system_actions: Vec::new(),
         };
         assert!(
             store
