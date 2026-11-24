@@ -1,4 +1,4 @@
-//! DirectInput button consumer used by the feasibility probe and desktop router.
+//! DirectInput digital and analog consumer used by the desktop router.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -15,9 +15,10 @@ use windows::{
     Win32::{
         Devices::HumanInterfaceDevice::{
             DI8DEVCLASS_GAMECTRL, DIDATAFORMAT, DIDEVCAPS, DIDEVICEINSTANCEW, DIDEVICEOBJECTDATA,
-            DIDF_ABSAXIS, DIDFT_BUTTON, DIEDFL_ATTACHEDONLY, DIENUM_CONTINUE, DIOBJECTDATAFORMAT,
-            DIPH_DEVICE, DIPROPDWORD, DIRECTINPUT_VERSION, DISCL_BACKGROUND, DISCL_NONEXCLUSIVE,
-            DirectInput8Create, GUID_Button, IDirectInput8W, IDirectInputDevice8W,
+            DIDEVICEOBJECTINSTANCEW, DIDF_ABSAXIS, DIDFT_AXIS, DIDFT_BUTTON, DIEDFL_ATTACHEDONLY,
+            DIENUM_CONTINUE, DIOBJECTDATAFORMAT, DIPH_DEVICE, DIPROPDWORD, DIRECTINPUT_VERSION,
+            DISCL_BACKGROUND, DISCL_NONEXCLUSIVE, DirectInput8Create, GUID_Button, IDirectInput8W,
+            IDirectInputDevice8W,
         },
         Foundation::{BOOL, HINSTANCE},
         System::{Console::GetConsoleWindow, LibraryLoader::GetModuleHandleW},
@@ -41,6 +42,7 @@ pub struct DirectInputDeviceSummary {
     pub name: String,
     pub product_name: String,
     pub button_count: u32,
+    pub axis_count: u32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -49,6 +51,24 @@ pub struct DirectInputButtonEvent {
     pub device_name: String,
     pub button_id: u32,
     pub pressed: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DirectInputAxisEvent {
+    pub device_id: String,
+    pub device_name: String,
+    pub axis_id: u32,
+    pub value: i32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DirectInputEvent {
+    Button(DirectInputButtonEvent),
+    Axis(DirectInputAxisEvent),
+    Disconnected {
+        device_id: String,
+        device_name: String,
+    },
 }
 
 #[derive(Clone)]
@@ -65,14 +85,17 @@ pub struct DirectInputButtonReader {
     // both allocations alive with the reader even though their heap address is
     // stable when this struct moves.
     _data_objects: Vec<DIOBJECTDATAFORMAT>,
+    _axis_guids: Box<[GUID]>,
     _data_format: DIDATAFORMAT,
+    axis_count: u32,
     pub summary: DirectInputDeviceSummary,
 }
 
 pub struct DirectInputButtonMonitor {
     readers: BTreeMap<String, DirectInputButtonReader>,
     previous: BTreeMap<String, Vec<bool>>,
-    pending_events: Vec<DirectInputButtonEvent>,
+    previous_axes: BTreeMap<String, Vec<i32>>,
+    pending_events: Vec<DirectInputEvent>,
     discovery_updates: mpsc::Receiver<Vec<DirectInputDeviceSummary>>,
     discovery_stop: mpsc::Sender<()>,
     discovery_worker: Option<thread::JoinHandle<()>>,
@@ -106,14 +129,20 @@ impl DirectInputButtonReader {
                 .context("reading DirectInput capabilities")?
         };
         ensure!(
-            capabilities.dwButtons > 0,
-            "DirectInput device has no buttons"
+            capabilities.dwButtons > 0 || capabilities.dwAxes > 0,
+            "DirectInput device has no buttons or axes"
         );
-
-        let (data_objects, mut data_format) = button_data_format(capabilities.dwButtons);
+        let axis_objects = enumerate_axis_objects(&device)?;
+        let axis_guids = axis_objects
+            .iter()
+            .map(|axis| axis.guid)
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        let (data_objects, mut data_format) =
+            controller_data_format(&axis_objects, &axis_guids, capabilities.dwButtons);
         // SAFETY: data_format points into data_objects, which remains allocated
-        // for the lifetime of the reader. It deliberately contains buttons
-        // only, keeping axes and FFB outside Pivot's input path.
+        // for the lifetime of the reader. Axis objects are read-only and the
+        // non-exclusive format contains no force-feedback output objects.
         unsafe {
             device
                 .SetDataFormat(&mut data_format)
@@ -149,13 +178,16 @@ impl DirectInputButtonReader {
         Ok(Self {
             device,
             _data_objects: data_objects,
+            _axis_guids: axis_guids,
             _data_format: data_format,
+            axis_count: axis_objects.len() as u32,
             summary: DirectInputDeviceSummary {
                 index,
                 device_id: product_id(&selected.product_guid),
                 name: selected.name.clone(),
                 product_name: selected.product_name.clone(),
                 button_count: capabilities.dwButtons,
+                axis_count: axis_objects.len() as u32,
             },
         })
     }
@@ -170,15 +202,25 @@ impl DirectInputButtonReader {
     }
 
     pub fn buttons(&self) -> Result<Vec<bool>> {
+        Ok(self.state()?.0)
+    }
+
+    pub fn axes(&self) -> Result<Vec<i32>> {
+        Ok(self.state()?.1)
+    }
+
+    fn state(&self) -> Result<(Vec<bool>, Vec<i32>)> {
         let button_count = self.summary.button_count.min(128) as usize;
-        let mut state = [0_u8; 128];
-        // SAFETY: the device uses the button-only data format created at open,
-        // and state contains at least its advertised number of bytes.
+        let axis_count = self.axis_count as usize;
+        let state_size = axis_count * size_of::<i32>() + button_count;
+        let mut state = vec![0_u8; state_size];
+        // SAFETY: the device uses the matching combined data format created at
+        // open and state is exactly its advertised size.
         unsafe {
             let _ = self.device.Poll();
             if self
                 .device
-                .GetDeviceState(button_count as u32, state.as_mut_ptr().cast())
+                .GetDeviceState(state_size as u32, state.as_mut_ptr().cast())
                 .is_err()
             {
                 self.device
@@ -186,17 +228,23 @@ impl DirectInputButtonReader {
                     .context("reacquiring the DirectInput device")?;
                 let _ = self.device.Poll();
                 self.device
-                    .GetDeviceState(button_count as u32, state.as_mut_ptr().cast())
+                    .GetDeviceState(state_size as u32, state.as_mut_ptr().cast())
                     .context("reading DirectInput joystick state")?;
             }
         }
-        Ok(state[..button_count]
+        let axis_bytes = axis_count * size_of::<i32>();
+        let axes = state[..axis_bytes]
+            .chunks_exact(size_of::<i32>())
+            .map(|bytes| i32::from_ne_bytes(bytes.try_into().expect("axis chunk is four bytes")))
+            .collect();
+        let buttons = state[axis_bytes..]
             .iter()
             .map(|value| value & 0x80 != 0)
-            .collect())
+            .collect();
+        Ok((buttons, axes))
     }
 
-    fn buffered_button_events(&self) -> Result<Vec<(usize, bool)>> {
+    fn buffered_events(&self) -> Result<Vec<BufferedControlEvent>> {
         let mut events = Vec::new();
         loop {
             let mut batch = [DIDEVICEOBJECTDATA::default(); DIRECT_INPUT_EVENT_BATCH_SIZE];
@@ -225,9 +273,20 @@ impl DirectInputButtonReader {
                 break;
             }
             for event in &batch[..count as usize] {
-                let button_index = event.dwOfs;
-                if button_index < self.summary.button_count.min(128) {
-                    events.push((button_index as usize, event.dwData & 0x80 != 0));
+                let axis_bytes = self.axis_count * size_of::<i32>() as u32;
+                if event.dwOfs < axis_bytes && event.dwOfs % 4 == 0 {
+                    events.push(BufferedControlEvent::Axis(
+                        (event.dwOfs / 4) as usize,
+                        event.dwData as i32,
+                    ));
+                } else if event.dwOfs >= axis_bytes {
+                    let button_index = event.dwOfs - axis_bytes;
+                    if button_index < self.summary.button_count.min(128) {
+                        events.push(BufferedControlEvent::Button(
+                            button_index as usize,
+                            event.dwData & 0x80 != 0,
+                        ));
+                    }
                 }
             }
             if count < batch.len() as u32 {
@@ -236,6 +295,11 @@ impl DirectInputButtonReader {
         }
         Ok(events)
     }
+}
+
+enum BufferedControlEvent {
+    Button(usize, bool),
+    Axis(usize, i32),
 }
 
 impl DirectInputButtonMonitor {
@@ -259,6 +323,7 @@ impl DirectInputButtonMonitor {
         let mut monitor = Self {
             readers: BTreeMap::new(),
             previous: BTreeMap::new(),
+            previous_axes: BTreeMap::new(),
             pending_events: Vec::new(),
             discovery_updates: updates_rx,
             discovery_stop: stop_tx,
@@ -269,6 +334,17 @@ impl DirectInputButtonMonitor {
     }
 
     pub fn poll(&mut self) -> Result<Vec<DirectInputButtonEvent>> {
+        Ok(self
+            .poll_controls()?
+            .into_iter()
+            .filter_map(|event| match event {
+                DirectInputEvent::Button(event) => Some(event),
+                DirectInputEvent::Axis(_) | DirectInputEvent::Disconnected { .. } => None,
+            })
+            .collect())
+    }
+
+    pub fn poll_controls(&mut self) -> Result<Vec<DirectInputEvent>> {
         if let Some(devices) = self.discovery_updates.try_iter().last() {
             // Discovery runs away from this latency-sensitive polling path.
             // A newly attached device that cannot yet be opened is retried on
@@ -278,7 +354,7 @@ impl DirectInputButtonMonitor {
         let mut events = std::mem::take(&mut self.pending_events);
         let mut failed = Vec::new();
         for (device_id, reader) in &self.readers {
-            let buffered = match reader.buffered_button_events() {
+            let buffered = match reader.buffered_events() {
                 Ok(buffered) => buffered,
                 Err(_) => {
                     failed.push(device_id.clone());
@@ -286,26 +362,45 @@ impl DirectInputButtonMonitor {
                 }
             };
             let previous = self.previous.entry(device_id.clone()).or_default();
-            for (index, pressed) in buffered {
-                let Some(was_pressed) = previous.get_mut(index) else {
-                    continue;
-                };
-                if pressed != *was_pressed {
-                    events.push(DirectInputButtonEvent {
-                        device_id: device_id.clone(),
-                        device_name: reader.summary.product_name.clone(),
-                        button_id: index as u32 + 1,
-                        pressed,
-                    });
-                    *was_pressed = pressed;
+            let previous_axes = self.previous_axes.entry(device_id.clone()).or_default();
+            for event in buffered {
+                match event {
+                    BufferedControlEvent::Button(index, pressed) => {
+                        let Some(was_pressed) = previous.get_mut(index) else {
+                            continue;
+                        };
+                        if pressed != *was_pressed {
+                            events.push(DirectInputEvent::Button(DirectInputButtonEvent {
+                                device_id: device_id.clone(),
+                                device_name: reader.summary.product_name.clone(),
+                                button_id: index as u32 + 1,
+                                pressed,
+                            }));
+                            *was_pressed = pressed;
+                        }
+                    }
+                    BufferedControlEvent::Axis(index, value) => {
+                        let Some(previous) = previous_axes.get_mut(index) else {
+                            continue;
+                        };
+                        if value != *previous {
+                            events.push(DirectInputEvent::Axis(DirectInputAxisEvent {
+                                device_id: device_id.clone(),
+                                device_name: reader.summary.product_name.clone(),
+                                axis_id: index as u32 + 1,
+                                value,
+                            }));
+                            *previous = value;
+                        }
+                    }
                 }
             }
 
             // A state snapshot recovers cleanly after acquisition loss or the
             // unlikely event-buffer overflow. Buffered press/release pairs are
             // emitted first, so short inputs are not erased by this snapshot.
-            let buttons = match reader.buttons() {
-                Ok(buttons) => buttons,
+            let (buttons, axes) = match reader.state() {
+                Ok(state) => state,
                 Err(_) => {
                     failed.push(device_id.clone());
                     continue;
@@ -315,13 +410,25 @@ impl DirectInputButtonMonitor {
                 buttons.iter().zip(previous.iter_mut()).enumerate()
             {
                 if pressed != was_pressed {
-                    events.push(DirectInputButtonEvent {
+                    events.push(DirectInputEvent::Button(DirectInputButtonEvent {
                         device_id: device_id.clone(),
                         device_name: reader.summary.product_name.clone(),
                         button_id: index as u32 + 1,
                         pressed: *pressed,
-                    });
+                    }));
                     *was_pressed = *pressed;
+                }
+            }
+            for (index, (value, previous)) in axes.iter().zip(previous_axes.iter_mut()).enumerate()
+            {
+                if value != previous {
+                    events.push(DirectInputEvent::Axis(DirectInputAxisEvent {
+                        device_id: device_id.clone(),
+                        device_name: reader.summary.product_name.clone(),
+                        axis_id: index as u32 + 1,
+                        value: *value,
+                    }));
+                    *previous = *value;
                 }
             }
         }
@@ -359,14 +466,15 @@ impl DirectInputButtonMonitor {
                 continue;
             }
             let reader = DirectInputButtonReader::open(device.index)?;
-            let buttons = reader.buttons()?;
+            let (buttons, axes) = reader.state()?;
             self.previous.insert(device.device_id.clone(), buttons);
+            self.previous_axes.insert(device.device_id.clone(), axes);
             self.readers.insert(device.device_id, reader);
         }
         Ok(())
     }
 
-    fn release_and_remove(&mut self, device_id: &str, events: &mut Vec<DirectInputButtonEvent>) {
+    fn release_and_remove(&mut self, device_id: &str, events: &mut Vec<DirectInputEvent>) {
         let name = self
             .readers
             .get(device_id)
@@ -375,15 +483,20 @@ impl DirectInputButtonMonitor {
         if let Some(previous) = self.previous.remove(device_id) {
             for (index, pressed) in previous.into_iter().enumerate() {
                 if pressed {
-                    events.push(DirectInputButtonEvent {
+                    events.push(DirectInputEvent::Button(DirectInputButtonEvent {
                         device_id: device_id.to_owned(),
                         device_name: name.clone(),
                         button_id: index as u32 + 1,
                         pressed: false,
-                    });
+                    }));
                 }
             }
         }
+        self.previous_axes.remove(device_id);
+        events.push(DirectInputEvent::Disconnected {
+            device_id: device_id.to_owned(),
+            device_name: name,
+        });
         self.readers.remove(device_id);
     }
 }
@@ -426,6 +539,7 @@ pub fn list_devices() -> Result<Vec<DirectInputDeviceSummary>> {
                 name: item.name,
                 product_name: item.product_name,
                 button_count: capabilities.dwButtons,
+                axis_count: capabilities.dwAxes,
             })
         })
         .collect()
@@ -437,25 +551,70 @@ fn product_id(guid: &GUID) -> String {
     format!("hid:{vendor_id:04x}:{product_id:04x}")
 }
 
-fn button_data_format(button_count: u32) -> (Vec<DIOBJECTDATAFORMAT>, DIDATAFORMAT) {
+#[derive(Clone)]
+struct AxisObject {
+    guid: GUID,
+    object_type: u32,
+}
+
+fn controller_data_format(
+    axis_objects: &[AxisObject],
+    axis_guids: &[GUID],
+    button_count: u32,
+) -> (Vec<DIOBJECTDATAFORMAT>, DIDATAFORMAT) {
     let button_count = button_count.min(128);
-    let mut objects = (0..button_count)
-        .map(|index| DIOBJECTDATAFORMAT {
-            pguid: &GUID_Button,
-            dwOfs: index,
-            dwType: DIDFT_BUTTON | (index << 8),
+    let axis_bytes = axis_objects.len() as u32 * size_of::<i32>() as u32;
+    let mut objects = axis_objects
+        .iter()
+        .zip(axis_guids)
+        .enumerate()
+        .map(|(index, (axis, guid))| DIOBJECTDATAFORMAT {
+            pguid: guid,
+            dwOfs: index as u32 * 4,
+            dwType: axis.object_type,
             dwFlags: 0,
         })
+        .chain((0..button_count).map(|index| DIOBJECTDATAFORMAT {
+            pguid: &GUID_Button,
+            dwOfs: axis_bytes + index,
+            dwType: DIDFT_BUTTON | (index << 8),
+            dwFlags: 0,
+        }))
         .collect::<Vec<_>>();
     let format = DIDATAFORMAT {
         dwSize: size_of::<DIDATAFORMAT>() as u32,
         dwObjSize: size_of::<DIOBJECTDATAFORMAT>() as u32,
         dwFlags: DIDF_ABSAXIS,
-        dwDataSize: button_count,
-        dwNumObjs: button_count,
+        dwDataSize: axis_bytes + button_count,
+        dwNumObjs: objects.len() as u32,
         rgodf: objects.as_mut_ptr(),
     };
     (objects, format)
+}
+
+fn enumerate_axis_objects(device: &IDirectInputDevice8W) -> Result<Vec<AxisObject>> {
+    let mut objects = Vec::new();
+    unsafe {
+        device.EnumObjects(
+            Some(enumerate_axis_callback),
+            (&mut objects as *mut Vec<AxisObject>).cast(),
+            DIDFT_AXIS,
+        )?;
+    }
+    Ok(objects)
+}
+
+unsafe extern "system" fn enumerate_axis_callback(
+    instance: *mut DIDEVICEOBJECTINSTANCEW,
+    context: *mut c_void,
+) -> BOOL {
+    let instance = unsafe { &*instance };
+    let objects = unsafe { &mut *context.cast::<Vec<AxisObject>>() };
+    objects.push(AxisObject {
+        guid: instance.guidType,
+        object_type: instance.dwType,
+    });
+    BOOL(DIENUM_CONTINUE as i32)
 }
 
 fn create_direct_input() -> Result<IDirectInput8W> {
