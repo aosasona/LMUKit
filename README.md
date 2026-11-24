@@ -142,7 +142,7 @@ Steering, throttle, brake, and force feedback stay bound directly to the physica
 
 #### Configure a profile clutch
 
-Configure the paddles and bite point in the wheel software first—for example, SimPro for Simagic wheels or SimHub for a GTE Pro—so Windows receives one finished clutch axis. Enable one axis on vJoy device 1, bind that vJoy axis to **Clutch** once in LMU, then open the profile's **Virtual mappings** editor in Pivot and select the **Clutch axis** tab. Capture the combined physical axis through its complete travel and save it. Pivot normalises the captured endpoints and relays the value; it does not calculate or replace the wheel software's bite point.
+Configure the paddles and bite point in the wheel software first—for example, SimPro for Simagic wheels or SimHub for a GTE Pro—so Windows receives one finished clutch axis. Enable one axis on vJoy device 1, bind that vJoy axis to **Clutch** once in LMU, then open the profile's **Virtual mappings** editor in Pivot and select the **Clutch axis** tab. Start capture, pull and release one paddle, the other paddle, then both together; Pivot saves the captured endpoint range automatically. It normalises and relays the value, but does not calculate or replace the wheel software's bite point.
 
 When teaching LMU the clutch binding, do not pull a physical paddle: LMU can see both the physical wheel and vJoy and may select either one. Leave Pivot's live remapping off, make LMU listen for **Clutch**, then choose **Send in 5s** in Pivot and switch back to LMU. Pivot will move only the saved vJoy axis through its full range. If the test says another feeder owns vJoy, SimHub must not be configured to write to Pivot's vJoy device; it can still prepare the physical combined axis that Pivot reads.
 

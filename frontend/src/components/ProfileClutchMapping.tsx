@@ -114,34 +114,15 @@ export function ProfileClutchMapping({
     };
   }, [profileId]);
 
-  const capture = async () => {
-    setLearning(true);
-    setError(null);
-    onNotice(
-      "Move both clutch paddles through the complete range until Pivot finishes listening.",
-    );
-    try {
-      const result = await invoke<ClutchInputCapture>("learn_clutch_input", {
-        allowButton: false,
-      });
-      if (result.kind !== "axis")
-        throw new Error("Pivot detected a button instead of an analog axis.");
-      setInput(axisFromCapture(result));
-      setEnabled(true);
-      setSaved(false);
-      setLegacyDual(false);
-      onNotice("Clutch axis captured. Save it to use this passthrough.");
-    } catch (reason) {
-      const message = errorMessage(reason);
-      if (message.toLowerCase().includes("cancelled"))
-        onNotice("Clutch capture cancelled.");
-      else setError(message);
-    } finally {
-      setLearning(false);
-    }
-  };
-
-  const save = async () => {
+  const save = async ({
+    nextEnabled = enabled,
+    nextInput = input,
+    successNotice,
+  }: {
+    nextEnabled?: boolean;
+    nextInput?: VirtualAxisInput | null;
+    successNotice?: string;
+  } = {}) => {
     setSaving(true);
     setError(null);
     try {
@@ -150,8 +131,9 @@ export function ProfileClutchMapping({
         throw new Error(
           "Each additional input needs its own vJoy output axis.",
         );
-      if (enabled) {
-        if (!input) throw new Error("Capture the physical clutch axis first.");
+      if (nextEnabled) {
+        if (!nextInput)
+          throw new Error("Capture the physical clutch axis first.");
         if (!axis)
           throw new Error(
             "No vJoy axis is available. Enable an axis on vJoy device 1, then reopen this profile.",
@@ -168,23 +150,60 @@ export function ProfileClutchMapping({
       }
       await invoke("save_virtual_profile_clutch", {
         profileId,
-        mapping: enabled && input ? { mode: "direct", input } : null,
+        mapping:
+          nextEnabled && nextInput
+            ? { mode: "direct", input: nextInput }
+            : null,
       });
       await invoke("save_virtual_profile_analog_axes", {
         profileId,
         analogAxes,
       });
-      onConfiguredChange?.(enabled || analogAxes.length > 0);
-      setSaved(Boolean(enabled && input && axis));
+      onConfiguredChange?.(nextEnabled || analogAxes.length > 0);
+      setSaved(Boolean(nextEnabled && nextInput && axis));
       onNotice(
-        enabled
-          ? "Clutch passthrough saved. Restart live remapping once to apply it."
-          : "Clutch passthrough removed.",
+        successNotice ??
+          (nextEnabled
+            ? "Clutch passthrough saved. Restart live remapping once to apply it."
+            : "Clutch passthrough removed."),
       );
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const capture = async () => {
+    setLearning(true);
+    setError(null);
+    onNotice(
+      "Capture in this order: pull and release one paddle, the other paddle, then both paddles together. Keep moving until Pivot finishes.",
+    );
+    try {
+      const result = await invoke<ClutchInputCapture>("learn_clutch_input", {
+        allowButton: false,
+      });
+      if (result.kind !== "axis")
+        throw new Error("Pivot detected a button instead of an analog axis.");
+      const captured = axisFromCapture(result);
+      setInput(captured);
+      setEnabled(true);
+      setSaved(false);
+      setLegacyDual(false);
+      await save({
+        nextEnabled: true,
+        nextInput: captured,
+        successNotice:
+          "Clutch axis captured and saved. You can now send the vJoy binding test.",
+      });
+    } catch (reason) {
+      const message = errorMessage(reason);
+      if (message.toLowerCase().includes("cancelled"))
+        onNotice("Clutch capture cancelled.");
+      else setError(message);
+    } finally {
+      setLearning(false);
     }
   };
 
@@ -286,6 +305,12 @@ export function ProfileClutchMapping({
               <div>
                 <strong>Capture the combined clutch axis</strong>
                 <small>{describeAxis(input)}</small>
+                {!input && (
+                  <em>
+                    Pull and release one paddle, the other paddle, then both
+                    together.
+                  </em>
+                )}
                 {input && (
                   <em>
                     Range {input.calibration.minimum} to{" "}
