@@ -1,11 +1,10 @@
 {
-  "version": "0.6.10",
-  "title": "Reliable virtual clutch binding",
-  "summary": "This release makes combined-clutch setup and vJoy binding more dependable.",
+  "version": "0.6.11",
+  "title": "Mode-specific launch setup",
+  "summary": "This release makes companion apps fit your Desktop and OpenXR launch modes.",
   "highlights": [
-    "Capture now explains the full one-paddle, other-paddle, then both-paddles sequence and saves a successful clutch setup automatically.",
-    "A delayed vJoy-only axis test binds LMU without the physical wheel competing for the same assignment.",
-    "Pivot reports clearly when another feeder such as SimHub owns its configured vJoy device.",
-    "The clutch setup footer has improved separation, and the one-time What's new dialog is recorded as soon as it first appears."
+    "Assign every companion app to Desktop, VR, or both, so each Steam launch starts only the helpers you want.",
+    "SteamVR is now an optional built-in VR-only helper: select its vrstartup.exe path and enable it when you want it started before LMU.",
+    "Existing launchers refresh automatically after valid mode or companion changes, without copying Steam launch options again."
   ]
 }
