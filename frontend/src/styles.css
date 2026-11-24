@@ -5057,12 +5057,14 @@ textarea,
 .profile-input-tabs {
   flex: 0 0 auto;
   display: flex;
+  flex-direction: row;
   gap: 0;
   padding: 0 14px;
   border-bottom: 1px solid var(--line);
   background: #151514;
 }
 .profile-input-tabs button {
+  flex: 0 0 auto;
   min-height: 46px;
   display: flex;
   align-items: center;
