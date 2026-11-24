@@ -469,7 +469,11 @@ struct PhysicalControlCaptureSummary {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase", tag = "kind")]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
 enum ClutchInputCaptureSummary {
     #[serde(rename = "button")]
     Button {
@@ -6075,6 +6079,24 @@ mod tests {
             false
         ));
         assert!(update_pressed_system_buttons(&mut held, source, true));
+    }
+
+    #[test]
+    fn clutch_capture_payload_uses_frontend_field_names() {
+        let payload = serde_json::to_value(ClutchInputCaptureSummary::Axis {
+            device_id: "hid:1234:5678".to_owned(),
+            device_name: "Test wheel".to_owned(),
+            physical_axis: 3,
+            minimum: -1_000,
+            maximum: 1_000,
+        })
+        .expect("clutch capture serializes");
+
+        assert_eq!(payload["kind"], "axis");
+        assert_eq!(payload["deviceId"], "hid:1234:5678");
+        assert_eq!(payload["deviceName"], "Test wheel");
+        assert_eq!(payload["physicalAxis"], 3);
+        assert!(payload.get("physical_axis").is_none());
     }
 
     #[test]

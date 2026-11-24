@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Gauge, LoaderCircle, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type {
   ClutchConfiguration,
   ClutchInputCapture,
@@ -48,6 +48,12 @@ function describe(input: VirtualClutchInput | VirtualAxisInput | null) {
     return `${input.device_name || "Controller"} · Button ${input.physical_button}`;
   const axis = "kind" in input ? input : input;
   return `${axis.device_name || "Controller"} · Axis ${axis.physical_axis}`;
+}
+
+function errorMessage(reason: unknown) {
+  if (reason instanceof Error) return reason.message;
+  if (typeof reason === "string" && reason.trim()) return reason;
+  return "Pivot could not complete that clutch setup step. Please try again.";
 }
 
 function AxisOptions({
@@ -144,7 +150,11 @@ export function ProfileClutchMapping({
         if (cancelled) return;
         setAvailableAxes(configuration.availableVirtualAxes);
         setAnalogAxes(configuration.analogAxes);
-        setAxis(configuration.workspace?.virtual_axis ?? "");
+        setAxis(
+          configuration.workspace?.virtual_axis ??
+            configuration.availableVirtualAxes[0] ??
+            "",
+        );
         setSharedBitePoint(
           configuration.workspace?.shared_bite_point_percent ?? 50,
         );
@@ -170,7 +180,7 @@ export function ProfileClutchMapping({
             : null,
         );
       })
-      .catch((reason) => !cancelled && setError(String(reason)));
+      .catch((reason) => !cancelled && setError(errorMessage(reason)));
     return () => {
       cancelled = true;
     };
@@ -181,7 +191,9 @@ export function ProfileClutchMapping({
     setError(null);
     onNotice(
       target === "direct"
-        ? "Move the clutch through its full travel for three seconds."
+        ? mode === "combined"
+          ? "Move both clutch paddles through their full combined travel until capture finishes."
+          : "Move the clutch through its full travel until capture finishes."
         : `Press or fully move the ${target} clutch input.`,
     );
     try {
@@ -195,7 +207,7 @@ export function ProfileClutchMapping({
       } else if (target === "full") setFull(inputFromCapture(capture));
       else setBite(inputFromCapture(capture));
     } catch (reason) {
-      setError(String(reason));
+      setError(errorMessage(reason));
     } finally {
       setLearning(null);
     }
@@ -270,7 +282,7 @@ export function ProfileClutchMapping({
           : "Clutch mapping saved. Restart live remapping once to apply editor changes.",
       );
     } catch (reason) {
-      setError(String(reason));
+      setError(errorMessage(reason));
     } finally {
       setSaving(false);
     }
@@ -307,7 +319,7 @@ export function ProfileClutchMapping({
         },
       ]);
     } catch (reason) {
-      setError(String(reason));
+      setError(errorMessage(reason));
     } finally {
       setLearningAnalog(false);
     }
@@ -333,9 +345,10 @@ export function ProfileClutchMapping({
         <span>
           <Gauge />
           <span>
-            <strong>Virtual clutch</strong>
+            <strong>Clutch paddles</strong>
             <small>
-              One stable vJoy axis, with physical sources owned by this profile.
+              Bind one vJoy clutch axis in the simulator, then let each profile
+              choose what drives it.
             </small>
           </span>
         </span>
@@ -346,49 +359,80 @@ export function ProfileClutchMapping({
             disabled={disabled || saving}
             onClick={() => setMode("off")}
           >
-            <Trash2 /> Remove
+            <Trash2 /> Remove clutch setup
           </button>
         )}
       </header>
-      <div className="clutch-mode-tabs">
-        {(["off", "direct", "dual", "combined"] as const).map((value) => (
+      {mode === "off" ? (
+        <div className="clutch-empty-state">
+          <div>
+            <strong>How does this wheel expose its clutch?</strong>
+            <p>
+              Simagic wheels configured for combined dual clutch normally use
+              the combined-axis option.
+            </p>
+          </div>
           <button
             type="button"
-            key={value}
-            className={mode === value ? "active" : ""}
+            className="primary"
             disabled={disabled}
-            onClick={() => setMode(value)}
+            onClick={() => setMode("combined")}
           >
-            {value === "off"
-              ? "Not mapped"
-              : value === "direct"
-                ? "Direct axis"
-                : value === "dual"
-                  ? "Dual clutch"
-                  : "Combined axis"}
+            Set up clutch
           </button>
-        ))}
-      </div>
-      {mode !== "off" && (
+        </div>
+      ) : (
         <>
-          <div className="clutch-grid">
-            <label>
-              <span>Virtual output</span>
-              <select
-                value={axis}
+          <div className="clutch-section-heading">
+            <span className="clutch-step">1</span>
+            <div>
+              <strong>Choose the physical clutch type</strong>
+              <small>
+                This is how the wheel reports its paddles to Windows.
+              </small>
+            </div>
+          </div>
+          <div className="clutch-mode-tabs">
+            {(["combined", "dual", "direct"] as const).map((value) => (
+              <button
+                type="button"
+                key={value}
+                className={mode === value ? "active" : ""}
                 disabled={disabled}
-                onChange={(event) =>
-                  setAxis(event.target.value as VirtualAxisId)
-                }
+                onClick={() => setMode(value)}
               >
-                <option value="">Select vJoy axis…</option>
-                {availableAxes.map((value) => (
-                  <option key={value} value={value}>
-                    {value.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <strong>
+                  {value === "combined"
+                    ? "Combined axis"
+                    : value === "dual"
+                      ? "Two separate inputs"
+                      : "Single clutch axis"}
+                </strong>
+                <small>
+                  {value === "combined"
+                    ? "Both paddles appear as one axis — usual Simagic mode"
+                    : value === "dual"
+                      ? "Each paddle appears as its own axis or button"
+                      : "A pedal or one analog paddle, passed straight through"}
+                </small>
+              </button>
+            ))}
+          </div>
+
+          <div className="clutch-section-heading">
+            <span className="clutch-step">2</span>
+            <div>
+              <strong>Capture the physical input</strong>
+              <small>
+                {mode === "combined"
+                  ? "Move both paddles across their full range while Pivot listens."
+                  : mode === "dual"
+                    ? "Capture each paddle separately."
+                    : "Move the clutch across its full range while Pivot listens."}
+              </small>
+            </div>
+          </div>
+          <div className="clutch-grid clutch-capture-grid">
             {mode === "dual" ? (
               <>
                 <div className="clutch-source">
@@ -401,14 +445,14 @@ export function ProfileClutchMapping({
                   />
                   <button
                     type="button"
-                    className="secondary compact"
+                    className="secondary"
                     disabled={disabled || learning !== null}
                     onClick={() => void learn("full")}
                   >
                     {learning === "full" ? (
                       <LoaderCircle className="spin" />
                     ) : null}{" "}
-                    Capture
+                    Capture full paddle
                   </button>
                 </div>
                 <div className="clutch-source">
@@ -421,14 +465,14 @@ export function ProfileClutchMapping({
                   />
                   <button
                     type="button"
-                    className="secondary compact"
+                    className="secondary"
                     disabled={disabled || learning !== null}
                     onClick={() => void learn("bite")}
                   >
                     {learning === "bite" ? (
                       <LoaderCircle className="spin" />
                     ) : null}{" "}
-                    Capture
+                    Capture bite paddle
                   </button>
                 </div>
               </>
@@ -440,92 +484,46 @@ export function ProfileClutchMapping({
                     : "Physical clutch axis"}
                 </span>
                 <strong>{describe(direct)}</strong>
+                <small>
+                  {direct
+                    ? `Captured range ${direct.calibration.minimum} to ${direct.calibration.maximum}`
+                    : "Nothing captured yet"}
+                </small>
                 <button
                   type="button"
-                  className="secondary compact"
+                  className="secondary"
                   disabled={disabled || learning !== null}
                   onClick={() => void learn("direct")}
                 >
                   {learning === "direct" ? (
                     <LoaderCircle className="spin" />
                   ) : null}{" "}
-                  Capture & calibrate
+                  {direct ? "Capture again" : "Start capture"}
                 </button>
               </div>
             )}
           </div>
-          {direct && mode !== "dual" && (
-            <div className="clutch-calibration">
-              <label className="inline-switch">
-                <span>Invert physical axis</span>
-                <input
-                  type="checkbox"
-                  checked={direct.calibration.inverted}
-                  disabled={disabled}
-                  onChange={(event) =>
-                    updateDirectCalibration({ inverted: event.target.checked })
-                  }
-                />
-              </label>
-              <label>
-                <span>Released deadzone</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="49"
-                  value={direct.calibration.released_deadzone_percent}
-                  onChange={(event) =>
-                    updateDirectCalibration({
-                      released_deadzone_percent: Number(event.target.value),
-                    })
-                  }
-                />
-                <em>%</em>
-              </label>
-              <label>
-                <span>Engaged deadzone</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="49"
-                  value={direct.calibration.engaged_deadzone_percent}
-                  onChange={(event) =>
-                    updateDirectCalibration({
-                      engaged_deadzone_percent: Number(event.target.value),
-                    })
-                  }
-                />
-                <em>%</em>
-              </label>
-            </div>
-          )}
           {(mode === "dual" || mode === "combined") && (
-            <div className="bite-point-control">
-              <div>
-                <strong>Bite point</strong>
-                <small>
-                  {useShared
-                    ? "Shared across this workspace"
-                    : "Saved with this profile"}
-                </small>
+            <div className="clutch-settings-card">
+              <div className="clutch-section-heading">
+                <span className="clutch-step">3</span>
+                <div>
+                  <strong>Set the bite point</strong>
+                  <small>
+                    Adjust this at any time without rebinding the simulator.
+                  </small>
+                </div>
               </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={useShared ? sharedBitePoint : bitePoint}
-                disabled={disabled}
-                onChange={(event) =>
-                  useShared
-                    ? setSharedBitePoint(Number(event.target.value))
-                    : setBitePoint(Number(event.target.value))
-                }
-              />
-              <label>
+              <div className="bite-point-control">
                 <input
-                  type="number"
+                  type="range"
                   min="0"
                   max="100"
+                  style={
+                    {
+                      "--range-progress": `${useShared ? sharedBitePoint : bitePoint}%`,
+                    } as CSSProperties
+                  }
                   value={useShared ? sharedBitePoint : bitePoint}
                   disabled={disabled}
                   onChange={(event) =>
@@ -534,55 +532,54 @@ export function ProfileClutchMapping({
                       : setBitePoint(Number(event.target.value))
                   }
                 />
-                <span>%</span>
-              </label>
-              <label className="inline-switch">
-                <span>Share in workspace</span>
-                <input
-                  type="checkbox"
-                  checked={useShared}
-                  disabled={disabled}
-                  onChange={(event) => setUseShared(event.target.checked)}
-                />
-              </label>
+                <label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={useShared ? sharedBitePoint : bitePoint}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      useShared
+                        ? setSharedBitePoint(Number(event.target.value))
+                        : setBitePoint(Number(event.target.value))
+                    }
+                  />
+                  <span>%</span>
+                </label>
+                <label className="inline-switch">
+                  <span>
+                    Use this bite point for all profiles in this workspace
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={useShared}
+                    disabled={disabled}
+                    onChange={(event) => setUseShared(event.target.checked)}
+                  />
+                </label>
+              </div>
             </div>
           )}
-          {mode === "combined" && (
-            <label className="firmware-bite">
-              <span>Known firmware bite point (optional)</span>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={firmwareBite ?? ""}
-                placeholder="Off"
-                disabled={disabled}
-                onChange={(event) =>
-                  setFirmwareBite(
-                    event.target.value === ""
-                      ? null
-                      : Number(event.target.value),
-                  )
-                }
-              />
-              <em>%</em>
-              <small>
-                A single combined axis cannot reconstruct independent paddle
-                positions. This only remaps its known bite point while
-                preserving both endpoints.
-              </small>
-            </label>
-          )}
-          <div className="clutch-live">
-            <span>Virtual clutch output</span>
+          <div className="clutch-live-card">
             <div>
-              <i style={{ width: `${live ?? 0}%` }} />
+              <strong>Live clutch output</strong>
+              <small>
+                {live === null
+                  ? "Save, then start this profile to test it live."
+                  : `Sending ${axis ? axis.toUpperCase() : "the selected axis"} to vJoy`}
+              </small>
             </div>
-            <strong>
-              {live === null
-                ? "Start this profile to preview"
-                : `${live.toFixed(0)}%`}
-            </strong>
+            <div className="clutch-live">
+              <div>
+                <i style={{ width: `${live ?? 0}%` }} />
+              </div>
+              <strong>
+                {live === null
+                  ? "Start this profile to preview"
+                  : `${live.toFixed(0)}%`}
+              </strong>
+            </div>
           </div>
           <div className="clutch-input-indicators">
             <span>
@@ -608,167 +605,276 @@ export function ProfileClutchMapping({
               </span>
             )}
           </div>
-        </>
-      )}
-      <section className="generic-axis-mappings">
-        <header>
-          <span>
-            <strong>Other analog axes</strong>
-            <small>
-              Optional calibrated passthrough routes on this profile.
-            </small>
-          </span>
-          <button
-            type="button"
-            className="secondary compact"
-            disabled={disabled || learningAnalog}
-            onClick={() => void addAnalogAxis()}
-          >
-            {learningAnalog ? <LoaderCircle className="spin" /> : null}
-            {learningAnalog ? "Move an axis…" : "Add analog axis"}
-          </button>
-        </header>
-        {analogAxes.map((mapping, index) => {
-          const liveAxis =
-            routing.active && routing.profileId === profileId
-              ? routing.analogAxisOutputs.find(
-                  (output) => output.name === mapping.name,
-                )
-              : undefined;
-          return (
-            <div
-              className="generic-axis-row"
-              key={`${mapping.input.device_id}-${mapping.input.physical_axis}-${index}`}
-            >
+
+          <details className="clutch-advanced">
+            <summary>Advanced output and calibration</summary>
+            <div className="clutch-advanced-content">
               <label>
-                <span>Name</span>
-                <input
-                  value={mapping.name}
-                  disabled={disabled}
-                  onChange={(event) =>
-                    updateAnalog(index, {
-                      ...mapping,
-                      name: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label>
-                <span>vJoy output</span>
+                <span>vJoy clutch axis</span>
                 <select
-                  value={mapping.virtual_axis}
+                  value={axis}
                   disabled={disabled}
                   onChange={(event) =>
-                    updateAnalog(index, {
-                      ...mapping,
-                      virtual_axis: event.target.value as VirtualAxisId,
-                    })
+                    setAxis(event.target.value as VirtualAxisId)
                   }
                 >
+                  <option value="">Select vJoy axis…</option>
                   {availableAxes.map((value) => (
-                    <option value={value} key={value}>
+                    <option key={value} value={value}>
                       {value.toUpperCase()}
                     </option>
                   ))}
                 </select>
+                <small>
+                  Keep this axis stable and bind it once as Clutch in the
+                  simulator.
+                </small>
               </label>
-              <span className="generic-axis-source">
-                <small>{describe(mapping.input)}</small>
-                <b>
-                  {liveAxis ? `${liveAxis.outputPercent.toFixed(0)}%` : "—"}
-                </b>
-              </span>
-              <label className="inline-switch">
-                <span>Invert</span>
-                <input
-                  type="checkbox"
-                  checked={mapping.input.calibration.inverted}
-                  disabled={disabled}
-                  onChange={(event) =>
-                    updateAnalog(index, {
-                      ...mapping,
-                      input: {
-                        ...mapping.input,
-                        calibration: {
-                          ...mapping.input.calibration,
+              {direct && mode !== "dual" && (
+                <div className="clutch-calibration">
+                  <label className="inline-switch">
+                    <span>Invert physical axis</span>
+                    <input
+                      type="checkbox"
+                      checked={direct.calibration.inverted}
+                      disabled={disabled}
+                      onChange={(event) =>
+                        updateDirectCalibration({
                           inverted: event.target.checked,
-                        },
-                      },
-                    })
-                  }
-                />
-              </label>
-              <label className="generic-axis-deadzone">
-                <span>Released DZ</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="49"
-                  value={mapping.input.calibration.released_deadzone_percent}
-                  disabled={disabled}
-                  onChange={(event) =>
-                    updateAnalog(index, {
-                      ...mapping,
-                      input: {
-                        ...mapping.input,
-                        calibration: {
-                          ...mapping.input.calibration,
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Released deadzone</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="49"
+                      value={direct.calibration.released_deadzone_percent}
+                      onChange={(event) =>
+                        updateDirectCalibration({
                           released_deadzone_percent: Number(event.target.value),
-                        },
-                      },
-                    })
-                  }
-                />
-              </label>
-              <label className="generic-axis-deadzone">
-                <span>Engaged DZ</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="49"
-                  value={mapping.input.calibration.engaged_deadzone_percent}
-                  disabled={disabled}
-                  onChange={(event) =>
-                    updateAnalog(index, {
-                      ...mapping,
-                      input: {
-                        ...mapping.input,
-                        calibration: {
-                          ...mapping.input.calibration,
+                        })
+                      }
+                    />
+                    <em>%</em>
+                  </label>
+                  <label>
+                    <span>Engaged deadzone</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="49"
+                      value={direct.calibration.engaged_deadzone_percent}
+                      onChange={(event) =>
+                        updateDirectCalibration({
                           engaged_deadzone_percent: Number(event.target.value),
-                        },
-                      },
-                    })
-                  }
-                />
-              </label>
-              <button
-                type="button"
-                className="ghost icon-button"
-                aria-label={`Remove ${mapping.name}`}
-                disabled={disabled}
-                onClick={() =>
-                  setAnalogAxes((current) =>
-                    current.filter((_, currentIndex) => currentIndex !== index),
-                  )
-                }
-              >
-                <Trash2 />
-              </button>
+                        })
+                      }
+                    />
+                    <em>%</em>
+                  </label>
+                </div>
+              )}
+              {mode === "combined" && (
+                <label className="firmware-bite">
+                  <span>Known firmware bite point (optional)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={firmwareBite ?? ""}
+                    placeholder="Off"
+                    disabled={disabled}
+                    onChange={(event) =>
+                      setFirmwareBite(
+                        event.target.value === ""
+                          ? null
+                          : Number(event.target.value),
+                      )
+                    }
+                  />
+                  <em>%</em>
+                  <small>
+                    Only use this when you know the wheel firmware's fixed bite
+                    point. Otherwise leave it off.
+                  </small>
+                </label>
+              )}
             </div>
-          );
-        })}
-        {!analogAxes.length && <p>No additional analog axes mapped.</p>}
-      </section>
+          </details>
+        </>
+      )}
+      <details className="generic-axis-mappings">
+        <summary>Other analog axis mappings</summary>
+        <div className="generic-axis-content">
+          <header>
+            <span>
+              <strong>Other analog axes</strong>
+              <small>
+                Optional calibrated passthrough routes on this profile.
+              </small>
+            </span>
+            <button
+              type="button"
+              className="secondary compact"
+              disabled={disabled || learningAnalog}
+              onClick={() => void addAnalogAxis()}
+            >
+              {learningAnalog ? <LoaderCircle className="spin" /> : null}
+              {learningAnalog ? "Move an axis…" : "Add analog axis"}
+            </button>
+          </header>
+          {analogAxes.map((mapping, index) => {
+            const liveAxis =
+              routing.active && routing.profileId === profileId
+                ? routing.analogAxisOutputs.find(
+                    (output) => output.name === mapping.name,
+                  )
+                : undefined;
+            return (
+              <div
+                className="generic-axis-row"
+                key={`${mapping.input.device_id}-${mapping.input.physical_axis}-${index}`}
+              >
+                <label>
+                  <span>Name</span>
+                  <input
+                    value={mapping.name}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateAnalog(index, {
+                        ...mapping,
+                        name: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>vJoy output</span>
+                  <select
+                    value={mapping.virtual_axis}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateAnalog(index, {
+                        ...mapping,
+                        virtual_axis: event.target.value as VirtualAxisId,
+                      })
+                    }
+                  >
+                    {availableAxes.map((value) => (
+                      <option value={value} key={value}>
+                        {value.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span className="generic-axis-source">
+                  <small>{describe(mapping.input)}</small>
+                  <b>
+                    {liveAxis ? `${liveAxis.outputPercent.toFixed(0)}%` : "—"}
+                  </b>
+                </span>
+                <label className="inline-switch">
+                  <span>Invert</span>
+                  <input
+                    type="checkbox"
+                    checked={mapping.input.calibration.inverted}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateAnalog(index, {
+                        ...mapping,
+                        input: {
+                          ...mapping.input,
+                          calibration: {
+                            ...mapping.input.calibration,
+                            inverted: event.target.checked,
+                          },
+                        },
+                      })
+                    }
+                  />
+                </label>
+                <label className="generic-axis-deadzone">
+                  <span>Released DZ</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="49"
+                    value={mapping.input.calibration.released_deadzone_percent}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateAnalog(index, {
+                        ...mapping,
+                        input: {
+                          ...mapping.input,
+                          calibration: {
+                            ...mapping.input.calibration,
+                            released_deadzone_percent: Number(
+                              event.target.value,
+                            ),
+                          },
+                        },
+                      })
+                    }
+                  />
+                </label>
+                <label className="generic-axis-deadzone">
+                  <span>Engaged DZ</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="49"
+                    value={mapping.input.calibration.engaged_deadzone_percent}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateAnalog(index, {
+                        ...mapping,
+                        input: {
+                          ...mapping.input,
+                          calibration: {
+                            ...mapping.input.calibration,
+                            engaged_deadzone_percent: Number(
+                              event.target.value,
+                            ),
+                          },
+                        },
+                      })
+                    }
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="ghost icon-button"
+                  aria-label={`Remove ${mapping.name}`}
+                  disabled={disabled}
+                  onClick={() =>
+                    setAnalogAxes((current) =>
+                      current.filter(
+                        (_, currentIndex) => currentIndex !== index,
+                      ),
+                    )
+                  }
+                >
+                  <Trash2 />
+                </button>
+              </div>
+            );
+          })}
+          {!analogAxes.length && <p>No additional analog axes mapped.</p>}
+        </div>
+      </details>
       {error && <div className="virtual-error">{error}</div>}
       <footer>
         <button
           type="button"
-          className="primary compact"
+          className="primary"
           disabled={disabled || saving || learning !== null}
           onClick={() => void save()}
         >
-          {saving ? <LoaderCircle className="spin" /> : null} Save clutch setup
+          {saving ? <LoaderCircle className="spin" /> : null}
+          {mode === "off" ? "Save changes" : "Save clutch setup"}
         </button>
       </footer>
     </section>

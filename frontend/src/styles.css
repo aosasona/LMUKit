@@ -6849,17 +6849,16 @@ textarea,
 
 .clutch-mapping-panel {
   display: grid;
-  gap: 16px;
-  padding: 18px;
+  gap: 24px;
+  padding: 24px;
   border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--panel) 88%, var(--accent) 12%);
+  background: var(--panel);
 }
 .clutch-mapping-panel > header,
 .clutch-mapping-panel > header > span,
 .clutch-mapping-panel > header > span > span,
 .clutch-source,
-.clutch-live,
-.bite-point-control {
+.clutch-section-heading {
   display: flex;
   align-items: center;
 }
@@ -6884,43 +6883,84 @@ textarea,
   color: var(--muted);
   font-style: normal;
 }
-.clutch-mode-tabs {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 5px;
-  padding: 4px;
-  background: rgba(0, 0, 0, 0.18);
+.clutch-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.14);
 }
-.clutch-mode-tabs button {
-  min-height: 36px;
-  border: 0;
-  background: transparent;
+.clutch-empty-state p {
+  max-width: 650px;
+  margin: 6px 0 0;
   color: var(--muted);
 }
-.clutch-mode-tabs button.active {
-  background: var(--panel);
+.clutch-section-heading {
+  align-items: flex-start;
+  gap: 12px;
+}
+.clutch-section-heading > div {
+  display: grid;
+  gap: 3px;
+}
+.clutch-step {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  color: var(--accent);
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 750;
+}
+.clutch-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.clutch-mode-tabs button {
+  display: grid;
+  min-height: 88px;
+  align-content: center;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.14);
+  color: var(--muted);
+  text-align: left;
+}
+.clutch-mode-tabs button strong {
   color: var(--text);
-  box-shadow: inset 0 -2px var(--accent);
+  font-size: calc(14px * var(--font-scale));
+}
+.clutch-mode-tabs button small {
+  line-height: 1.45;
+}
+.clutch-mode-tabs button.active {
+  border-color: color-mix(in srgb, var(--accent) 65%, var(--line));
+  background: color-mix(in srgb, var(--panel) 88%, var(--accent) 12%);
+  color: var(--text);
+  box-shadow: inset 3px 0 var(--accent);
 }
 .clutch-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
-.clutch-grid > label,
 .clutch-source,
 .firmware-bite {
   min-width: 0;
-  padding: 12px;
+  padding: 18px;
   border: 1px solid var(--line);
-  background: rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.14);
 }
-.clutch-grid > label,
 .firmware-bite {
   display: grid;
-  gap: 7px;
+  gap: 8px;
 }
-.clutch-grid select,
 .clutch-calibration input,
 .firmware-bite input,
 .bite-point-control input[type="number"] {
@@ -6929,7 +6969,8 @@ textarea,
 .clutch-source {
   align-items: flex-start;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
+  min-height: 140px;
 }
 .clutch-source strong {
   min-height: 20px;
@@ -6955,7 +6996,7 @@ textarea,
   min-width: 0;
 }
 .clutch-source-wide {
-  grid-column: span 1;
+  grid-column: 1 / -1;
 }
 .clutch-calibration {
   display: grid;
@@ -6978,22 +7019,28 @@ textarea,
   right: 11px;
   bottom: 11px;
 }
+.clutch-settings-card {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.1);
+}
 .bite-point-control {
   display: grid;
-  grid-template-columns: minmax(150px, 0.7fr) minmax(180px, 1.4fr) 90px auto;
+  grid-template-columns: minmax(220px, 1fr) 96px;
+  align-items: center;
   gap: 14px;
-  padding: 13px;
-  border: 1px solid var(--line);
-}
-.bite-point-control > div strong,
-.bite-point-control > div small {
-  display: block;
 }
 .bite-point-control > label:not(.inline-switch) {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 5px;
+}
+.bite-point-control > .inline-switch {
+  grid-column: 1 / -1;
+  justify-content: flex-start;
 }
 .firmware-bite {
   grid-template-columns: minmax(180px, 1fr) 100px 20px;
@@ -7008,9 +7055,21 @@ textarea,
 .firmware-bite small {
   grid-column: 1 / -1;
 }
+.clutch-live-card {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.1);
+}
+.clutch-live-card > div:first-child {
+  display: grid;
+  gap: 3px;
+}
 .clutch-live {
   display: grid;
-  grid-template-columns: auto minmax(120px, 1fr) 150px;
+  grid-template-columns: minmax(120px, 1fr) 170px;
+  align-items: center;
   gap: 12px;
 }
 .clutch-live > div {
@@ -7053,27 +7112,54 @@ textarea,
 .clutch-input-indicators strong {
   text-align: right;
 }
+.clutch-advanced,
+.generic-axis-mappings {
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.08);
+}
+.clutch-advanced > summary,
+.generic-axis-mappings > summary {
+  padding: 14px 16px;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 650;
+}
+.clutch-advanced[open] > summary,
+.generic-axis-mappings[open] > summary {
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+}
+.clutch-advanced-content,
+.generic-axis-content {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+.clutch-advanced-content > label {
+  display: grid;
+  gap: 7px;
+}
+.clutch-advanced-content select {
+  width: min(100%, 360px);
+}
 .clutch-mapping-panel > footer {
   display: flex;
   justify-content: flex-end;
 }
 .generic-axis-mappings {
-  display: grid;
-  gap: 9px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
+  display: block;
 }
-.generic-axis-mappings > header {
+.generic-axis-content > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
-.generic-axis-mappings > header > span strong,
-.generic-axis-mappings > header > span small {
+.generic-axis-content > header > span strong,
+.generic-axis-content > header > span small {
   display: block;
 }
-.generic-axis-mappings > p {
+.generic-axis-content > p {
   margin: 0;
   color: var(--muted);
 }
@@ -7117,7 +7203,7 @@ textarea,
   .clutch-grid,
   .clutch-calibration,
   .bite-point-control {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
   .clutch-live {
     grid-template-columns: 1fr;
@@ -7127,5 +7213,9 @@ textarea,
   }
   .clutch-live strong {
     text-align: left;
+  }
+  .clutch-empty-state {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
