@@ -60,6 +60,8 @@ Steering, throttle, brake, and FFB remain connected directly between the physica
 
 LMU continues to see the physical controller. A physical control managed through Pivot should not also have a direct LMU binding, otherwise one press may trigger both the direct action and the translated virtual action. Pivot does not hide or suppress physical devices.
 
+For the clutch's one-time LMU binding, leave live routing stopped and do not pull a physical paddle while LMU listens: it may bind the physical axis instead of vJoy. Use the profile editor's immediate or five-second delayed clutch test, which moves only the saved vJoy clutch axis through its full range and releases it again. If Pivot cannot reserve the vJoy device, another feeder (for example, SimHub configured to emit vJoy) owns it; it cannot share the same vJoy device with Pivot.
+
 ## Profile contents and selection
 
 Virtual mappings are an optional extension to an existing profile, not a silent reinterpretation of its saved `direct input.json`. The user can explicitly import matching button bindings and review or adjust the result. A profile retains its Legacy JSON configuration while also carrying a separate Virtual Input mapping.

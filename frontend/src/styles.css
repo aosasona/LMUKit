@@ -7548,6 +7548,16 @@ textarea,
   font-size: calc(11px * var(--font-scale));
   line-height: 1.4;
 }
+.clutch-test-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 7px;
+}
+.clutch-test-actions button {
+  min-height: 34px;
+}
 
 @media (max-width: 900px) {
   .clutch-passthrough-flow,
@@ -7556,5 +7566,12 @@ textarea,
   }
   .generic-axis-row.simplified {
     grid-template-columns: 1fr 1fr;
+  }
+  .clutch-binding-walkthrough li {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+  .clutch-test-actions {
+    grid-column: 2;
+    justify-content: start;
   }
 }

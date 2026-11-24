@@ -1260,6 +1260,99 @@ fn save_workspace_clutch_settings(
         .map_err(|error| error.to_string())
 }
 
+/// Drives the saved clutch output through one complete virtual-axis movement
+/// while live routing is stopped. This lets a simulator bind vJoy without also
+/// receiving a simultaneous physical paddle movement.
+#[tauri::command]
+async fn test_virtual_clutch_axis(
+    profile_id: Uuid,
+    delay_ms: u64,
+    app_state: State<'_, AppState>,
+    routing_state: State<'_, VirtualRoutingState>,
+) -> Result<(), String> {
+    if routing_state
+        .status
+        .lock()
+        .map_err(|error| error.to_string())?
+        .active
+    {
+        return Err(
+            "Disable live remapping before sending a clutch binding test so Pivot can reserve vJoy safely."
+                .to_owned(),
+        );
+    }
+    let (device_id, axis) = {
+        let store = app_state.0.lock().map_err(|error| error.to_string())?;
+        let profile = find_profile(&store, profile_id)?;
+        let workspace = store
+            .workspace_clutch_settings(&profile.workspace_id)
+            .ok_or_else(|| "Save a vJoy clutch axis before testing it.".to_owned())?;
+        (
+            store.settings.virtual_device_id,
+            runtime_virtual_axis(workspace.virtual_axis),
+        )
+    };
+    let delay = std::time::Duration::from_millis(delay_ms.min(10_000));
+    tauri::async_runtime::spawn_blocking(move || {
+        std::thread::spawn(move || pulse_virtual_clutch_axis(device_id, axis, delay))
+            .join()
+            .map_err(|_| "The virtual clutch test worker stopped unexpectedly.".to_owned())?
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[cfg(target_os = "windows")]
+fn pulse_virtual_clutch_axis(
+    device_id: u32,
+    axis: VirtualAxis,
+    delay: std::time::Duration,
+) -> Result<(), String> {
+    if !delay.is_zero() {
+        std::thread::sleep(delay);
+    }
+    let mut backend = VJoyBackend::new(device_id).map_err(|error| error.to_string())?;
+    backend.connect().map_err(|error| {
+        format!(
+            "Could not reserve vJoy device {device_id} for the clutch test: {error}. If SimHub is configured as a vJoy feeder, it cannot share Pivot's vJoy device."
+        )
+    })?;
+    let result = (|| -> Result<(), String> {
+        let range = backend
+            .capabilities()
+            .map_err(|error| error.to_string())?
+            .axes
+            .get(&axis)
+            .copied()
+            .ok_or_else(|| {
+                format!("vJoy device {device_id} does not have the selected {axis:?} axis.")
+            })?;
+        backend
+            .set_axis(axis, range.minimum)
+            .map_err(|error| error.to_string())?;
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        backend
+            .set_axis(axis, range.maximum)
+            .map_err(|error| error.to_string())?;
+        std::thread::sleep(std::time::Duration::from_millis(900));
+        backend
+            .set_axis(axis, range.minimum)
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    })();
+    let _ = backend.disconnect();
+    result
+}
+
+#[cfg(not(target_os = "windows"))]
+fn pulse_virtual_clutch_axis(
+    _device_id: u32,
+    _axis: VirtualAxis,
+    _delay: std::time::Duration,
+) -> Result<(), String> {
+    Err("Virtual clutch tests are only available in the Windows build.".to_owned())
+}
+
 #[tauri::command]
 async fn learn_clutch_input(allow_button: bool) -> Result<ClutchInputCaptureSummary, String> {
     let generation = LOOKUP_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
@@ -5383,6 +5476,7 @@ pub fn run() {
             save_virtual_profile_clutch,
             save_virtual_profile_analog_axes,
             save_workspace_clutch_settings,
+            test_virtual_clutch_axis,
             learn_clutch_input,
             system_action_bindings,
             capture_system_action_control,

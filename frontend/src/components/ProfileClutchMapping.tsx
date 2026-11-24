@@ -75,6 +75,8 @@ export function ProfileClutchMapping({
   const [learning, setLearning] = useState(false);
   const [learningAnalog, setLearningAnalog] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [testingVirtualAxis, setTestingVirtualAxis] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [legacyDual, setLegacyDual] = useState(false);
 
@@ -93,6 +95,7 @@ export function ProfileClutchMapping({
             "",
         );
         setEnabled(mapping !== null);
+        setSaved(Boolean(mapping && configuration.workspace));
         setLegacyDual(mapping?.mode === "dual");
         setInput(
           mapping?.mode === "direct" || mapping?.mode === "combined"
@@ -125,6 +128,7 @@ export function ProfileClutchMapping({
         throw new Error("Pivot detected a button instead of an analog axis.");
       setInput(axisFromCapture(result));
       setEnabled(true);
+      setSaved(false);
       setLegacyDual(false);
       onNotice("Clutch axis captured. Save it to use this passthrough.");
     } catch (reason) {
@@ -171,6 +175,7 @@ export function ProfileClutchMapping({
         analogAxes,
       });
       onConfiguredChange?.(enabled || analogAxes.length > 0);
+      setSaved(Boolean(enabled && input && axis));
       onNotice(
         enabled
           ? "Clutch passthrough saved. Restart live remapping once to apply it."
@@ -180,6 +185,23 @@ export function ProfileClutchMapping({
       setError(errorMessage(reason));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const sendVirtualAxisTest = async (delayMs: number) => {
+    setTestingVirtualAxis(true);
+    setError(null);
+    try {
+      await invoke("test_virtual_clutch_axis", { profileId, delayMs });
+      onNotice(
+        delayMs
+          ? "Virtual clutch test sent after five seconds."
+          : "Virtual clutch test sent.",
+      );
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setTestingVirtualAxis(false);
     }
   };
 
@@ -234,7 +256,10 @@ export function ProfileClutchMapping({
             type="button"
             className="ghost compact"
             disabled={disabled || saving}
-            onClick={() => setEnabled(false)}
+            onClick={() => {
+              setEnabled(false);
+              setSaved(false);
+            }}
           >
             <Trash2 /> Remove
           </button>
@@ -338,37 +363,74 @@ export function ProfileClutchMapping({
                   </small>
                 </span>
               </li>
-              <li className={routing.active ? "complete" : ""}>
+              <li>
                 <b>2</b>
                 <span>
-                  <strong>Start live remapping</strong>
+                  <strong>Make the game listen for Clutch</strong>
                   <small>
-                    Keep Pivot running while the game listens for a clutch
-                    input.
+                    Do not pull a physical paddle while its binding listener is
+                    open: the game can see both the real wheel and vJoy.
+                  </small>
+                </span>
+              </li>
+              <li className={saved ? "complete" : ""}>
+                <b>3</b>
+                <span>
+                  <strong>Send the vJoy clutch test</strong>
+                  <small>
+                    Pivot moves only the selected vJoy axis to fully engaged,
+                    then releases it. Use the delayed test to focus the game
+                    first.
+                  </small>
+                </span>
+                <span className="clutch-test-actions">
+                  <button
+                    type="button"
+                    className="secondary compact"
+                    disabled={
+                      !saved ||
+                      disabled ||
+                      routing.active ||
+                      testingVirtualAxis
+                    }
+                    onClick={() => void sendVirtualAxisTest(0)}
+                  >
+                    Send now
+                  </button>
+                  <button
+                    type="button"
+                    className="primary compact"
+                    disabled={
+                      !saved ||
+                      disabled ||
+                      routing.active ||
+                      testingVirtualAxis
+                    }
+                    onClick={() => void sendVirtualAxisTest(5_000)}
+                  >
+                    {testingVirtualAxis ? "Sending…" : "Send in 5s"}
+                  </button>
+                </span>
+              </li>
+              <li>
+                <b>4</b>
+                <span>
+                  <strong>Start live remapping and verify the paddles</strong>
+                  <small>
+                    After LMU has bound vJoy, start remapping and use the live
+                    output meter to confirm Pivot relays the combined axis.
                   </small>
                 </span>
                 {!routing.active && (
                   <button
                     type="button"
                     className="secondary compact"
-                    disabled={!input || disabled}
+                    disabled={!saved || disabled}
                     onClick={onStartLive}
                   >
                     Start remapping
                   </button>
                 )}
-              </li>
-              <li>
-                <b>3</b>
-                <span>
-                  <strong>
-                    Make the game listen for Clutch, then pull a paddle
-                  </strong>
-                  <small>
-                    It should detect the selected vJoy axis. Clear a direct
-                    physical clutch bind first to avoid duplicate input.
-                  </small>
-                </span>
               </li>
             </ol>
           </section>
