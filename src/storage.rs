@@ -50,6 +50,70 @@ pub struct VirtualProfileMapping {
     pub encoder_groups: Vec<VirtualEncoderGroup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub system_actions: Vec<SystemActionBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clutch: Option<VirtualClutchMapping>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum VirtualClutchMapping {
+    Direct {
+        input: VirtualAxisInput,
+    },
+    Dual {
+        full: VirtualClutchInput,
+        bite: VirtualClutchInput,
+        #[serde(default = "default_bite_point_percent")]
+        bite_point_percent: u8,
+        #[serde(default)]
+        use_workspace_bite_point: bool,
+    },
+    Combined {
+        input: VirtualAxisInput,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        firmware_bite_point_percent: Option<u8>,
+        #[serde(default = "default_bite_point_percent")]
+        bite_point_percent: u8,
+        #[serde(default)]
+        use_workspace_bite_point: bool,
+    },
+}
+
+fn default_bite_point_percent() -> u8 {
+    50
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum VirtualClutchInput {
+    Button {
+        device_id: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        device_name: String,
+        physical_button: u32,
+    },
+    Axis(VirtualAxisInput),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VirtualAxisInput {
+    pub device_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub device_name: String,
+    pub physical_axis: u32,
+    pub calibration: VirtualAxisCalibration,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VirtualAxisCalibration {
+    pub minimum: i32,
+    pub maximum: i32,
+    #[serde(default)]
+    pub inverted: bool,
+    #[serde(default)]
+    pub released_deadzone_percent: u8,
+    #[serde(default)]
+    pub engaged_deadzone_percent: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -269,6 +333,30 @@ pub struct Settings {
     pub active_workspace_id: String,
     #[serde(default)]
     pub global_system_actions: Vec<SystemActionBinding>,
+    #[serde(default)]
+    pub workspace_clutch_settings: Vec<WorkspaceClutchSettings>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkspaceClutchSettings {
+    pub workspace_id: String,
+    pub virtual_axis: VirtualAxisId,
+    #[serde(default = "default_bite_point_percent")]
+    pub shared_bite_point_percent: u8,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VirtualAxisId {
+    X,
+    Y,
+    Z,
+    Rx,
+    Ry,
+    Rz,
+    Slider0,
+    Slider1,
+    Wheel,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -373,6 +461,7 @@ impl Default for Settings {
             workspaces: default_workspaces(),
             active_workspace_id: default_active_workspace_id(),
             global_system_actions: Vec::new(),
+            workspace_clutch_settings: Vec::new(),
         }
     }
 }
@@ -565,6 +654,10 @@ impl Store {
             &self.settings.workspaces,
         )?;
         validate_system_action_bindings(&self.settings.global_system_actions)?;
+        validate_workspace_clutch_settings(
+            &self.settings.workspace_clutch_settings,
+            &self.settings.workspaces,
+        )?;
         self.validate_virtual_profile_defaults()?;
         ensure!(
             (1..=16).contains(&self.settings.virtual_device_id),
@@ -583,6 +676,41 @@ impl Store {
 
     pub fn workspaces(&self) -> &[Workspace] {
         &self.settings.workspaces
+    }
+
+    pub fn workspace_clutch_settings(
+        &self,
+        workspace_id: &str,
+    ) -> Option<&WorkspaceClutchSettings> {
+        self.settings
+            .workspace_clutch_settings
+            .iter()
+            .find(|entry| entry.workspace_id == workspace_id)
+    }
+
+    pub fn set_workspace_clutch_settings(
+        &mut self,
+        settings: WorkspaceClutchSettings,
+    ) -> Result<()> {
+        ensure!(
+            self.settings
+                .workspaces
+                .iter()
+                .any(|workspace| workspace.id == settings.workspace_id),
+            "That workspace no longer exists."
+        );
+        ensure!(
+            settings.shared_bite_point_percent <= 100,
+            "Shared bite point must be between 0% and 100%."
+        );
+        self.settings
+            .workspace_clutch_settings
+            .retain(|entry| entry.workspace_id != settings.workspace_id);
+        self.settings.workspace_clutch_settings.push(settings);
+        self.settings
+            .workspace_clutch_settings
+            .sort_by(|left, right| left.workspace_id.cmp(&right.workspace_id));
+        self.save_settings()
     }
 
     pub fn active_workspace(&self) -> &Workspace {
@@ -891,6 +1019,22 @@ impl Store {
             .context("That profile no longer exists.")?;
         let mut mapping = profile.virtual_mapping.unwrap_or_default();
         mapping.system_actions = actions;
+        self.set_profile_virtual_mapping(profile_id, Some(mapping.clone()))?;
+        Ok(mapping)
+    }
+
+    pub fn set_profile_clutch_mapping(
+        &self,
+        profile_id: Uuid,
+        clutch: Option<VirtualClutchMapping>,
+    ) -> Result<VirtualProfileMapping> {
+        let profile = self
+            .profiles()?
+            .into_iter()
+            .find(|profile| profile.id == profile_id)
+            .context("That profile no longer exists.")?;
+        let mut mapping = profile.virtual_mapping.unwrap_or_default();
+        mapping.clutch = clutch;
         self.set_profile_virtual_mapping(profile_id, Some(mapping.clone()))?;
         Ok(mapping)
     }
@@ -2613,6 +2757,32 @@ fn validate_workspace_virtual_layouts(
     Ok(())
 }
 
+fn validate_workspace_clutch_settings(
+    settings: &[WorkspaceClutchSettings],
+    workspaces: &[Workspace],
+) -> Result<()> {
+    let workspace_ids = workspaces
+        .iter()
+        .map(|workspace| workspace.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut seen = BTreeSet::new();
+    for entry in settings {
+        ensure!(
+            workspace_ids.contains(entry.workspace_id.as_str()),
+            "Clutch settings reference a missing workspace."
+        );
+        ensure!(
+            seen.insert(entry.workspace_id.to_lowercase()),
+            "A workspace has more than one clutch output configuration."
+        );
+        ensure!(
+            entry.shared_bite_point_percent <= 100,
+            "Shared bite point must be between 0% and 100%."
+        );
+    }
+    Ok(())
+}
+
 fn validate_manual_virtual_actions(
     layout: &[VirtualLayoutEntry],
     manual_actions: &[String],
@@ -2703,6 +2873,9 @@ fn validate_virtual_mapping(
         );
     }
     validate_system_action_bindings(&mapping.system_actions)?;
+    if let Some(clutch) = &mapping.clutch {
+        validate_virtual_clutch_mapping(clutch)?;
+    }
     ensure!(
         mapping.encoder_groups.len() <= 8,
         "A virtual profile cannot contain more than eight encoders."
@@ -2753,6 +2926,100 @@ fn validate_virtual_mapping(
         }
     }
     Ok(())
+}
+
+fn validate_virtual_clutch_mapping(mapping: &VirtualClutchMapping) -> Result<()> {
+    fn validate_axis(input: &VirtualAxisInput) -> Result<()> {
+        validate_virtual_label(&input.device_id, "Clutch input device ID")?;
+        ensure!(
+            input.physical_axis > 0,
+            "Physical axis IDs must be greater than zero."
+        );
+        ensure!(
+            input.calibration.minimum < input.calibration.maximum,
+            "Clutch calibration minimum must be below its maximum."
+        );
+        ensure!(
+            input.calibration.released_deadzone_percent < 50,
+            "Released clutch deadzone must be below 50%."
+        );
+        ensure!(
+            input.calibration.engaged_deadzone_percent < 50,
+            "Engaged clutch deadzone must be below 50%."
+        );
+        ensure!(
+            u16::from(input.calibration.released_deadzone_percent)
+                + u16::from(input.calibration.engaged_deadzone_percent)
+                < 100,
+            "Clutch deadzones consume the whole calibrated range."
+        );
+        Ok(())
+    }
+    fn validate_input(input: &VirtualClutchInput) -> Result<()> {
+        match input {
+            VirtualClutchInput::Button {
+                device_id,
+                physical_button,
+                ..
+            } => {
+                validate_virtual_label(device_id, "Clutch input device ID")?;
+                ensure!(
+                    *physical_button > 0,
+                    "Physical button IDs must be greater than zero."
+                );
+                Ok(())
+            }
+            VirtualClutchInput::Axis(input) => validate_axis(input),
+        }
+    }
+    fn source_key(input: &VirtualClutchInput) -> (&str, &'static str, u32) {
+        match input {
+            VirtualClutchInput::Button {
+                device_id,
+                physical_button,
+                ..
+            } => (device_id, "button", *physical_button),
+            VirtualClutchInput::Axis(input) => (&input.device_id, "axis", input.physical_axis),
+        }
+    }
+    match mapping {
+        VirtualClutchMapping::Direct { input } => validate_axis(input),
+        VirtualClutchMapping::Dual {
+            full,
+            bite,
+            bite_point_percent,
+            ..
+        } => {
+            validate_input(full)?;
+            validate_input(bite)?;
+            ensure!(
+                source_key(full) != source_key(bite),
+                "Full and bite clutch inputs must be independent."
+            );
+            ensure!(
+                *bite_point_percent <= 100,
+                "Bite point must be between 0% and 100%."
+            );
+            Ok(())
+        }
+        VirtualClutchMapping::Combined {
+            input,
+            firmware_bite_point_percent,
+            bite_point_percent,
+            ..
+        } => {
+            validate_axis(input)?;
+            ensure!(
+                *bite_point_percent <= 100,
+                "Bite point must be between 0% and 100%."
+            );
+            ensure!(
+                firmware_bite_point_percent.is_none_or(|value| value <= 100),
+                "Firmware bite point must be between 0% and 100%."
+            );
+            Ok(())
+        }
+    }
 }
 
 fn validate_system_action_bindings(bindings: &[SystemActionBinding]) -> Result<()> {
@@ -2883,6 +3150,38 @@ mod tests {
             serde_json::from_str(r#"{"buttons":[],"encoder_groups":[]}"#).unwrap();
 
         assert!(mapping.system_actions.is_empty());
+        assert!(mapping.clutch.is_none());
+    }
+
+    #[test]
+    fn clutch_mapping_round_trips_with_profile_calibration() {
+        let mapping = VirtualClutchMapping::Dual {
+            full: VirtualClutchInput::Axis(VirtualAxisInput {
+                device_id: "hid:3670:0500".into(),
+                device_name: "Simagic wheelbase".into(),
+                physical_axis: 3,
+                calibration: VirtualAxisCalibration {
+                    minimum: 240,
+                    maximum: 65_100,
+                    inverted: true,
+                    released_deadzone_percent: 2,
+                    engaged_deadzone_percent: 3,
+                },
+            }),
+            bite: VirtualClutchInput::Button {
+                device_id: "hid:3670:0500".into(),
+                device_name: "Simagic wheelbase".into(),
+                physical_button: 18,
+            },
+            bite_point_percent: 47,
+            use_workspace_bite_point: false,
+        };
+
+        let json = serde_json::to_string(&mapping).unwrap();
+        assert_eq!(
+            serde_json::from_str::<VirtualClutchMapping>(&json).unwrap(),
+            mapping
+        );
     }
 
     #[test]
@@ -2962,6 +3261,7 @@ mod tests {
             ],
             encoder_groups: Vec::new(),
             system_actions: Vec::new(),
+            clutch: None,
         };
 
         let base = resolve_virtual_button_mappings(&mapping, "wheel", 5, &[]);
@@ -3791,6 +4091,7 @@ mod tests {
                         }],
                     }],
                     system_actions: Vec::new(),
+                    clutch: None,
                 }),
             )
             .unwrap();
@@ -3868,6 +4169,7 @@ mod tests {
                     }],
                     encoder_groups: Vec::new(),
                     system_actions: Vec::new(),
+                    clutch: None,
                 }),
             )
             .unwrap();
@@ -3961,6 +4263,7 @@ mod tests {
                     }],
                     encoder_groups: Vec::new(),
                     system_actions: Vec::new(),
+                    clutch: None,
                 }),
             )
             .unwrap();
@@ -4064,6 +4367,7 @@ mod tests {
             }],
             encoder_groups: Vec::new(),
             system_actions: Vec::new(),
+            clutch: None,
         };
         assert!(
             store
@@ -4328,6 +4632,7 @@ mod tests {
             }],
             encoder_groups: Vec::new(),
             system_actions: Vec::new(),
+            clutch: None,
         };
         store
             .set_profile_virtual_mapping(source.id, Some(virtual_mapping.clone()))
