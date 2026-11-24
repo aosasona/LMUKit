@@ -547,6 +547,13 @@ struct ProfileSummary {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct DuplicatedProfileSummary {
+    id: Uuid,
+    name: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct WheelSummary {
     id: Uuid,
     brand: Option<String>,
@@ -3534,6 +3541,21 @@ fn update_profile(profile_id: Uuid, state: State<'_, AppState>) -> Result<(), St
 }
 
 #[tauri::command]
+fn duplicate_profile(
+    profile_id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<DuplicatedProfileSummary, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = store
+        .duplicate_profile(profile_id)
+        .map_err(|error| error.to_string())?;
+    Ok(DuplicatedProfileSummary {
+        id: profile.id,
+        name: profile.name,
+    })
+}
+
+#[tauri::command]
 fn delete_profile(profile_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
     let mut store = state.0.lock().map_err(|error| error.to_string())?;
     let profile = find_profile(&store, profile_id)?;
@@ -4605,6 +4627,7 @@ pub fn run() {
             create_virtual_profile,
             import_profile,
             update_profile,
+            duplicate_profile,
             delete_profile,
             reveal_profiles,
             diagnostic_status,

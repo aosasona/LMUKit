@@ -1497,6 +1497,45 @@ impl Store {
         self.save_profile_metadata(&profile)
     }
 
+    pub fn duplicate_profile(&self, profile_id: Uuid) -> Result<Profile> {
+        let profiles = self.profiles()?;
+        let source = profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .context("That profile no longer exists.")?;
+        let source_config = self.profile_dir(source.id).join(CONFIG_FILE_NAME);
+        validate_lmu_file(&source_config)?;
+
+        let mut duplicate = source.clone();
+        duplicate.id = Uuid::new_v4();
+        duplicate.name = duplicate_profile_name(source, &profiles);
+        duplicate.created_at = unix_time()?;
+        duplicate.hotkey_slot = None;
+        let duplicate_dir = self.profile_dir(duplicate.id);
+        fs::create_dir_all(&duplicate_dir).context("could not create the duplicated profile")?;
+
+        let result = (|| -> Result<()> {
+            fs::copy(&source_config, duplicate_dir.join(CONFIG_FILE_NAME))
+                .context("could not duplicate the saved profile bindings")?;
+            if let Some(filename) = duplicate.wheel_image.clone() {
+                let source_image = self.safe_profile_asset_path(source.id, &filename)?;
+                if source_image.is_file() {
+                    fs::copy(source_image, duplicate_dir.join(filename))
+                        .context("could not duplicate the profile wheel image")?;
+                } else {
+                    duplicate.wheel_image = None;
+                }
+            }
+            write_json(&duplicate_dir.join("profile.json"), &duplicate)
+                .context("could not save the duplicated profile metadata")
+        })();
+        if let Err(error) = result {
+            let _ = fs::remove_dir_all(&duplicate_dir);
+            return Err(error);
+        }
+        Ok(duplicate)
+    }
+
     pub fn set_profile_categories(
         &mut self,
         profile_id: Uuid,
@@ -2381,6 +2420,31 @@ fn collect_bindings(
             alternate,
         });
     }
+}
+
+fn duplicate_profile_name(source: &Profile, profiles: &[Profile]) -> String {
+    let existing = profiles
+        .iter()
+        .filter(|profile| profile.workspace_id == source.workspace_id)
+        .map(|profile| profile.name.to_lowercase())
+        .collect::<BTreeSet<_>>();
+    for copy_number in 1.. {
+        let suffix = if copy_number == 1 {
+            " copy".to_owned()
+        } else {
+            format!(" copy {copy_number}")
+        };
+        let prefix_length = 100_usize.saturating_sub(suffix.chars().count());
+        let candidate = format!(
+            "{}{}",
+            source.name.chars().take(prefix_length).collect::<String>(),
+            suffix
+        );
+        if !existing.contains(&candidate.to_lowercase()) {
+            return candidate;
+        }
+    }
+    unreachable!("profile copy numbering cannot be exhausted")
 }
 
 fn imported_profile_name(path: &Path) -> Result<String> {
@@ -4226,6 +4290,73 @@ mod tests {
         store.rename_profile(first.id, " New name ".into()).unwrap();
         assert_eq!(store.profiles().unwrap()[1].name, "New name");
         assert!(store.rename_profile(first.id, "existing".into()).is_err());
+    }
+
+    #[test]
+    fn duplicates_a_complete_profile_without_copying_identity_or_shortcut() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open_at(temp.path().join("data")).unwrap();
+        let mut source = store
+            .import_profile_bytes(
+                "GT3 Race",
+                br#"{"Input":{"Pit Limiter":{"device":"wheel","id":44}},"Unknown":{"kept":true}}"#,
+            )
+            .unwrap();
+        source.assignments = vec!["legacy assignment".into()];
+        store.save_profile_metadata(&source).unwrap();
+        store.set_profile_hotkey(source.id, Some(3)).unwrap();
+        store
+            .set_profile_categories(source.id, vec!["GT3".into()], vec!["Race".into()])
+            .unwrap();
+        let wheel = store
+            .create_wheel(Some("Simagic".into()), "GT Neo".into())
+            .unwrap();
+        store
+            .assign_profile_wheel(source.id, Some(wheel.id))
+            .unwrap();
+        store.settings.virtual_layout = vec![VirtualLayoutEntry {
+            logical_action: "pit_limiter".into(),
+            virtual_button: 1,
+        }];
+        let virtual_mapping = VirtualProfileMapping {
+            buttons: vec![VirtualButtonMapping {
+                device_id: "wheel".into(),
+                device_name: "GT Neo".into(),
+                physical_button: 12,
+                modifiers: Vec::new(),
+                logical_action: "pit_limiter".into(),
+            }],
+            encoder_groups: Vec::new(),
+            system_actions: Vec::new(),
+        };
+        store
+            .set_profile_virtual_mapping(source.id, Some(virtual_mapping.clone()))
+            .unwrap();
+
+        let duplicate = store.duplicate_profile(source.id).unwrap();
+        let second_duplicate = store.duplicate_profile(source.id).unwrap();
+        let refreshed_source = store
+            .profiles()
+            .unwrap()
+            .into_iter()
+            .find(|profile| profile.id == source.id)
+            .unwrap();
+
+        assert_ne!(duplicate.id, source.id);
+        assert_eq!(duplicate.name, "GT3 Race copy");
+        assert_eq!(second_duplicate.name, "GT3 Race copy 2");
+        assert_eq!(duplicate.workspace_id, refreshed_source.workspace_id);
+        assert_eq!(duplicate.assignments, refreshed_source.assignments);
+        assert_eq!(duplicate.class_tags, vec!["GT3"]);
+        assert_eq!(duplicate.custom_tags, vec!["Race"]);
+        assert_eq!(duplicate.wheel_id, Some(wheel.id));
+        assert_eq!(duplicate.virtual_mapping, Some(virtual_mapping));
+        assert_eq!(duplicate.hotkey_slot, None);
+        assert_eq!(refreshed_source.hotkey_slot, Some(3));
+        assert_eq!(
+            fs::read(store.profile_dir(duplicate.id).join(CONFIG_FILE_NAME)).unwrap(),
+            fs::read(store.profile_dir(source.id).join(CONFIG_FILE_NAME)).unwrap()
+        );
     }
 
     #[test]

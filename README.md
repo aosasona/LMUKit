@@ -39,7 +39,7 @@ _Assetto Corsa keeps its profiles and named actions separate while reusing the g
 - Import validated preset JSON files by file picker or drag and drop.
 - Activate a saved profile for LMU's next launch, always backing up the live file first.
 - Detect when LMU's live bindings differ from the active saved profile and safely update either side.
-- Organise profiles in a searchable two-pane workspace using reusable wheels, built-in WEC/ELMS class tags, and custom tags.
+- Organise profiles in a searchable two-pane workspace using reusable wheels, built-in WEC/ELMS class tags, and custom tags, and duplicate a complete profile from its actions menu when creating a variant.
 - Create a shared wheel library with brand, model, and managed PNG, JPEG, or WebP images. One wheel can be reused by several profiles.
 - Browse bindings by device, add new LMU actions, replace primary/alternate mappings, clear unwanted mappings, and press or move a physical control to compare its mapping across every profile.
 - Tune recognised force-feedback fields by device—including a friendly `0..100%` FFB gain control—and inspect the complete preserved profile JSON.

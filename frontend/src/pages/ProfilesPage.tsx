@@ -56,6 +56,7 @@ type Props = {
   onCapture: (name: string) => void;
   onCreateVirtual: (name: string) => void;
   onUpdate: (profile: Profile) => void;
+  onDuplicate: (profile: Profile) => void;
   onDelete: (profile: Profile) => void;
   onReveal: () => void;
   onRemoveDevice: (profile: Profile, device: Device) => void;
@@ -94,6 +95,7 @@ export function ProfilesPage(props: Props) {
     onCapture,
     onCreateVirtual,
     onUpdate,
+    onDuplicate,
     onDelete,
     onReveal,
     onRemoveDevice,
@@ -317,6 +319,10 @@ export function ProfilesPage(props: Props) {
                       label: "Edit LMU configuration",
                       hidden: !isLmu,
                       onSelect: () => onEdit(selected),
+                    },
+                    {
+                      label: "Duplicate profile",
+                      onSelect: () => onDuplicate(selected),
                     },
                     {
                       label: legacyMode

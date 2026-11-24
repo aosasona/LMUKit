@@ -754,6 +754,16 @@ export default function App() {
         `${profile.name} updated from LMU. The previous version was backed up.`,
       );
     });
+  const duplicateProfile = (profile: Profile) =>
+    withBusy(async () => {
+      const duplicate = await invoke<{ id: string; name: string }>(
+        "duplicate_profile",
+        { profileId: profile.id },
+      );
+      await refresh();
+      setSelectedId(duplicate.id);
+      setNotice(`${duplicate.name} created from ${profile.name}.`);
+    });
   const deleteProfile = (profile: Profile) =>
     withBusy(async () => {
       await invoke("delete_profile", { profileId: profile.id });
@@ -1121,6 +1131,7 @@ export default function App() {
                 onCapture={captureProfile}
                 onCreateVirtual={createVirtualProfile}
                 onUpdate={updateProfile}
+                onDuplicate={duplicateProfile}
                 onDelete={deleteProfile}
                 onReveal={revealProfiles}
                 onRemoveDevice={removeDevice}
