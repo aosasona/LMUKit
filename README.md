@@ -3,7 +3,7 @@
 
 # Pivot
 
-Pivot is a modern Windows toolkit for Le Mans Ultimate and button-only virtual remapping in Assetto Corsa. It brings isolated sim workspaces, binding profiles, reusable wheel metadata, control inspection, LMU game settings, and companion-app launching into one focused application.
+Pivot is a modern Windows toolkit for Le Mans Ultimate and virtual control remapping in Assetto Corsa. It brings isolated sim workspaces, binding profiles, reusable wheel metadata, control inspection, LMU game settings, and companion-app launching into one focused application.
 
 Left-clicking the title-bar close button hides Pivot in the Windows notification area so live remapping can continue without a taskbar button. Right-click the close button to request a permanent exit. The tray shows the active workspace and live profile. Its menu can show Pivot, start or stop the last live profile, open the profile switcher, resume automatic selection after a manual override, check for updates, or request exit. Exit always requires confirmation, stops routing, and releases virtual buttons before shutdown.
 
@@ -28,7 +28,7 @@ _Assetto Corsa keeps its profiles and named actions separate while reusing the g
 - Change button and encoder mappings per profile without rebinding every action in LMU.
 - Use modifier combinations for actions such as VR recentering while preserving ordinary single-button actions.
 - Find, test, and diagnose physical controls by their LMU action names instead of memorising virtual button numbers.
-- Keep steering, pedals, and force feedback directly connected to LMU; virtual routing is deliberately button-only.
+- Keep steering, throttle, brake, and force feedback directly connected to LMU while optionally routing a profile-specific clutch through one stable vJoy axis.
 - Protect live and saved configuration with validation, explicit confirmation, and recovery backups.
 - Launch LMU in Desktop or OpenXR mode together with the companion applications you choose.
 
@@ -59,6 +59,7 @@ _Assetto Corsa keeps its profiles and named actions separate while reusing the g
 - Name and pulse unused vJoy buttons for external tools such as RaceLab, then map those shared actions—with the same modifier support—independently in every profile.
 - Deliberately make one physical button or modifier combination trigger several named actions—for example, recentering VR in both LMU and RaceLab—while retaining replacement warnings for accidental conflicts.
 - Bind a physical button or modifier combination to native Windows microphone Toggle, Mute, or Unmute actions, targeting the current default, communications default, or a specific capture device without keyboard-shortcut emulation.
+- Bind one persistent vJoy clutch axis in LMU, then use direct, independent dual-paddle, or firmware-combined clutch sources per wheel profile with calibration, inversion, deadzones, and an adjustable bite point.
 
 Pivot stores profiles, managed wheel images, settings, and timestamped recovery backups in the current Windows user's application-data directory. Use the **Folder** button on Profiles to open the exact location.
 
@@ -130,14 +131,20 @@ Configure the virtual device before assigning it in LMU:
 1. Close LMU and Pivot.
 2. Open **Configure vJoy** from the Windows Start menu.
 3. Select **device 1** and ensure that device is enabled.
-4. Set **Buttons** to **128** and apply the configuration. Pivot does not require virtual axes or force feedback; it emits buttons only.
+4. Set **Buttons** to **128**. If you plan to use Pivot's clutch mapper, also enable one axis (for example `Z`) and keep that choice stable. Pivot never requires vJoy force feedback.
 5. Restart Windows if requested, then open Pivot and check **Virtual input**. It should report vJoy device 1 with 128 buttons.
 
 vJoy supports up to 128 buttons per device, and **128 is strongly recommended** so the shared action layout has room to grow. A smaller configuration still works, but Pivot can use only `B1` through the configured maximum: a 32-button device, for example, cannot route an action assigned to `B33`. Pivot reports the detected capacity, warns below 128, and rejects mappings outside it. The common eight-button default is therefore suitable only for a very small test layout.
 
 Choose the button count once, before binding vJoy in LMU. Changing it alters the controller's HID descriptor, so Windows and LMU may enumerate it as a different device and the vJoy actions may need to be registered again. If the count is changed later, restart LMU and Pivot, rebind the affected actions once, and then keep the capacity fixed.
 
-Steering, throttle, brake, clutch, and force feedback must stay bound directly to the physical wheelbase and pedals. Pivot neither routes nor suppresses axes or FFB. Avoid binding the same physical wheel buttons directly in LMU when Pivot is intended to route them, or both the physical and virtual devices may trigger actions.
+Steering, throttle, brake, and force feedback stay bound directly to the physical wheelbase and pedals. Pivot neither suppresses physical inputs nor participates in FFB. The optional clutch mapper reads only its assigned paddles/axis and writes only the selected vJoy clutch axis. Avoid binding the same physical wheel buttons directly in LMU when Pivot is intended to route them, or both the physical and virtual devices may trigger actions.
+
+#### Configure a profile clutch
+
+Enable the chosen axis in vJoy before opening LMU, bind that vJoy axis to **Clutch** once, then open a profile's **Virtual mappings** editor in Pivot. Choose **Direct axis**, **Dual clutch**, or **Combined axis**, select the same persistent vJoy output, and capture the physical source controls through their full travel. Dual mode accepts digital or analog paddles: the full paddle contributes its full calibrated travel, the bite paddle contributes its travel multiplied by the configured bite point, and Pivot uses the greater contribution with no artificial release delay. Combined mode can remap a known firmware bite point, but it cannot reconstruct two independent paddles from one combined signal.
+
+The output axis stays released when routing starts, a source disconnects, the profile changes, or Pivot exits. Changing profiles replaces only the physical clutch source and button mappings inside the active worker; it does not recreate the virtual controller. Actual paddle polarity, reported DirectInput resolution, and the chosen LMU clutch binding must still be checked on the user's hardware.
 
 #### Register LMU actions
 

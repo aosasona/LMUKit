@@ -1,6 +1,6 @@
 # Virtual Input Mode: profile and binding model
 
-Virtual Input Mode is an optional, button-only alternative to Pivot's existing JSON profile switching. It keeps one stable virtual DirectInput controller bound in Le Mans Ultimate while Pivot changes how physical wheel controls map onto it. Ordinary virtual-profile changes do not replace LMU's `direct input.json` and should not require an LMU restart once the virtual controller has been configured and validated.
+Virtual Input Mode is an optional alternative to Pivot's existing JSON profile switching. It keeps one stable virtual DirectInput controller bound in Le Mans Ultimate while Pivot changes how physical wheel controls map onto it. Ordinary actions remain button-based; an explicit clutch mapper may additionally drive one configured vJoy axis. Ordinary virtual-profile changes do not replace LMU's `direct input.json` and should not require an LMU restart once the virtual controller has been configured and validated.
 
 Virtual action catalogues are scoped to workspaces. The LMU workspace retains the legacy persisted layout and can verify names by rescanning `direct input.json`. Assetto Corsa starts with an independent empty catalogue: the user names and arms an action, makes AC listen for input, and presses `Ctrl+Alt+V` to emit and save the next vJoy button. Pivot cannot verify AC's saved binding, so the user must confirm each assignment in game.
 
@@ -54,9 +54,9 @@ For an existing profile, **Reuse existing bindings** reads that profile's saved 
 
 The live DirectInput reader and the importer identify a controller using the USB VID/PID encoded in DirectInput's product GUID. That is stable across reconnects and matches LMU's device metadata, but it is not a unique rim identity: two simultaneously connected devices with the same VID/PID cannot yet be distinguished automatically. Profile selection remains explicit, which is especially important for rims presented through the same Simagic base.
 
-Importing the layout is read-only and never rewrites LMU's file. Pivot rejects ambiguous layouts, including one virtual button bound to several LMU actions or one action bound to several buttons on the virtual device, and asks the user to resolve them in LMU. Axis and POV bindings on the virtual device are ignored because Virtual Input Mode is button-only.
+Importing the layout is read-only and never rewrites LMU's file. Pivot rejects ambiguous layouts, including one virtual button bound to several LMU actions or one action bound to several buttons on the virtual device, and asks the user to resolve them in LMU. Axis and POV bindings are ignored by this named button-layout import; the clutch output is configured explicitly in the profile editor and is never inferred from LMU's action scan.
 
-Steering, throttle, brake, clutch, and FFB remain connected directly between the physical hardware and LMU. Virtual Input Mode never reads, emits, transforms, or suppresses those axes and never participates in force-feedback delivery. It manages only programmable buttons, switches, encoder steps, and optional digital paddles.
+Steering, throttle, brake, and FFB remain connected directly between the physical hardware and LMU. Virtual Input Mode never reads, emits, transforms, or suppresses those axes and never participates in force-feedback delivery. In addition to programmable buttons, switches, encoder steps, and optional digital paddles, a profile may explicitly map direct, independent dual-paddle, or firmware-combined clutch input to one persistent vJoy clutch axis. Pivot writes the configured released endpoint on acquisition, source loss, profile change, and shutdown.
 
 LMU continues to see the physical controller. A physical control managed through Pivot should not also have a direct LMU binding, otherwise one press may trigger both the direct action and the translated virtual action. Pivot does not hide or suppress physical devices.
 
