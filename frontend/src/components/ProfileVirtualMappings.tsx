@@ -2,7 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   Crosshair,
   Gamepad2,
+  Gauge,
   LoaderCircle,
+  Mic2,
   Radio,
   Search,
   SlidersHorizontal,
@@ -88,6 +90,9 @@ export function ProfileVirtualMappings({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "assigned" | "unassigned">(
     "all",
+  );
+  const [editorTab, setEditorTab] = useState<"buttons" | "clutch" | "system">(
+    "buttons",
   );
   const [routing, setRouting] = useState<VirtualRoutingStatus>({
     active: false,
@@ -636,10 +641,10 @@ export function ProfileVirtualMappings({
             <header>
               <div>
                 <span className="eyebrow">{profile.name}</span>
-                <h2 id="profile-mapping-title">Wheel button mappings</h2>
+                <h2 id="profile-mapping-title">Profile inputs</h2>
                 <p>
-                  Pick a named action, then press the physical control that
-                  should trigger it for this profile.
+                  Configure virtual buttons, clutch passthrough, and native
+                  system actions without leaving this profile.
                 </p>
               </div>
               {presentation === "card" && (
@@ -661,238 +666,279 @@ export function ProfileVirtualMappings({
             )}
             {error && <div className="virtual-error">{error}</div>}
 
-            <ProfileClutchMapping
-              profileId={profile.id}
-              disabled={
-                busy ||
-                routingActive ||
-                learning !== null ||
-                testing ||
-                savingMapping
-              }
-              routing={routing}
-              onNotice={onNotice}
-              onConfiguredChange={setHasClutch}
-            />
-
-            <SystemActionMappings
-              profileId={profile.id}
-              disabled={
-                busy ||
-                routingActive ||
-                learning !== null ||
-                testing ||
-                savingMapping
-              }
-              onNotice={onNotice}
-              onCountChange={setSystemActionCount}
-            />
-
-            <div className="profile-mapping-toolbar">
-              <label className="profile-mapping-search">
-                <Search />
-                <input
-                  autoFocus={presentation === "card"}
-                  value={query}
-                  placeholder="Search actions, buttons, or devices"
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </label>
-              <div className="profile-mapping-filters">
-                {(["all", "unassigned", "assigned"] as const).map((option) => (
-                  <button
-                    type="button"
-                    className={filter === option ? "active" : ""}
-                    key={option}
-                    onClick={() => setFilter(option)}
-                  >
-                    {option[0].toUpperCase() + option.slice(1)}
-                  </button>
-                ))}
-              </div>
+            <nav className="profile-input-tabs" aria-label="Profile input type">
               <button
                 type="button"
-                className="secondary compact"
+                className={editorTab === "buttons" ? "active" : ""}
+                onClick={() => setEditorTab("buttons")}
+              >
+                <Gamepad2 /> Virtual buttons
+              </button>
+              <button
+                type="button"
+                className={editorTab === "clutch" ? "active" : ""}
+                onClick={() => setEditorTab("clutch")}
+              >
+                <Gauge /> Clutch axis
+              </button>
+              <button
+                type="button"
+                className={editorTab === "system" ? "active" : ""}
+                onClick={() => setEditorTab("system")}
+              >
+                <Mic2 /> System actions
+              </button>
+            </nav>
+
+            <div
+              className="profile-mapping-tab-panel"
+              hidden={editorTab !== "clutch"}
+            >
+              <ProfileClutchMapping
+                profileId={profile.id}
                 disabled={
                   busy ||
                   routingActive ||
-                  migrating ||
                   learning !== null ||
                   testing ||
                   savingMapping
                 }
-                onClick={() => void testControl()}
-              >
-                {testing ? <Radio className="spin" /> : <Crosshair />}
-                {testing ? "Press a control…" : "Test a control"}
-              </button>
-              <ActionMenu
-                label="Mapping tools"
-                items={[
-                  {
-                    label: "Import controls from LMU bindings…",
-                    hidden:
-                      !isLmu ||
-                      busy ||
-                      routingActive ||
-                      migrating ||
-                      learning !== null ||
-                      testing ||
-                      savingMapping,
-                    onSelect: () =>
-                      setConfirmation({
-                        title: "Import controls from this LMU profile?",
-                        description:
-                          "Pivot will add matching physical button controls from the profile's saved direct input configuration. Existing physical control assignments are kept, but you should review any newly added mappings afterward.",
-                        confirmLabel: "Import controls",
-                        onConfirm: () => {
-                          setConfirmation(null);
-                          void migrate();
-                        },
-                      }),
-                  },
-                ]}
+                routing={routing}
+                onNotice={onNotice}
+                onConfiguredChange={setHasClutch}
               />
             </div>
 
-            {inspection && (
-              <div className="profile-control-inspection">
-                <Crosshair />
-                <span>
-                  <strong>{inspection.control}</strong>
-                  <small>
-                    {inspection.matches.length
-                      ? inspection.matches
-                          .map(
-                            (match) =>
-                              `${match.logicalAction} · vJoy B${match.virtualButton}`,
-                          )
-                          .join(" · ")
-                      : "Not mapped in this profile"}
-                  </small>
-                </span>
-                <button
-                  type="button"
-                  aria-label="Clear tested control"
-                  onClick={() => setInspection(null)}
-                >
-                  <X />
-                </button>
-              </div>
-            )}
-
-            <div className="profile-mapping-dialog-list">
-              {visibleActions.map((action) => {
-                const assigned = mappings.filter(
-                  (mapping) => mapping.logicalAction === action.action,
-                );
-                return (
-                  <div
-                    className={
-                      inspection?.matches.some(
-                        (match) => match.logicalAction === action.action,
-                      )
-                        ? "profile-mapping-row tested"
-                        : "profile-mapping-row"
-                    }
-                    key={action.action}
-                  >
-                    <span>
-                      <strong>{action.action}</strong>
-                      <small>vJoy B{action.virtualButton}</small>
-                    </span>
-                    <div className="profile-mapping-sources">
-                      {assigned.map((mapping) => (
-                        <span
-                          key={`${mapping.deviceId}-${mapping.physicalButton}-${mapping.modifiers
-                            .map(
-                              (modifier) =>
-                                `${modifier.deviceId}-${modifier.physicalButton}`,
-                            )
-                            .join("+")}`}
-                        >
-                          {mapping.modifiers.map((modifier) => (
-                            <span
-                              className="profile-mapping-modifier"
-                              key={`${modifier.deviceId}-${modifier.physicalButton}`}
-                            >
-                              {modifier.deviceName || "Physical controller"} ·
-                              Button {modifier.physicalButton} +
-                            </span>
-                          ))}
-                          {mapping.deviceName || "Physical controller"} · Button{" "}
-                          {mapping.physicalButton}
-                          <button
-                            type="button"
-                            aria-label={`Remove ${action.action} mapping`}
-                            disabled={routingActive}
-                            onClick={() => void remove(mapping)}
-                          >
-                            <Trash2 />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                    <div className="profile-mapping-assign-actions">
-                      <button
-                        type="button"
-                        className="secondary compact"
-                        disabled={
-                          busy ||
-                          routingActive ||
-                          learning !== null ||
-                          migrating ||
-                          testing ||
-                          savingMapping
-                        }
-                        onClick={() => void learn(action.action)}
-                      >
-                        {learning === action.action ? (
-                          <>
-                            <Radio className="spin" /> Press one, or hold +
-                            press…
-                          </>
-                        ) : assigned.length ? (
-                          "Add control"
-                        ) : (
-                          "Bind control"
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-              {!visibleActions.length && (
-                <div className="profile-mapping-no-results">
-                  No actions match this search and filter.
-                </div>
-              )}
+            <div
+              className="profile-mapping-tab-panel"
+              hidden={editorTab !== "system"}
+            >
+              <SystemActionMappings
+                profileId={profile.id}
+                disabled={
+                  busy ||
+                  routingActive ||
+                  learning !== null ||
+                  testing ||
+                  savingMapping
+                }
+                onNotice={onNotice}
+                onCountChange={setSystemActionCount}
+              />
             </div>
 
-            <footer>
-              <span>
-                {visibleActions.length} of {actions.length} actions ·{" "}
-                {mappings.length} physical mappings
-              </span>
-              {learning || testing ? (
+            <div
+              className="profile-mapping-button-tab"
+              hidden={editorTab !== "buttons"}
+            >
+              <div className="profile-mapping-toolbar">
+                <label className="profile-mapping-search">
+                  <Search />
+                  <input
+                    autoFocus={presentation === "card"}
+                    value={query}
+                    placeholder="Search actions, buttons, or devices"
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                </label>
+                <div className="profile-mapping-filters">
+                  {(["all", "unassigned", "assigned"] as const).map(
+                    (option) => (
+                      <button
+                        type="button"
+                        className={filter === option ? "active" : ""}
+                        key={option}
+                        onClick={() => setFilter(option)}
+                      >
+                        {option[0].toUpperCase() + option.slice(1)}
+                      </button>
+                    ),
+                  )}
+                </div>
                 <button
                   type="button"
-                  className="secondary"
-                  onClick={() => void cancelLearning()}
+                  className="secondary compact"
+                  disabled={
+                    busy ||
+                    routingActive ||
+                    migrating ||
+                    learning !== null ||
+                    testing ||
+                    savingMapping
+                  }
+                  onClick={() => void testControl()}
                 >
-                  <Square /> Cancel control capture
+                  {testing ? <Radio className="spin" /> : <Crosshair />}
+                  {testing ? "Press a control…" : "Test a control"}
                 </button>
-              ) : presentation === "card" ? (
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={savingMapping}
-                  onClick={() => void closeEditor()}
-                >
-                  Done
-                </button>
-              ) : null}
-            </footer>
+                <ActionMenu
+                  label="Mapping tools"
+                  items={[
+                    {
+                      label: "Import controls from LMU bindings…",
+                      hidden:
+                        !isLmu ||
+                        busy ||
+                        routingActive ||
+                        migrating ||
+                        learning !== null ||
+                        testing ||
+                        savingMapping,
+                      onSelect: () =>
+                        setConfirmation({
+                          title: "Import controls from this LMU profile?",
+                          description:
+                            "Pivot will add matching physical button controls from the profile's saved direct input configuration. Existing physical control assignments are kept, but you should review any newly added mappings afterward.",
+                          confirmLabel: "Import controls",
+                          onConfirm: () => {
+                            setConfirmation(null);
+                            void migrate();
+                          },
+                        }),
+                    },
+                  ]}
+                />
+              </div>
+
+              {inspection && (
+                <div className="profile-control-inspection">
+                  <Crosshair />
+                  <span>
+                    <strong>{inspection.control}</strong>
+                    <small>
+                      {inspection.matches.length
+                        ? inspection.matches
+                            .map(
+                              (match) =>
+                                `${match.logicalAction} · vJoy B${match.virtualButton}`,
+                            )
+                            .join(" · ")
+                        : "Not mapped in this profile"}
+                    </small>
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Clear tested control"
+                    onClick={() => setInspection(null)}
+                  >
+                    <X />
+                  </button>
+                </div>
+              )}
+
+              <div className="profile-mapping-dialog-list">
+                {visibleActions.map((action) => {
+                  const assigned = mappings.filter(
+                    (mapping) => mapping.logicalAction === action.action,
+                  );
+                  return (
+                    <div
+                      className={
+                        inspection?.matches.some(
+                          (match) => match.logicalAction === action.action,
+                        )
+                          ? "profile-mapping-row tested"
+                          : "profile-mapping-row"
+                      }
+                      key={action.action}
+                    >
+                      <span>
+                        <strong>{action.action}</strong>
+                        <small>vJoy B{action.virtualButton}</small>
+                      </span>
+                      <div className="profile-mapping-sources">
+                        {assigned.map((mapping) => (
+                          <span
+                            key={`${mapping.deviceId}-${mapping.physicalButton}-${mapping.modifiers
+                              .map(
+                                (modifier) =>
+                                  `${modifier.deviceId}-${modifier.physicalButton}`,
+                              )
+                              .join("+")}`}
+                          >
+                            {mapping.modifiers.map((modifier) => (
+                              <span
+                                className="profile-mapping-modifier"
+                                key={`${modifier.deviceId}-${modifier.physicalButton}`}
+                              >
+                                {modifier.deviceName || "Physical controller"} ·
+                                Button {modifier.physicalButton} +
+                              </span>
+                            ))}
+                            {mapping.deviceName || "Physical controller"} ·
+                            Button {mapping.physicalButton}
+                            <button
+                              type="button"
+                              aria-label={`Remove ${action.action} mapping`}
+                              disabled={routingActive}
+                              onClick={() => void remove(mapping)}
+                            >
+                              <Trash2 />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                      <div className="profile-mapping-assign-actions">
+                        <button
+                          type="button"
+                          className="secondary compact"
+                          disabled={
+                            busy ||
+                            routingActive ||
+                            learning !== null ||
+                            migrating ||
+                            testing ||
+                            savingMapping
+                          }
+                          onClick={() => void learn(action.action)}
+                        >
+                          {learning === action.action ? (
+                            <>
+                              <Radio className="spin" /> Press one, or hold +
+                              press…
+                            </>
+                          ) : assigned.length ? (
+                            "Add control"
+                          ) : (
+                            "Bind control"
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {!visibleActions.length && (
+                  <div className="profile-mapping-no-results">
+                    No actions match this search and filter.
+                  </div>
+                )}
+              </div>
+
+              <footer>
+                <span>
+                  {visibleActions.length} of {actions.length} actions ·{" "}
+                  {mappings.length} physical mappings
+                </span>
+                {learning || testing ? (
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => void cancelLearning()}
+                  >
+                    <Square /> Cancel control capture
+                  </button>
+                ) : presentation === "card" ? (
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={savingMapping}
+                    onClick={() => void closeEditor()}
+                  >
+                    Done
+                  </button>
+                ) : null}
+              </footer>
+            </div>
           </section>
         </div>
       )}
