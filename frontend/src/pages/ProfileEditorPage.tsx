@@ -145,18 +145,6 @@ export function ProfileEditorPage({
       </div>
       {section === "virtual" && profile && (
         <div className="profile-editor-virtual">
-          <div className="profile-editor-intro">
-            <span className="eyebrow">Current mapping system</span>
-            <h3>Map physical controls to named virtual actions</h3>
-            <p>
-              These mappings are used by live remapping and can differ for every
-              profile without changing{" "}
-              {workspaceKind === "le_mans_ultimate"
-                ? "LMU's saved bindings"
-                : "the game's saved controls"}
-              .
-            </p>
-          </div>
           <ProfileVirtualMappings
             key={`editor-virtual-${profile.id}`}
             profile={profile}

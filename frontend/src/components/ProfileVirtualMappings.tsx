@@ -453,7 +453,13 @@ export function ProfileVirtualMappings({
   };
 
   return (
-    <section className="profile-virtual-mappings">
+    <section
+      className={
+        presentation === "workspace"
+          ? "profile-virtual-mappings workspace"
+          : "profile-virtual-mappings"
+      }
+    >
       <header>
         <div>
           <span className="eyebrow">Virtual input</span>

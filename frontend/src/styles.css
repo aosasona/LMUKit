@@ -4362,6 +4362,13 @@ textarea,
   padding: 17px 0;
   border-bottom: 1px solid var(--line);
 }
+.profile-virtual-mappings.workspace {
+  padding-top: 0;
+  border-bottom: 0;
+}
+.profile-virtual-mappings.workspace > header {
+  display: none;
+}
 .profile-virtual-mappings > header {
   display: flex;
   align-items: end;
@@ -5035,8 +5042,9 @@ textarea,
 }
 .profile-mapping-dialog.inline {
   width: 100%;
-  height: min(920px, max(760px, calc(100vh - 180px)));
-  min-height: 760px;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
   box-shadow: none;
 }
 .profile-mapping-dialog > header {
@@ -5105,11 +5113,6 @@ textarea,
   flex: 1;
   display: flex;
   flex-direction: column;
-}
-.profile-mapping-dialog.inline {
-  height: auto;
-  min-height: 0;
-  overflow: visible;
 }
 .profile-mapping-dialog.inline .profile-mapping-tab-panel,
 .profile-mapping-dialog.inline .profile-mapping-dialog-list {
@@ -5610,6 +5613,18 @@ textarea,
 .profile-remapping-bar > button {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+.profile-virtual-mappings.workspace > .profile-remapping-bar {
+  margin-top: 0;
+  padding: 9px 12px;
+  background: #151514;
+}
+.profile-virtual-mappings.workspace .profile-mapping-dialog.inline > header {
+  display: none;
+}
+.profile-virtual-mappings.workspace .profile-input-tabs {
+  margin-top: 10px;
+  border: 1px solid var(--line);
 }
 .profile-devices-head {
   display: flex;

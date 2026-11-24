@@ -1,12 +1,12 @@
 {
-  "version": "0.6.8",
-  "title": "Wheel-controlled microphone mute",
-  "summary": "This release adds native Windows microphone actions to Pivot's existing wheel and controller mappings.",
+  "version": "0.6.9",
+  "title": "Cleaner profile input setup",
+  "summary": "This release makes live wheel mappings easier to configure and adds a guided clutch-axis binding flow.",
   "highlights": [
-    "Bind a wheel, controller, or button-box control to toggle, mute, or unmute a microphone without keyboard shortcuts.",
-    "Target the current default microphone, communications microphone, or a specific Windows capture device.",
-    "Use profile-specific or global microphone bindings with existing modifier support and press-edge handling.",
-    "Optional Pivot-owned ascending and descending chimes confirm the verified microphone state.",
-    "The profile mapping editor now has clearer confirmations, correctly styled controls, and a taller bindings list."
+    "The profile editor now opens directly on virtual buttons, with search and input tabs taking priority over repeated headings.",
+    "Class defaults have their own tab so button, clutch, system-action, and automatic-selection settings are easier to find.",
+    "A three-step walkthrough explains how to bind Pivot's persistent vJoy clutch axis once in LMU.",
+    "Combined clutch axes now pass through the value produced by SimPro, SimHub, or wheel firmware; no artificial bite-point processing is added.",
+    "Disable remapping and Resume auto remain available as global controls while routing is live."
   ]
 }
