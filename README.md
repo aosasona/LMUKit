@@ -59,7 +59,7 @@ _Assetto Corsa keeps its profiles and named actions separate while reusing the g
 - Name and pulse unused vJoy buttons for external tools such as RaceLab, then map those shared actions—with the same modifier support—independently in every profile.
 - Deliberately make one physical button or modifier combination trigger several named actions—for example, recentering VR in both LMU and RaceLab—while retaining replacement warnings for accidental conflicts.
 - Bind a physical button or modifier combination to native Windows microphone Toggle, Mute, or Unmute actions, targeting the current default, communications default, or a specific capture device without keyboard-shortcut emulation.
-- Bind one persistent vJoy clutch axis in LMU, then use direct, independent dual-paddle, or firmware-combined clutch sources per wheel profile with calibration, inversion, deadzones, and an adjustable bite point.
+- Bind one persistent vJoy clutch axis in LMU, then relay the firmware-combined clutch axis from SimPro, SimHub, or similar wheel software through each Pivot profile.
 
 Pivot stores profiles, managed wheel images, settings, and timestamped recovery backups in the current Windows user's application-data directory. Use the **Folder** button on Profiles to open the exact location.
 
@@ -142,7 +142,9 @@ Steering, throttle, brake, and force feedback stay bound directly to the physica
 
 #### Configure a profile clutch
 
-Enable the chosen axis in vJoy before opening LMU, bind that vJoy axis to **Clutch** once, then open a profile's **Virtual mappings** editor in Pivot. Choose **Direct axis**, **Dual clutch**, or **Combined axis**, select the same persistent vJoy output, and capture the physical source controls through their full travel. Dual mode accepts digital or analog paddles: the full paddle contributes its full calibrated travel, the bite paddle contributes its travel multiplied by the configured bite point, and Pivot uses the greater contribution with no artificial release delay. Combined mode can remap a known firmware bite point, but it cannot reconstruct two independent paddles from one combined signal.
+Configure the paddles and bite point in the wheel software first—for example, SimPro for Simagic wheels or SimHub for a GTE Pro—so Windows receives one finished clutch axis. Enable one axis on vJoy device 1, bind that vJoy axis to **Clutch** once in LMU, then open the profile's **Virtual mappings** editor in Pivot and select the **Clutch axis** tab. Capture the combined physical axis through its complete travel and save it. Pivot normalises the captured endpoints and relays the value; it does not calculate or replace the wheel software's bite point.
+
+The first available vJoy axis and conservative 1% endpoint deadzones are selected automatically. Advanced settings allow changing the output axis, inversion, or deadzones when hardware validation shows that they are needed. Hover or focus the help icons beside those settings for an explanation. Older saved software dual-clutch mappings remain readable, but the editor asks you to replace them with the simpler firmware-combined passthrough.
 
 The output axis stays released when routing starts, a source disconnects, the profile changes, or Pivot exits. Changing profiles replaces only the physical clutch source and button mappings inside the active worker; it does not recreate the virtual controller. Actual paddle polarity, reported DirectInput resolution, and the chosen LMU clutch binding must still be checked on the user's hardware.
 
