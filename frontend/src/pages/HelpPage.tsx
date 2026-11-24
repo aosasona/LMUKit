@@ -228,8 +228,9 @@ export function HelpPage({
             <h4>Controllers</h4>
             <p>
               Digital buttons work when the controller is visible to the
-              DirectInput reader. Analog sticks, triggers, rumble, and
-              XInput-only devices are not currently remapped.
+              DirectInput reader. The dedicated clutch mapper can additionally
+              use calibrated DirectInput axes. Analog sticks, rumble, and
+              XInput-only devices are not general-purpose remapping targets.
             </p>
           </article>
           <article>
@@ -245,10 +246,12 @@ export function HelpPage({
         <div className="help-safety-note">
           <AlertTriangle />
           <div>
-            <strong>Virtual Input is deliberately button-only</strong>
+            <strong>Axes are limited to the explicit clutch mapper</strong>
             <span>
-              Pivot does not suppress physical hardware, transform axes, or
-              participate in force feedback. Avoid binding the same physical
+              Pivot never suppresses physical hardware or participates in force
+              feedback. Steering, throttle, and brake remain direct; the
+              optional clutch setup reads only its assigned sources and emits
+              only its selected vJoy axis. Avoid binding the same physical
               button directly in LMU and through vJoy, or both inputs may fire.
             </span>
           </div>

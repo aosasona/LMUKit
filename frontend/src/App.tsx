@@ -60,6 +60,11 @@ export default function App() {
     error: null,
     selectionReason: null,
     activeEncoderModes: [],
+    clutchOutputPercent: null,
+    clutchAxis: null,
+    clutchPrimaryInputPercent: null,
+    clutchBiteInputPercent: null,
+    analogAxisOutputs: [],
   });
   const [carContext, setCarContext] = useState<LmuCarContextStatus>(
     emptyCarContextStatus,

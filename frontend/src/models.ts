@@ -85,6 +85,84 @@ export type VirtualProfileMapping = {
   modifiers: VirtualButtonModifier[];
   logicalAction: string;
 };
+export type VirtualAxisId =
+  | "x"
+  | "y"
+  | "z"
+  | "rx"
+  | "ry"
+  | "rz"
+  | "slider0"
+  | "slider1"
+  | "wheel";
+export type VirtualAxisCalibration = {
+  minimum: number;
+  maximum: number;
+  inverted: boolean;
+  released_deadzone_percent: number;
+  engaged_deadzone_percent: number;
+};
+export type VirtualAxisInput = {
+  device_id: string;
+  device_name: string;
+  physical_axis: number;
+  calibration: VirtualAxisCalibration;
+};
+export type VirtualClutchInput =
+  | {
+      kind: "button";
+      device_id: string;
+      device_name: string;
+      physical_button: number;
+    }
+  | ({ kind: "axis" } & VirtualAxisInput);
+export type VirtualClutchMapping =
+  | { mode: "direct"; input: VirtualAxisInput }
+  | {
+      mode: "dual";
+      full: VirtualClutchInput;
+      bite: VirtualClutchInput;
+      bite_point_percent: number;
+      use_workspace_bite_point: boolean;
+    }
+  | {
+      mode: "combined";
+      input: VirtualAxisInput;
+      firmware_bite_point_percent: number | null;
+      bite_point_percent: number;
+      use_workspace_bite_point: boolean;
+    };
+export type VirtualAnalogAxisMapping = {
+  name: string;
+  input: VirtualAxisInput;
+  virtual_axis: VirtualAxisId;
+};
+export type WorkspaceClutchSettings = {
+  workspace_id: string;
+  virtual_axis: VirtualAxisId;
+  shared_bite_point_percent: number;
+};
+export type ClutchConfiguration = {
+  mapping: VirtualClutchMapping | null;
+  analogAxes: VirtualAnalogAxisMapping[];
+  workspace: WorkspaceClutchSettings | null;
+  availableVirtualAxes: VirtualAxisId[];
+};
+export type ClutchInputCapture =
+  | {
+      kind: "button";
+      deviceId: string;
+      deviceName: string;
+      physicalButton: number;
+    }
+  | {
+      kind: "axis";
+      deviceId: string;
+      deviceName: string;
+      physicalAxis: number;
+      minimum: number;
+      maximum: number;
+    };
 export type VirtualButtonModifier = {
   deviceId: string;
   deviceName: string;
@@ -162,6 +240,16 @@ export type VirtualRoutingStatus = {
   error: string | null;
   selectionReason: string | null;
   activeEncoderModes: { encoderName: string; modeName: string }[];
+  clutchOutputPercent: number | null;
+  clutchAxis: string | null;
+  clutchPrimaryInputPercent: number | null;
+  clutchBiteInputPercent: number | null;
+  analogAxisOutputs: {
+    name: string;
+    inputPercent: number;
+    outputPercent: number;
+    virtualAxis: string;
+  }[];
 };
 export type LmuCarContextStatus = {
   connected: boolean;

@@ -28,6 +28,7 @@ import type {
 import { ActionMenu } from "./ActionMenu";
 import { ConfirmDialog, type Confirmation } from "./ConfirmDialog";
 import { ProfileEncoderMappings } from "./ProfileEncoderMappings";
+import { ProfileClutchMapping } from "./ProfileClutchMapping";
 import { SystemActionMappings } from "./SystemActionMappings";
 import type { InputMode } from "./InputModeSwitch";
 
@@ -98,9 +99,15 @@ export function ProfileVirtualMappings({
     error: null,
     selectionReason: null,
     activeEncoderModes: [],
+    clutchOutputPercent: null,
+    clutchAxis: null,
+    clutchPrimaryInputPercent: null,
+    clutchBiteInputPercent: null,
+    analogAxisOutputs: [],
   });
   const [error, setError] = useState<string | null>(null);
   const [systemActionCount, setSystemActionCount] = useState(0);
+  const [hasClutch, setHasClutch] = useState(false);
   const routingActive = routing.active;
   const assignedActions = new Set(
     mappings.map((mapping) => mapping.logicalAction),
@@ -577,7 +584,7 @@ export function ProfileVirtualMappings({
             disabled={
               busy ||
               routingBusy ||
-              (!mappings.length && !systemActionCount) ||
+              (!mappings.length && !systemActionCount && !hasClutch) ||
               inputMode !== "virtual"
             }
             onClick={() => void startRouting()}
@@ -653,6 +660,20 @@ export function ProfileVirtualMappings({
               </div>
             )}
             {error && <div className="virtual-error">{error}</div>}
+
+            <ProfileClutchMapping
+              profileId={profile.id}
+              disabled={
+                busy ||
+                routingActive ||
+                learning !== null ||
+                testing ||
+                savingMapping
+              }
+              routing={routing}
+              onNotice={onNotice}
+              onConfiguredChange={setHasClutch}
+            />
 
             <SystemActionMappings
               profileId={profile.id}
