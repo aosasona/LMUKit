@@ -712,6 +712,24 @@ impl Store {
             settings.shared_bite_point_percent <= 100,
             "Shared bite point must be between 0% and 100%."
         );
+        for profile in self
+            .profiles()?
+            .into_iter()
+            .filter(|profile| profile.workspace_id == settings.workspace_id)
+        {
+            if let Some(mapping) = profile.virtual_mapping
+                && mapping.clutch.is_some()
+                && mapping
+                    .analog_axes
+                    .iter()
+                    .any(|analog| analog.virtual_axis == settings.virtual_axis)
+            {
+                bail!(
+                    "Profile '{}' already uses that vJoy axis for another analog mapping.",
+                    profile.name
+                );
+            }
+        }
         self.settings
             .workspace_clutch_settings
             .retain(|entry| entry.workspace_id != settings.workspace_id);
@@ -941,6 +959,17 @@ impl Store {
                 mapping,
                 self.virtual_layout_for_workspace(&profile.workspace_id),
             )?;
+            if mapping.clutch.is_some()
+                && let Some(workspace) = self.workspace_clutch_settings(&profile.workspace_id)
+            {
+                ensure!(
+                    !mapping
+                        .analog_axes
+                        .iter()
+                        .any(|analog| analog.virtual_axis == workspace.virtual_axis),
+                    "The clutch and another analog mapping cannot write the same vJoy axis."
+                );
+            }
         }
         profile.virtual_mapping = mapping;
         self.save_profile_metadata(&profile)
@@ -3226,6 +3255,49 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<VirtualClutchMapping>(&json).unwrap(),
             mapping
+        );
+    }
+
+    #[test]
+    fn rejects_clutch_and_generic_mapping_on_the_same_virtual_axis() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open_at(temp.path().join("data")).unwrap();
+        let profile = store.create_virtual_profile("Dual clutch").unwrap();
+        store
+            .set_workspace_clutch_settings(WorkspaceClutchSettings {
+                workspace_id: LMU_WORKSPACE_ID.into(),
+                virtual_axis: VirtualAxisId::Z,
+                shared_bite_point_percent: 50,
+            })
+            .unwrap();
+        let input = |axis| VirtualAxisInput {
+            device_id: "wheel".into(),
+            device_name: "Wheel".into(),
+            physical_axis: axis,
+            calibration: VirtualAxisCalibration {
+                minimum: 0,
+                maximum: 65_535,
+                inverted: false,
+                released_deadzone_percent: 0,
+                engaged_deadzone_percent: 0,
+            },
+        };
+        let mapping = VirtualProfileMapping {
+            clutch: Some(VirtualClutchMapping::Direct { input: input(1) }),
+            analog_axes: vec![VirtualAnalogAxisMapping {
+                name: "Handbrake".into(),
+                input: input(2),
+                virtual_axis: VirtualAxisId::Z,
+            }],
+            ..VirtualProfileMapping::default()
+        };
+
+        assert!(
+            store
+                .set_profile_virtual_mapping(profile.id, Some(mapping))
+                .unwrap_err()
+                .to_string()
+                .contains("cannot write the same vJoy axis")
         );
     }
 
