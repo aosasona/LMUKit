@@ -4,8 +4,9 @@
 //! that Le Mans Ultimate recognises or accepts the virtual device.
 
 use anyhow::Result;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
+mod clutch;
 mod engine;
 
 #[cfg(target_os = "windows")]
@@ -13,15 +14,81 @@ pub mod direct_input;
 #[cfg(target_os = "windows")]
 pub mod vjoy;
 
+pub use clutch::{
+    AxisCalibration, ClutchInput, ClutchInputKind, ClutchMode, ClutchProcessor, PhysicalAxis,
+};
 pub use engine::{
     EncoderGroup, EncoderMode, LogicalAction, MappingEngine, PhysicalButton, ProfileBinding,
     ProfileMapping, VirtualLayout,
 };
 
+/// vJoy axes addressable through its public HID-usage API.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum VirtualAxis {
+    X,
+    Y,
+    Z,
+    Rx,
+    Ry,
+    Rz,
+    Slider0,
+    Slider1,
+    Wheel,
+}
+
+impl VirtualAxis {
+    pub const ALL: [Self; 9] = [
+        Self::X,
+        Self::Y,
+        Self::Z,
+        Self::Rx,
+        Self::Ry,
+        Self::Rz,
+        Self::Slider0,
+        Self::Slider1,
+        Self::Wheel,
+    ];
+
+    pub const fn hid_usage(self) -> u32 {
+        match self {
+            Self::X => 0x30,
+            Self::Y => 0x31,
+            Self::Z => 0x32,
+            Self::Rx => 0x33,
+            Self::Ry => 0x34,
+            Self::Rz => 0x35,
+            Self::Slider0 => 0x36,
+            Self::Slider1 => 0x37,
+            Self::Wheel => 0x38,
+        }
+    }
+}
+
+/// Actual range reported by the configured vJoy device for one axis.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct VirtualAxisRange {
+    pub minimum: i32,
+    pub maximum: i32,
+}
+
+impl VirtualAxisRange {
+    pub fn new(minimum: i32, maximum: i32) -> Result<Self> {
+        anyhow::ensure!(minimum < maximum, "virtual axis range must increase");
+        Ok(Self { minimum, maximum })
+    }
+
+    pub fn value_for(&self, normalized: f64) -> i32 {
+        let normalized = normalized.clamp(0.0, 1.0);
+        let span = i64::from(self.maximum) - i64::from(self.minimum);
+        (i64::from(self.minimum) + (span as f64 * normalized).round() as i64) as i32
+    }
+}
+
 /// Stable information about the virtual device acquired by a backend.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VirtualCapabilities {
     pub button_count: u32,
+    pub axes: BTreeMap<VirtualAxis, VirtualAxisRange>,
     pub identity: String,
 }
 
@@ -30,6 +97,7 @@ pub trait VirtualInputBackend {
     fn connect(&mut self) -> Result<()>;
     fn capabilities(&self) -> Result<VirtualCapabilities>;
     fn set_button(&mut self, button_id: u32, pressed: bool) -> Result<()>;
+    fn set_axis(&mut self, axis: VirtualAxis, value: i32) -> Result<()>;
     fn release_all(&mut self) -> Result<()>;
     fn disconnect(&mut self) -> Result<()>;
 }
@@ -184,6 +252,8 @@ pub struct MockVirtualBackend {
     connected: bool,
     buttons: Vec<bool>,
     events: Vec<(u32, bool)>,
+    axes: BTreeMap<VirtualAxis, i32>,
+    axis_events: Vec<(VirtualAxis, i32)>,
 }
 
 impl MockVirtualBackend {
@@ -191,12 +261,21 @@ impl MockVirtualBackend {
         Self {
             capabilities: VirtualCapabilities {
                 button_count,
+                axes: BTreeMap::new(),
                 identity: "Pivot mock virtual controller".to_owned(),
             },
             connected: false,
             buttons: vec![false; button_count as usize],
             events: Vec::new(),
+            axes: BTreeMap::new(),
+            axis_events: Vec::new(),
         }
+    }
+
+    pub fn with_axis(mut self, axis: VirtualAxis, range: VirtualAxisRange) -> Self {
+        self.capabilities.axes.insert(axis, range);
+        self.axes.insert(axis, range.minimum);
+        self
     }
 
     pub fn button(&self, button_id: u32) -> Option<bool> {
@@ -208,6 +287,14 @@ impl MockVirtualBackend {
 
     pub fn events(&self) -> &[(u32, bool)] {
         &self.events
+    }
+
+    pub fn axis(&self, axis: VirtualAxis) -> Option<i32> {
+        self.axes.get(&axis).copied()
+    }
+
+    pub fn axis_events(&self) -> &[(VirtualAxis, i32)] {
+        &self.axis_events
     }
 
     fn ensure_connected(&self) -> Result<()> {
@@ -242,6 +329,25 @@ impl VirtualInputBackend for MockVirtualBackend {
         let index = self.button_index(button_id)?;
         self.buttons[index] = pressed;
         self.events.push((button_id, pressed));
+        Ok(())
+    }
+
+    fn set_axis(&mut self, axis: VirtualAxis, value: i32) -> Result<()> {
+        self.ensure_connected()?;
+        let range = self
+            .capabilities
+            .axes
+            .get(&axis)
+            .copied()
+            .ok_or_else(|| anyhow::anyhow!("virtual axis {axis:?} is not configured"))?;
+        anyhow::ensure!(
+            (range.minimum..=range.maximum).contains(&value),
+            "virtual axis value {value} is outside {}..={}",
+            range.minimum,
+            range.maximum
+        );
+        self.axes.insert(axis, value);
+        self.axis_events.push((axis, value));
         Ok(())
     }
 

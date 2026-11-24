@@ -3,7 +3,7 @@ use std::{env, path::PathBuf, sync::OnceLock};
 use anyhow::{Context, Result, bail, ensure};
 use libloading::Library;
 
-use crate::{VirtualCapabilities, VirtualInputBackend};
+use crate::{VirtualAxis, VirtualAxisRange, VirtualCapabilities, VirtualInputBackend};
 
 type Bool = i32;
 type VJoyEnabled = unsafe extern "C" fn() -> Bool;
@@ -15,6 +15,9 @@ type AcquireVjd = unsafe extern "C" fn(u32) -> Bool;
 type RelinquishVjd = unsafe extern "C" fn(u32);
 type ResetButtons = unsafe extern "C" fn(u32) -> Bool;
 type SetBtn = unsafe extern "C" fn(Bool, u32, u8) -> Bool;
+type GetVjdAxisExist = unsafe extern "C" fn(u32, u32) -> Bool;
+type GetVjdAxisRange = unsafe extern "C" fn(u32, u32, *mut i32) -> Bool;
+type SetAxis = unsafe extern "C" fn(i32, u32, u32) -> Bool;
 
 const VJD_STAT_OWN: i32 = 0;
 const VJD_STAT_FREE: i32 = 1;
@@ -32,6 +35,10 @@ struct VJoyApi {
     relinquish: RelinquishVjd,
     reset_buttons: ResetButtons,
     set_button: SetBtn,
+    axis_exists: GetVjdAxisExist,
+    axis_minimum: GetVjdAxisRange,
+    axis_maximum: GetVjdAxisRange,
+    set_axis: SetAxis,
 }
 
 static VJOY_API: OnceLock<Result<VJoyApi, String>> = OnceLock::new();
@@ -77,6 +84,10 @@ impl VJoyApi {
                 relinquish: load_symbol(&library, b"RelinquishVJD\0")?,
                 reset_buttons: load_symbol(&library, b"ResetButtons\0")?,
                 set_button: load_symbol(&library, b"SetBtn\0")?,
+                axis_exists: load_symbol(&library, b"GetVJDAxisExist\0")?,
+                axis_minimum: load_symbol(&library, b"GetVJDAxisMin\0")?,
+                axis_maximum: load_symbol(&library, b"GetVJDAxisMax\0")?,
+                set_axis: load_symbol(&library, b"SetAxis\0")?,
                 _library: library,
             })
         }
@@ -173,8 +184,26 @@ impl VirtualInputBackend for VJoyBackend {
                 bail!("vJoy device {} has no configured buttons", self.device_id);
             }
             self.connected = true;
+            let mut axes = std::collections::BTreeMap::new();
+            for axis in VirtualAxis::ALL {
+                if (self.api.axis_exists)(self.device_id, axis.hid_usage()) == 0 {
+                    continue;
+                }
+                let mut minimum = 0;
+                let mut maximum = 0;
+                ensure!(
+                    (self.api.axis_minimum)(self.device_id, axis.hid_usage(), &mut minimum) != 0,
+                    "vJoy did not report the {axis:?} axis minimum"
+                );
+                ensure!(
+                    (self.api.axis_maximum)(self.device_id, axis.hid_usage(), &mut maximum) != 0,
+                    "vJoy did not report the {axis:?} axis maximum"
+                );
+                axes.insert(axis, VirtualAxisRange::new(minimum, maximum)?);
+            }
             self.capabilities = Some(VirtualCapabilities {
                 button_count: button_count as u32,
+                axes,
                 identity: format!(
                     "vJoy Device {} (driver {:#06x})",
                     self.device_id,
@@ -205,6 +234,27 @@ impl VirtualInputBackend for VJoyBackend {
         ensure!(
             unsafe { (self.api.set_button)(i32::from(pressed), self.device_id, button_id) } != 0,
             "vJoy rejected button {button_id} state {pressed}"
+        );
+        Ok(())
+    }
+
+    fn set_axis(&mut self, axis: VirtualAxis, value: i32) -> Result<()> {
+        self.ensure_connected()?;
+        let range = self
+            .capabilities()?
+            .axes
+            .get(&axis)
+            .copied()
+            .ok_or_else(|| anyhow::anyhow!("vJoy axis {axis:?} is not configured"))?;
+        ensure!(
+            (range.minimum..=range.maximum).contains(&value),
+            "vJoy axis {axis:?} value {value} is outside {}..={}",
+            range.minimum,
+            range.maximum
+        );
+        ensure!(
+            unsafe { (self.api.set_axis)(value, self.device_id, axis.hid_usage()) } != 0,
+            "vJoy rejected {axis:?} axis value {value}"
         );
         Ok(())
     }

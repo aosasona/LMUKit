@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::{Result, ensure};
 
-use crate::{VirtualCapabilities, VirtualInputBackend};
+use crate::{VirtualAxis, VirtualCapabilities, VirtualInputBackend};
 
 const ENCODER_PULSE_DURATION: Duration = Duration::from_millis(32);
 const ENCODER_PULSE_GAP: Duration = Duration::from_millis(8);
@@ -435,6 +435,20 @@ impl<B: VirtualInputBackend> MappingEngine<B> {
 
     pub fn capabilities(&self) -> Result<VirtualCapabilities> {
         self.backend.capabilities()
+    }
+
+    pub fn set_axis_normalized(&mut self, axis: VirtualAxis, value: f64) -> Result<i32> {
+        ensure!(self.connected, "mapping engine is disconnected");
+        let range = self
+            .backend
+            .capabilities()?
+            .axes
+            .get(&axis)
+            .copied()
+            .ok_or_else(|| anyhow::anyhow!("virtual axis {axis:?} is not configured"))?;
+        let value = range.value_for(value);
+        self.backend.set_axis(axis, value)?;
+        Ok(value)
     }
 
     /// Returns true when the physical event belongs to the active profile.
