@@ -11,7 +11,7 @@ use lmukit_core::storage::{
     VirtualClutchInput, VirtualClutchMapping, VirtualEncoderControl, VirtualEncoderGroup,
     VirtualEncoderMode as StoredEncoderMode, VirtualProfileMapping, Wheel, WorkspaceClutchSettings,
     WorkspaceKind, resolve_virtual_button_mappings, validate_assetto_corsa_root,
-    validate_companion_apps,
+    validate_companion_apps_for_mode,
 };
 use lmukit_virtual::{
     AxisCalibration, ClutchInput, ClutchMode, ClutchProcessor, EncoderGroup, EncoderMode,
@@ -980,7 +980,7 @@ fn save_app_settings(
     launch_mode: LaunchMode,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let issues = validate_companion_apps(&companion_apps);
+    let issues = validate_companion_apps_for_mode(&companion_apps, launch_mode);
     if !issues.is_empty() {
         return Err(format!(
             "Companion app setup is invalid: {}",
@@ -1041,8 +1041,11 @@ fn companion_launch_option(state: State<'_, AppState>) -> Result<String, String>
 }
 
 #[tauri::command]
-fn validate_companion_launch_setup(companion_apps: Vec<CompanionApp>) -> Vec<CompanionAppIssue> {
-    validate_companion_apps(&companion_apps)
+fn validate_companion_launch_setup(
+    companion_apps: Vec<CompanionApp>,
+    launch_mode: LaunchMode,
+) -> Vec<CompanionAppIssue> {
+    validate_companion_apps_for_mode(&companion_apps, launch_mode)
 }
 
 #[tauri::command]

@@ -46,7 +46,7 @@ _Assetto Corsa keeps its profiles and named actions separate while reusing the g
 - Remove obsolete devices and all of their bindings from a saved profile after confirmation.
 - Browse and edit LMU's `Settings.JSON`, including descriptions from matching `Option#` fields, while preserving unsupported JSON values.
 - Assign `Ctrl+Alt+1` through `Ctrl+Alt+9` to profiles, open the compact switcher with `Ctrl+Alt+Space`, or search profiles with `Ctrl+K`.
-- Configure Desktop or native OpenXR (`+XR`) launching and start Pivot, LMUFFB, Crew Chief, RaceLab, or custom companion applications through one explicit Steam launch option. Pivot validates enabled app entries before generating it, and each app starts in its own installation folder so relative profile and configuration files continue to work.
+- Configure Desktop or native OpenXR (`+XR`) launching and start Pivot, SteamVR, LMUFFB, Crew Chief, RaceLab, or custom companion applications through one explicit Steam launch option. Each helper can be assigned to Desktop, VR, or both; Pivot validates the helpers selected for the current mode, and each app starts in its own installation folder so relative profile and configuration files continue to work.
 - Autosave LMU paths, launch mode, and companion-app setup.
 - Follow an in-app Help & Setup guide for wheels, DirectInput-visible controllers, button boxes, Legacy JSON, Virtual Input, and common recovery steps.
 - Scale the entire interface from Settings.
@@ -194,13 +194,13 @@ Saving preserves unknown JSON data and creates a recovery backup first. Pivot wa
 
 ### LMU and companion apps
 
-Open **Settings → LMU and companion apps**, choose **Desktop** or **VR (OpenXR)**, then add and enable the helpers you want. Paths, launch mode, and companion-app changes save automatically.
+Open **Settings → LMU and companion apps**, choose **Desktop** or **VR (OpenXR)**, then add and enable the helpers you want. Use each helper's **Desktop** and **VR** buttons to choose which mode starts it. The built-in SteamVR entry is disabled by default and VR-only: choose SteamVR's `vrstartup.exe`, then enable it if you want Pivot to start SteamVR before LMU. Paths, launch mode, and companion-app changes save automatically.
 
 **Copy Steam launch option** creates Pivot's launcher and copies the command. Paste it into:
 
 **Steam → Le Mans Ultimate → Properties → Launch Options**
 
-The generated command now points to `%LOCALAPPDATA%\Pivot\launch-lmu-with-companions.cmd`. If Steam still contains the older `LMUKit\LMUKit\data` command, copy the new command once; Pivot keeps the old launcher working until you do. After that one-time migration, every valid autosaved change to Desktop/VR mode or the enabled companion apps refreshes the Pivot launcher automatically, and restarting Pivot updates its executable path after an install or upgrade. Desktop mode removes `+XR`, while VR mode adds LMU's native `+XR` argument. Disabled apps are removed from the launcher. Existing profiles and settings intentionally remain in the legacy LMUKit application-data directory so upgrades retain user data. The launcher avoids opening duplicate Pivot or companion-app processes. Pivot never edits Steam configuration silently.
+The generated command now points to `%LOCALAPPDATA%\Pivot\launch-lmu-with-companions.cmd`. If Steam still contains the older `LMUKit\LMUKit\data` command, copy the new command once; Pivot keeps the old launcher working until you do. After that one-time migration, every valid autosaved change to Desktop/VR mode or a helper's mode assignment refreshes the Pivot launcher automatically, and restarting Pivot updates its executable path after an install or upgrade. Desktop mode removes `+XR`, while VR mode adds LMU's native `+XR` argument. Disabled helpers and helpers not assigned to the selected launch mode are omitted. Existing profiles and settings intentionally remain in the legacy LMUKit application-data directory so upgrades retain user data. The launcher avoids opening duplicate Pivot or companion-app processes. Pivot never edits Steam configuration silently.
 
 ### Diagnostics and logs
 

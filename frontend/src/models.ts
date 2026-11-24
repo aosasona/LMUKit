@@ -70,7 +70,12 @@ export type Snapshot = {
   lmuLaunchMode: "desktop" | "vr";
 };
 
-export type CompanionApp = { name: string; path: string; enabled: boolean };
+export type CompanionApp = {
+  name: string;
+  path: string;
+  enabled: boolean;
+  launchModes: Array<"desktop" | "vr">;
+};
 export type VirtualBindingDevice = {
   key: string;
   name: string;

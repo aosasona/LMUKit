@@ -3754,6 +3754,38 @@ textarea,
 .companion-row > .icon-button svg {
   width: 15px;
 }
+.companion-launch-modes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-top: 0;
+  background: #111211;
+}
+.companion-launch-modes > span,
+.companion-launch-modes > small {
+  color: #7d8983;
+  font-size: calc(12px * var(--font-scale));
+}
+.companion-launch-modes > small {
+  margin-left: 5px;
+}
+.companion-launch-modes > button {
+  min-width: 68px;
+  height: 25px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  background: #181918;
+  color: #89938d;
+  font-size: calc(11px * var(--font-scale));
+}
+.companion-launch-modes > button.active {
+  border-color: rgba(190, 227, 107, 0.38);
+  background: #292d1e;
+  color: #d8f2a5;
+}
 .companion-errors {
   display: flex;
   align-items: flex-start;

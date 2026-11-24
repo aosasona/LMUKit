@@ -430,11 +430,25 @@ pub enum LaunchMode {
     Vr,
 }
 
+fn default_companion_launch_modes() -> Vec<LaunchMode> {
+    vec![LaunchMode::Desktop, LaunchMode::Vr]
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompanionApp {
     pub name: String,
     pub path: PathBuf,
     pub enabled: bool,
+    /// The launch modes in which this helper should start with LMU. Existing
+    /// settings predate this field, so they continue to launch in both modes.
+    #[serde(default = "default_companion_launch_modes")]
+    pub launch_modes: Vec<LaunchMode>,
+}
+
+impl CompanionApp {
+    fn launches_in(&self, mode: LaunchMode) -> bool {
+        self.enabled && self.launch_modes.contains(&mode)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -563,18 +577,41 @@ fn default_companion_apps() -> Vec<CompanionApp> {
             name: "LMUFFB".into(),
             path: PathBuf::new(),
             enabled: true,
+            launch_modes: default_companion_launch_modes(),
         },
         CompanionApp {
             name: "Crew Chief".into(),
             path: PathBuf::new(),
             enabled: false,
+            launch_modes: default_companion_launch_modes(),
         },
         CompanionApp {
             name: "RaceLab".into(),
             path: PathBuf::new(),
             enabled: false,
+            launch_modes: default_companion_launch_modes(),
+        },
+        CompanionApp {
+            name: "SteamVR".into(),
+            path: PathBuf::new(),
+            enabled: false,
+            launch_modes: vec![LaunchMode::Vr],
         },
     ]
+}
+
+fn ensure_builtin_companion_apps(apps: &mut Vec<CompanionApp>) {
+    if !apps
+        .iter()
+        .any(|app| app.name.trim().eq_ignore_ascii_case("SteamVR"))
+    {
+        apps.push(CompanionApp {
+            name: "SteamVR".into(),
+            path: PathBuf::new(),
+            enabled: false,
+            launch_modes: vec![LaunchMode::Vr],
+        });
+    }
 }
 
 pub struct Store {
@@ -624,6 +661,7 @@ impl Store {
         if !(1..=30).contains(&settings.log_retention_days) {
             settings.log_retention_days = default_log_retention_days();
         }
+        ensure_builtin_companion_apps(&mut settings.companion_apps);
         ensure_builtin_workspaces(&mut settings.workspaces);
         if !settings
             .workspaces
@@ -1291,7 +1329,10 @@ impl Store {
                 pivot_exe.display()
             );
         }
-        let issues = validate_companion_apps(&self.settings.companion_apps);
+        let issues = validate_companion_apps_for_mode(
+            &self.settings.companion_apps,
+            self.settings.lmu_launch_mode,
+        );
         if !issues.is_empty() {
             bail!(
                 "Companion app setup is invalid: {}",
@@ -1320,7 +1361,7 @@ impl Store {
             .settings
             .companion_apps
             .iter()
-            .filter(|app| app.enabled)
+            .filter(|app| app.launches_in(self.settings.lmu_launch_mode))
         {
             let executable = app
                 .path
@@ -2474,10 +2515,24 @@ impl Store {
 }
 
 pub fn validate_companion_apps(apps: &[CompanionApp]) -> Vec<CompanionAppIssue> {
+    validate_companion_apps_where(apps, |app| app.enabled)
+}
+
+pub fn validate_companion_apps_for_mode(
+    apps: &[CompanionApp],
+    mode: LaunchMode,
+) -> Vec<CompanionAppIssue> {
+    validate_companion_apps_where(apps, |app| app.launches_in(mode))
+}
+
+fn validate_companion_apps_where(
+    apps: &[CompanionApp],
+    include: impl Fn(&CompanionApp) -> bool,
+) -> Vec<CompanionAppIssue> {
     let mut issues = Vec::new();
     let mut paths = BTreeMap::<String, usize>::new();
 
-    for (index, app) in apps.iter().enumerate().filter(|(_, app)| app.enabled) {
+    for (index, app) in apps.iter().enumerate().filter(|(_, app)| include(app)) {
         if app.name.trim().is_empty() {
             issues.push(CompanionAppIssue {
                 index,
@@ -3570,6 +3625,48 @@ mod tests {
     }
 
     #[test]
+    fn adds_the_optional_steamvr_helper_to_existing_companion_settings() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("lmukit");
+        fs::create_dir_all(&root).unwrap();
+        let mut legacy_settings = serde_json::to_value(Settings::default()).unwrap();
+        let apps = legacy_settings
+            .get_mut("companion_apps")
+            .and_then(serde_json::Value::as_array_mut)
+            .unwrap();
+        apps.retain(|app| app.get("name").and_then(serde_json::Value::as_str) != Some("SteamVR"));
+        for app in apps {
+            app.as_object_mut().unwrap().remove("launch_modes");
+        }
+        fs::write(
+            root.join("settings.json"),
+            serde_json::to_vec(&legacy_settings).unwrap(),
+        )
+        .unwrap();
+
+        let store = Store::open_at(root).unwrap();
+
+        let steamvr = store
+            .settings
+            .companion_apps
+            .iter()
+            .find(|app| app.name == "SteamVR")
+            .unwrap();
+        assert!(!steamvr.enabled);
+        assert_eq!(steamvr.launch_modes, vec![LaunchMode::Vr]);
+        assert!(
+            store.settings.companion_apps[0]
+                .launch_modes
+                .contains(&LaunchMode::Desktop)
+        );
+        assert!(
+            store.settings.companion_apps[0]
+                .launch_modes
+                .contains(&LaunchMode::Vr)
+        );
+    }
+
+    #[test]
     fn keeps_profiles_separate_while_wheels_remain_shared_across_workspaces() {
         let temp = tempfile::tempdir().unwrap();
         let mut store = Store::open_at(temp.path().join("lmukit")).unwrap();
@@ -4549,6 +4646,62 @@ mod tests {
     }
 
     #[test]
+    fn launches_companions_only_in_their_selected_mode() {
+        let temp = tempfile::tempdir().unwrap();
+        let pivot = temp.path().join("Pivot.exe");
+        let desktop = temp.path().join("DesktopHelper.exe");
+        let steamvr = temp.path().join("vrstartup.exe");
+        fs::write(&pivot, []).unwrap();
+        fs::write(&desktop, []).unwrap();
+        fs::write(&steamvr, []).unwrap();
+        let mut store = Store::open_at(temp.path().join("data")).unwrap();
+        store.settings.companion_apps = vec![
+            CompanionApp {
+                name: "Desktop helper".into(),
+                path: desktop,
+                enabled: true,
+                launch_modes: vec![LaunchMode::Desktop],
+            },
+            CompanionApp {
+                name: "SteamVR".into(),
+                path: steamvr,
+                enabled: true,
+                launch_modes: vec![LaunchMode::Vr],
+            },
+        ];
+
+        store.settings.lmu_launch_mode = LaunchMode::Desktop;
+        store.companion_launch_option(&pivot).unwrap();
+        let launcher = store.root.join("launch-lmu-with-companions.cmd");
+        let desktop_script = fs::read_to_string(&launcher).unwrap();
+        assert!(desktop_script.contains("DesktopHelper.exe"));
+        assert!(!desktop_script.contains("vrstartup.exe"));
+
+        store.settings.lmu_launch_mode = LaunchMode::Vr;
+        assert!(store.refresh_companion_launcher_if_exists(&pivot).unwrap());
+        let vr_script = fs::read_to_string(launcher).unwrap();
+        assert!(!vr_script.contains("DesktopHelper.exe"));
+        assert!(vr_script.contains("vrstartup.exe"));
+        assert!(vr_script.ends_with("%* +XR\r\n"));
+    }
+
+    #[test]
+    fn validates_only_companions_for_the_selected_mode() {
+        let apps = vec![CompanionApp {
+            name: "SteamVR".into(),
+            path: PathBuf::new(),
+            enabled: true,
+            launch_modes: vec![LaunchMode::Vr],
+        }];
+
+        assert!(validate_companion_apps_for_mode(&apps, LaunchMode::Desktop).is_empty());
+        assert_eq!(
+            validate_companion_apps_for_mode(&apps, LaunchMode::Vr).len(),
+            1
+        );
+    }
+
+    #[test]
     fn refreshes_the_existing_launcher_when_launch_settings_change() {
         let temp = tempfile::tempdir().unwrap();
         let pivot = temp.path().join("lmukit.exe");
@@ -4560,6 +4713,7 @@ mod tests {
             name: "RaceLab".into(),
             path: helper,
             enabled: true,
+            launch_modes: default_companion_launch_modes(),
         }];
         store.settings.lmu_launch_mode = LaunchMode::Vr;
         let option = store.companion_launch_option(&pivot).unwrap();
@@ -4969,6 +5123,7 @@ mod tests {
             name: "Crew Chief".into(),
             path: crew_chief,
             enabled: false,
+            launch_modes: default_companion_launch_modes(),
         }];
 
         store.companion_launch_option(&lmukit).unwrap();
@@ -4988,26 +5143,31 @@ mod tests {
                 name: " ".into(),
                 path: PathBuf::new(),
                 enabled: true,
+                launch_modes: default_companion_launch_modes(),
             },
             CompanionApp {
                 name: "RaceLab".into(),
                 path: valid.clone(),
                 enabled: true,
+                launch_modes: default_companion_launch_modes(),
             },
             CompanionApp {
                 name: "RaceLab duplicate".into(),
                 path: valid,
                 enabled: true,
+                launch_modes: default_companion_launch_modes(),
             },
             CompanionApp {
                 name: "Helper".into(),
                 path: wrong_type,
                 enabled: true,
+                launch_modes: default_companion_launch_modes(),
             },
             CompanionApp {
                 name: "Disabled draft".into(),
                 path: temp.path().join("missing.exe"),
                 enabled: false,
+                launch_modes: default_companion_launch_modes(),
             },
         ];
 
@@ -5037,6 +5197,7 @@ mod tests {
             name: "LMUFFB".into(),
             path: temp.path().join("missing.exe"),
             enabled: true,
+            launch_modes: default_companion_launch_modes(),
         }];
 
         let error = store.companion_launch_option(&lmukit).unwrap_err();

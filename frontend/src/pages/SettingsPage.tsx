@@ -269,13 +269,31 @@ export function SettingsPage(props: Props) {
     });
     setLaunchCopyState("idle");
   };
+  const toggleAppLaunchMode = (index: number, targetMode: "desktop" | "vr") => {
+    setApps((current) =>
+      current.map((app, currentIndex) => {
+        if (currentIndex !== index) return app;
+        const launchModes = app.launchModes.includes(targetMode)
+          ? app.launchModes.filter((entry) => entry !== targetMode)
+          : [...app.launchModes, targetMode];
+        return { ...app, launchModes };
+      }),
+    );
+    setLaunchIssues((current) => {
+      if (!(index in current)) return current;
+      const next = { ...current };
+      delete next[index];
+      return next;
+    });
+    setLaunchCopyState("idle");
+  };
 
   const copyLaunchOption = async () => {
     setLaunchCopyState("copying");
     try {
       const issues = await invoke<CompanionAppIssue[]>(
         "validate_companion_launch_setup",
-        { companionApps: apps },
+        { companionApps: apps, launchMode: mode },
       );
       if (issues.length) {
         setLaunchIssues(
@@ -514,8 +532,8 @@ export function SettingsPage(props: Props) {
             eyebrow="Launch setup"
             title="LMU and companion apps"
           >
-            Generate one Steam launch option for Pivot, your launch mode, and
-            selected helpers.
+            Choose which helpers open in Desktop and VR, then generate one Steam
+            launch option for Pivot and the selected mode.
           </SettingsHeading>
           <div className="launch-mode">
             <button
@@ -590,6 +608,28 @@ export function SettingsPage(props: Props) {
                       <Trash2 />
                     </button>
                   </div>
+                  <div className="companion-launch-modes">
+                    <span>Launch with</span>
+                    <button
+                      type="button"
+                      className={
+                        app.launchModes.includes("desktop") ? "active" : ""
+                      }
+                      onClick={() => toggleAppLaunchMode(index, "desktop")}
+                    >
+                      Desktop
+                    </button>
+                    <button
+                      type="button"
+                      className={app.launchModes.includes("vr") ? "active" : ""}
+                      onClick={() => toggleAppLaunchMode(index, "vr")}
+                    >
+                      VR
+                    </button>
+                    {app.name.trim().toLowerCase() === "steamvr" && (
+                      <small>Choose SteamVR&apos;s vrstartup.exe.</small>
+                    )}
+                  </div>
                   {errors.length > 0 && (
                     <div className="companion-errors" role="alert">
                       <AlertCircle />
@@ -607,7 +647,12 @@ export function SettingsPage(props: Props) {
               onClick={() =>
                 setApps((current) => [
                   ...current,
-                  { name: "Companion app", path: "", enabled: true },
+                  {
+                    name: "Companion app",
+                    path: "",
+                    enabled: true,
+                    launchModes: ["desktop", "vr"],
+                  },
                 ])
               }
             >
