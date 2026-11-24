@@ -149,20 +149,16 @@ export default function App() {
   useEffect(() => {
     const version = updater.state.currentVersion;
     if (!version || !bundledRelease) return;
-    if (window.localStorage.getItem("pivot.whats-new-version") === version)
-      return;
+    const key = "pivot.whats-new-version";
+    if (window.localStorage.getItem(key) === version) return;
+    // Record the one-time release note as soon as it is offered. This keeps a
+    // restart, update, or forced close during first launch from reopening the
+    // same dialog forever.
+    window.localStorage.setItem(key, version);
     setWhatsNewOpen(true);
   }, [bundledRelease, updater.state.currentVersion]);
 
-  const dismissWhatsNew = () => {
-    if (updater.state.currentVersion) {
-      window.localStorage.setItem(
-        "pivot.whats-new-version",
-        updater.state.currentVersion,
-      );
-    }
-    setWhatsNewOpen(false);
-  };
+  const dismissWhatsNew = () => setWhatsNewOpen(false);
 
   const navigate = (next: Page) => {
     if (
