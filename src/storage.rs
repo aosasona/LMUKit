@@ -52,6 +52,15 @@ pub struct VirtualProfileMapping {
     pub system_actions: Vec<SystemActionBinding>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clutch: Option<VirtualClutchMapping>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub analog_axes: Vec<VirtualAnalogAxisMapping>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VirtualAnalogAxisMapping {
+    pub name: String,
+    pub input: VirtualAxisInput,
+    pub virtual_axis: VirtualAxisId,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -345,7 +354,7 @@ pub struct WorkspaceClutchSettings {
     pub shared_bite_point_percent: u8,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum VirtualAxisId {
     X,
@@ -1035,6 +1044,22 @@ impl Store {
             .context("That profile no longer exists.")?;
         let mut mapping = profile.virtual_mapping.unwrap_or_default();
         mapping.clutch = clutch;
+        self.set_profile_virtual_mapping(profile_id, Some(mapping.clone()))?;
+        Ok(mapping)
+    }
+
+    pub fn set_profile_analog_axes(
+        &self,
+        profile_id: Uuid,
+        analog_axes: Vec<VirtualAnalogAxisMapping>,
+    ) -> Result<VirtualProfileMapping> {
+        let profile = self
+            .profiles()?
+            .into_iter()
+            .find(|profile| profile.id == profile_id)
+            .context("That profile no longer exists.")?;
+        let mut mapping = profile.virtual_mapping.unwrap_or_default();
+        mapping.analog_axes = analog_axes;
         self.set_profile_virtual_mapping(profile_id, Some(mapping.clone()))?;
         Ok(mapping)
     }
@@ -2877,6 +2902,24 @@ fn validate_virtual_mapping(
         validate_virtual_clutch_mapping(clutch)?;
     }
     ensure!(
+        mapping.analog_axes.len() <= 8,
+        "A profile cannot contain more than eight analog axis mappings."
+    );
+    let mut analog_names = BTreeSet::new();
+    let mut analog_outputs = BTreeSet::new();
+    for analog in &mapping.analog_axes {
+        validate_virtual_label(&analog.name, "Analog mapping name")?;
+        validate_axis_input(&analog.input)?;
+        ensure!(
+            analog_names.insert(analog.name.to_lowercase()),
+            "Analog mapping names must be unique."
+        );
+        ensure!(
+            analog_outputs.insert(analog.virtual_axis),
+            "Two analog mappings cannot write the same virtual axis."
+        );
+    }
+    ensure!(
         mapping.encoder_groups.len() <= 8,
         "A virtual profile cannot contain more than eight encoders."
     );
@@ -2929,32 +2972,6 @@ fn validate_virtual_mapping(
 }
 
 fn validate_virtual_clutch_mapping(mapping: &VirtualClutchMapping) -> Result<()> {
-    fn validate_axis(input: &VirtualAxisInput) -> Result<()> {
-        validate_virtual_label(&input.device_id, "Clutch input device ID")?;
-        ensure!(
-            input.physical_axis > 0,
-            "Physical axis IDs must be greater than zero."
-        );
-        ensure!(
-            input.calibration.minimum < input.calibration.maximum,
-            "Clutch calibration minimum must be below its maximum."
-        );
-        ensure!(
-            input.calibration.released_deadzone_percent < 50,
-            "Released clutch deadzone must be below 50%."
-        );
-        ensure!(
-            input.calibration.engaged_deadzone_percent < 50,
-            "Engaged clutch deadzone must be below 50%."
-        );
-        ensure!(
-            u16::from(input.calibration.released_deadzone_percent)
-                + u16::from(input.calibration.engaged_deadzone_percent)
-                < 100,
-            "Clutch deadzones consume the whole calibrated range."
-        );
-        Ok(())
-    }
     fn validate_input(input: &VirtualClutchInput) -> Result<()> {
         match input {
             VirtualClutchInput::Button {
@@ -2969,7 +2986,7 @@ fn validate_virtual_clutch_mapping(mapping: &VirtualClutchMapping) -> Result<()>
                 );
                 Ok(())
             }
-            VirtualClutchInput::Axis(input) => validate_axis(input),
+            VirtualClutchInput::Axis(input) => validate_axis_input(input),
         }
     }
     fn source_key(input: &VirtualClutchInput) -> (&str, &'static str, u32) {
@@ -2983,7 +3000,7 @@ fn validate_virtual_clutch_mapping(mapping: &VirtualClutchMapping) -> Result<()>
         }
     }
     match mapping {
-        VirtualClutchMapping::Direct { input } => validate_axis(input),
+        VirtualClutchMapping::Direct { input } => validate_axis_input(input),
         VirtualClutchMapping::Dual {
             full,
             bite,
@@ -3008,7 +3025,7 @@ fn validate_virtual_clutch_mapping(mapping: &VirtualClutchMapping) -> Result<()>
             bite_point_percent,
             ..
         } => {
-            validate_axis(input)?;
+            validate_axis_input(input)?;
             ensure!(
                 *bite_point_percent <= 100,
                 "Bite point must be between 0% and 100%."
@@ -3020,6 +3037,33 @@ fn validate_virtual_clutch_mapping(mapping: &VirtualClutchMapping) -> Result<()>
             Ok(())
         }
     }
+}
+
+fn validate_axis_input(input: &VirtualAxisInput) -> Result<()> {
+    validate_virtual_label(&input.device_id, "Analog input device ID")?;
+    ensure!(
+        input.physical_axis > 0,
+        "Physical axis IDs must be greater than zero."
+    );
+    ensure!(
+        input.calibration.minimum < input.calibration.maximum,
+        "Axis calibration minimum must be below its maximum."
+    );
+    ensure!(
+        input.calibration.released_deadzone_percent < 50,
+        "Released axis deadzone must be below 50%."
+    );
+    ensure!(
+        input.calibration.engaged_deadzone_percent < 50,
+        "Engaged axis deadzone must be below 50%."
+    );
+    ensure!(
+        u16::from(input.calibration.released_deadzone_percent)
+            + u16::from(input.calibration.engaged_deadzone_percent)
+            < 100,
+        "Axis deadzones consume the whole calibrated range."
+    );
+    Ok(())
 }
 
 fn validate_system_action_bindings(bindings: &[SystemActionBinding]) -> Result<()> {
@@ -3151,6 +3195,7 @@ mod tests {
 
         assert!(mapping.system_actions.is_empty());
         assert!(mapping.clutch.is_none());
+        assert!(mapping.analog_axes.is_empty());
     }
 
     #[test]
@@ -3262,6 +3307,7 @@ mod tests {
             encoder_groups: Vec::new(),
             system_actions: Vec::new(),
             clutch: None,
+            analog_axes: Vec::new(),
         };
 
         let base = resolve_virtual_button_mappings(&mapping, "wheel", 5, &[]);
@@ -4092,6 +4138,7 @@ mod tests {
                     }],
                     system_actions: Vec::new(),
                     clutch: None,
+                    analog_axes: Vec::new(),
                 }),
             )
             .unwrap();
@@ -4170,6 +4217,7 @@ mod tests {
                     encoder_groups: Vec::new(),
                     system_actions: Vec::new(),
                     clutch: None,
+                    analog_axes: Vec::new(),
                 }),
             )
             .unwrap();
@@ -4264,6 +4312,7 @@ mod tests {
                     encoder_groups: Vec::new(),
                     system_actions: Vec::new(),
                     clutch: None,
+                    analog_axes: Vec::new(),
                 }),
             )
             .unwrap();
@@ -4368,6 +4417,7 @@ mod tests {
             encoder_groups: Vec::new(),
             system_actions: Vec::new(),
             clutch: None,
+            analog_axes: Vec::new(),
         };
         assert!(
             store
@@ -4633,6 +4683,7 @@ mod tests {
             encoder_groups: Vec::new(),
             system_actions: Vec::new(),
             clutch: None,
+            analog_axes: Vec::new(),
         };
         store
             .set_profile_virtual_mapping(source.id, Some(virtual_mapping.clone()))

@@ -707,7 +707,7 @@ mod tests {
         MINIMUM_BUTTON_PRESS_DURATION, MappingEngine, PhysicalButton, ProfileBinding,
         ProfileMapping, VirtualLayout,
     };
-    use crate::MockVirtualBackend;
+    use crate::{MockVirtualBackend, VirtualAxis, VirtualAxisRange};
     use std::time::{Duration, Instant};
 
     fn action(name: &str) -> LogicalAction {
@@ -842,6 +842,27 @@ mod tests {
             engine.backend().events(),
             [(1, true), (1, false), (2, true)]
         );
+    }
+
+    #[test]
+    fn profile_change_preserves_virtual_axis_state_and_device_acquisition() {
+        let mut engine = MappingEngine::connect(
+            MockVirtualBackend::new(8).with_axis(
+                VirtualAxis::Z,
+                VirtualAxisRange::new(1_000, 31_000).unwrap(),
+            ),
+            layout(),
+            profile(&[("gt-neo", 5, "pit_limiter")]),
+        )
+        .unwrap();
+        engine.set_axis_normalized(VirtualAxis::Z, 0.4).unwrap();
+
+        engine
+            .set_profile(profile(&[("gte-pro", 6, "headlights")]))
+            .unwrap();
+
+        assert_eq!(engine.backend().axis(VirtualAxis::Z), Some(13_000));
+        assert_eq!(engine.backend().axis_events(), [(VirtualAxis::Z, 13_000)]);
     }
 
     #[test]

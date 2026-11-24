@@ -6,14 +6,17 @@ use lmukit_core::car_context::{
 use lmukit_core::storage::{
     AudioDeviceRole, AudioDeviceTarget, CompanionApp, CompanionAppIssue, InputMode, LaunchMode,
     MicrophoneOperation, Profile, Store, SystemAction, SystemActionBinding,
+    VirtualAnalogAxisMapping, VirtualAxisCalibration, VirtualAxisId, VirtualAxisInput,
     VirtualButtonConflictResolution, VirtualButtonMapping, VirtualButtonModifier,
-    VirtualEncoderControl, VirtualEncoderGroup, VirtualEncoderMode as StoredEncoderMode,
-    VirtualProfileMapping, Wheel, WorkspaceKind, resolve_virtual_button_mappings,
-    validate_assetto_corsa_root, validate_companion_apps,
+    VirtualClutchInput, VirtualClutchMapping, VirtualEncoderControl, VirtualEncoderGroup,
+    VirtualEncoderMode as StoredEncoderMode, VirtualProfileMapping, Wheel, WorkspaceClutchSettings,
+    WorkspaceKind, resolve_virtual_button_mappings, validate_assetto_corsa_root,
+    validate_companion_apps,
 };
 use lmukit_virtual::{
-    EncoderGroup, EncoderMode, LogicalAction, PhysicalButton, ProfileBinding, ProfileMapping,
-    SetupButtonAllocator, VirtualLayout,
+    AxisCalibration, ClutchInput, ClutchMode, ClutchProcessor, EncoderGroup, EncoderMode,
+    LogicalAction, PhysicalAxis, PhysicalButton, ProfileBinding, ProfileMapping,
+    SetupButtonAllocator, VirtualAxis, VirtualLayout,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -32,7 +35,9 @@ mod lmu_process;
 
 #[cfg(target_os = "windows")]
 use lmukit_virtual::{
-    MappingEngine, VirtualInputBackend, direct_input::DirectInputButtonMonitor, vjoy::VJoyBackend,
+    MappingEngine, VirtualInputBackend,
+    direct_input::{DirectInputButtonMonitor, DirectInputEvent},
+    vjoy::VJoyBackend,
 };
 
 #[path = "../../src/hotkeys.rs"]
@@ -120,7 +125,32 @@ impl AutoProfileRuntime {
 
 struct VirtualRoutingSession {
     stop: Arc<std::sync::atomic::AtomicBool>,
+    update: std::sync::mpsc::Sender<VirtualRoutingUpdate>,
     worker: std::thread::JoinHandle<()>,
+    workspace_id: String,
+    device_id: u32,
+    has_virtual_backend: bool,
+}
+
+struct VirtualRoutingUpdate {
+    profile_id: Uuid,
+    profile_name: String,
+    mapping: ProfileMapping,
+    profile_system_actions: Vec<SystemActionBinding>,
+    global_system_actions: Vec<SystemActionBinding>,
+    clutch: Option<ClutchMode>,
+    clutch_axis: Option<VirtualAxis>,
+    analog_axes: Vec<RuntimeAnalogAxisMapping>,
+    selection_reason: String,
+    ready: std::sync::mpsc::SyncSender<Result<(String, Vec<ActiveEncoderModeSummary>), String>>,
+}
+
+#[derive(Clone)]
+struct RuntimeAnalogAxisMapping {
+    name: String,
+    input: PhysicalAxis,
+    calibration: AxisCalibration,
+    output: VirtualAxis,
 }
 
 enum HotkeyUpdate {
@@ -166,6 +196,20 @@ struct VirtualRoutingStatus {
     error: Option<String>,
     selection_reason: Option<String>,
     active_encoder_modes: Vec<ActiveEncoderModeSummary>,
+    clutch_output_percent: Option<f64>,
+    clutch_axis: Option<String>,
+    clutch_primary_input_percent: Option<f64>,
+    clutch_bite_input_percent: Option<f64>,
+    analog_axis_outputs: Vec<AnalogAxisOutputSummary>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AnalogAxisOutputSummary {
+    name: String,
+    input_percent: f64,
+    output_percent: f64,
+    virtual_axis: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -422,6 +466,34 @@ struct PhysicalControlCaptureSummary {
     device_name: String,
     physical_button: u32,
     modifiers: Vec<VirtualButtonModifierSummary>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+enum ClutchInputCaptureSummary {
+    #[serde(rename = "button")]
+    Button {
+        device_id: String,
+        device_name: String,
+        physical_button: u32,
+    },
+    #[serde(rename = "axis")]
+    Axis {
+        device_id: String,
+        device_name: String,
+        physical_axis: u32,
+        minimum: i32,
+        maximum: i32,
+    },
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClutchConfigurationSummary {
+    mapping: Option<VirtualClutchMapping>,
+    analog_axes: Vec<VirtualAnalogAxisMapping>,
+    workspace: Option<WorkspaceClutchSettings>,
+    available_virtual_axes: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -1115,6 +1187,87 @@ fn virtual_profile_mapping(
     Ok(mapping_summaries(profile.virtual_mapping.as_ref()))
 }
 
+#[tauri::command]
+fn virtual_profile_clutch(
+    profile_id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<ClutchConfigurationSummary, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    let available_virtual_axes = configured_virtual_axes(store.settings.virtual_device_id);
+    Ok(ClutchConfigurationSummary {
+        mapping: profile
+            .virtual_mapping
+            .as_ref()
+            .and_then(|mapping| mapping.clutch.clone()),
+        analog_axes: profile
+            .virtual_mapping
+            .as_ref()
+            .map(|mapping| mapping.analog_axes.clone())
+            .unwrap_or_default(),
+        workspace: store
+            .workspace_clutch_settings(&profile.workspace_id)
+            .cloned(),
+        available_virtual_axes,
+    })
+}
+
+#[tauri::command]
+fn save_virtual_profile_clutch(
+    profile_id: Uuid,
+    mapping: Option<VirtualClutchMapping>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .set_profile_clutch_mapping(profile_id, mapping)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn save_virtual_profile_analog_axes(
+    profile_id: Uuid,
+    analog_axes: Vec<VirtualAnalogAxisMapping>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .set_profile_analog_axes(profile_id, analog_axes)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn save_workspace_clutch_settings(
+    profile_id: Uuid,
+    virtual_axis: VirtualAxisId,
+    shared_bite_point_percent: u8,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    store
+        .set_workspace_clutch_settings(WorkspaceClutchSettings {
+            workspace_id: profile.workspace_id,
+            virtual_axis,
+            shared_bite_point_percent,
+        })
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn learn_clutch_input(allow_button: bool) -> Result<ClutchInputCaptureSummary, String> {
+    let generation = LOOKUP_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    tauri::async_runtime::spawn_blocking(move || {
+        std::thread::spawn(move || detect_clutch_input(generation, allow_button))
+            .join()
+            .map_err(|_| "The clutch input worker stopped unexpectedly.".to_owned())?
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 fn system_action_summary(scope: &str, binding: &SystemActionBinding) -> SystemActionBindingSummary {
     let SystemAction::Microphone { operation, device } = &binding.action;
     let (target_type, target_id) = match device {
@@ -1762,7 +1915,9 @@ fn remove_virtual_profile_encoder_group(
     }
     let saved = (!mapping.buttons.is_empty()
         || !mapping.encoder_groups.is_empty()
-        || !mapping.system_actions.is_empty())
+        || !mapping.system_actions.is_empty()
+        || mapping.clutch.is_some()
+        || !mapping.analog_axes.is_empty())
     .then_some(mapping.clone());
     store
         .set_profile_virtual_mapping(profile_id, saved)
@@ -1927,7 +2082,9 @@ fn remove_virtual_profile_button(
     });
     let saved = (!mapping.buttons.is_empty()
         || !mapping.encoder_groups.is_empty()
-        || !mapping.system_actions.is_empty())
+        || !mapping.system_actions.is_empty()
+        || mapping.clutch.is_some()
+        || !mapping.analog_axes.is_empty())
     .then_some(mapping.clone());
     store
         .set_profile_virtual_mapping(profile_id, saved)
@@ -2492,6 +2649,10 @@ fn start_virtual_routing_inner(
         has_virtual_outputs,
         profile_system_actions,
         global_system_actions,
+        clutch,
+        clutch_axis,
+        analog_axes,
+        workspace_id,
     ) = {
         let store = app_state.0.lock().map_err(|error| error.to_string())?;
         if store.settings.input_mode != InputMode::Virtual {
@@ -2508,6 +2669,8 @@ fn start_virtual_routing_inner(
         if persisted_mapping.buttons.is_empty()
             && persisted_mapping.encoder_groups.is_empty()
             && persisted_mapping.system_actions.is_empty()
+            && persisted_mapping.clutch.is_none()
+            && persisted_mapping.analog_axes.is_empty()
             && store.settings.global_system_actions.is_empty()
         {
             return Err("Learn at least one physical button for this profile first.".to_owned());
@@ -2585,8 +2748,41 @@ fn start_virtual_routing_inner(
                 .collect::<Result<Vec<_>, String>>()?,
         )
         .map_err(|error| error.to_string())?;
-        let has_virtual_outputs =
-            !persisted_mapping.buttons.is_empty() || !persisted_mapping.encoder_groups.is_empty();
+        let workspace_clutch = store
+            .workspace_clutch_settings(&profile.workspace_id)
+            .cloned();
+        let (clutch, clutch_axis) = match persisted_mapping.clutch.as_ref() {
+            Some(mapping) => {
+                let workspace = workspace_clutch.as_ref().ok_or_else(|| {
+                    "Select a persistent vJoy clutch axis for this workspace first.".to_owned()
+                })?;
+                (
+                    Some(runtime_clutch_mode(mapping, workspace)?),
+                    Some(runtime_virtual_axis(workspace.virtual_axis)),
+                )
+            }
+            None => (None, None),
+        };
+        let analog_axes = persisted_mapping
+            .analog_axes
+            .iter()
+            .map(runtime_analog_axis)
+            .collect::<Result<Vec<_>, _>>()?;
+        if let Some(clutch_axis) = clutch_axis {
+            if analog_axes
+                .iter()
+                .any(|mapping| mapping.output == clutch_axis)
+            {
+                return Err(
+                    "The clutch and another analog mapping cannot write the same vJoy axis."
+                        .to_owned(),
+                );
+            }
+        }
+        let has_virtual_outputs = !persisted_mapping.buttons.is_empty()
+            || !persisted_mapping.encoder_groups.is_empty()
+            || clutch.is_some()
+            || !analog_axes.is_empty();
         (
             profile.name,
             store.settings.virtual_device_id,
@@ -2595,14 +2791,78 @@ fn start_virtual_routing_inner(
             has_virtual_outputs,
             persisted_mapping.system_actions,
             store.settings.global_system_actions.clone(),
+            clutch,
+            clutch_axis,
+            analog_axes,
+            profile.workspace_id,
         )
     };
+    if let Some(session) = routing_state
+        .session
+        .lock()
+        .map_err(|error| error.to_string())?
+        .as_ref()
+        .filter(|session| {
+            session.workspace_id == workspace_id
+                && session.device_id == device_id
+                && session.has_virtual_backend
+        })
+    {
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+        session
+            .update
+            .send(VirtualRoutingUpdate {
+                profile_id,
+                profile_name: profile_name.clone(),
+                mapping,
+                profile_system_actions,
+                global_system_actions,
+                clutch,
+                clutch_axis,
+                analog_axes,
+                selection_reason: selection_reason.clone(),
+                ready: ready_tx,
+            })
+            .map_err(|_| "The active virtual routing worker is unavailable.".to_owned())?;
+        let (identity, active_encoder_modes) = ready_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|_| {
+                "The active virtual routing worker did not switch profiles in time.".to_owned()
+            })??;
+        let next = VirtualRoutingStatus {
+            active: true,
+            profile_id: Some(profile_id),
+            profile_name: Some(profile_name),
+            identity: Some(identity),
+            selection_reason: Some(selection_reason),
+            active_encoder_modes,
+            clutch_output_percent: clutch_axis.map(|_| 0.0),
+            clutch_axis: clutch_axis.map(virtual_axis_name).map(str::to_owned),
+            ..VirtualRoutingStatus::default()
+        };
+        *routing_state
+            .status
+            .lock()
+            .map_err(|error| error.to_string())? = next.clone();
+        if let Ok(mut store) = app_state.0.lock() {
+            store.settings.last_virtual_profile = Some(profile_id);
+            if let Err(error) = store.save_settings() {
+                diagnostics::warn("routing.last-profile.save", error.to_string());
+            }
+        }
+        diagnostics::info(
+            "routing.profile.changed",
+            format!("Profile {profile_id} activated without reacquiring vJoy"),
+        );
+        return Ok(next);
+    }
     stop_virtual_routing_inner(routing_state)?;
 
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let worker_stop = Arc::clone(&stop);
     let status = Arc::clone(&routing_state.status);
     let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+    let (update_tx, update_rx) = std::sync::mpsc::channel();
     let worker_profile_name = profile_name.clone();
     let worker_selection_reason = selection_reason.clone();
     let worker = std::thread::spawn(move || {
@@ -2615,11 +2875,15 @@ fn start_virtual_routing_inner(
             has_virtual_outputs,
             profile_system_actions,
             global_system_actions,
+            clutch,
+            clutch_axis,
+            analog_axes,
             audio::service(),
             worker_stop,
             status,
             ready_tx,
             worker_selection_reason,
+            update_rx,
         );
     });
     let (identity, active_encoder_modes) =
@@ -2643,7 +2907,14 @@ fn start_virtual_routing_inner(
     *routing_state
         .session
         .lock()
-        .map_err(|error| error.to_string())? = Some(VirtualRoutingSession { stop, worker });
+        .map_err(|error| error.to_string())? = Some(VirtualRoutingSession {
+        stop,
+        update: update_tx,
+        worker,
+        workspace_id,
+        device_id,
+        has_virtual_backend: has_virtual_outputs,
+    });
     let next = VirtualRoutingStatus {
         active: true,
         profile_id: Some(profile_id),
@@ -2651,6 +2922,8 @@ fn start_virtual_routing_inner(
         identity: Some(identity),
         selection_reason: Some(selection_reason),
         active_encoder_modes,
+        clutch_output_percent: clutch_axis.map(|_| 0.0),
+        clutch_axis: clutch_axis.map(virtual_axis_name).map(str::to_owned),
         ..VirtualRoutingStatus::default()
     };
     *routing_state
@@ -2724,13 +2997,23 @@ fn run_virtual_routing_worker(
     has_virtual_outputs: bool,
     profile_system_actions: Vec<SystemActionBinding>,
     global_system_actions: Vec<SystemActionBinding>,
+    clutch: Option<ClutchMode>,
+    mut clutch_axis: Option<VirtualAxis>,
+    analog_axes: Vec<RuntimeAnalogAxisMapping>,
     audio_service: audio::AudioService,
     stop: Arc<std::sync::atomic::AtomicBool>,
     status: Arc<Mutex<VirtualRoutingStatus>>,
     ready: std::sync::mpsc::SyncSender<Result<(String, Vec<ActiveEncoderModeSummary>), String>>,
     selection_reason: String,
+    updates: std::sync::mpsc::Receiver<VirtualRoutingUpdate>,
 ) {
     let result = (|| -> Result<(), String> {
+        let mut profile_id = profile_id;
+        let mut profile_name = profile_name;
+        let mut profile_system_actions = profile_system_actions;
+        let mut global_system_actions = global_system_actions;
+        let mut selection_reason = selection_reason;
+        let mut analog_axes = analog_axes;
         let mut listener = DirectInputButtonMonitor::new().map_err(|error| error.to_string())?;
         let mut known_devices = listener
             .device_summaries()
@@ -2752,6 +3035,22 @@ fn run_virtual_routing_worker(
         } else {
             None
         };
+        let mut clutch = clutch
+            .map(ClutchProcessor::new)
+            .transpose()
+            .map_err(|error| error.to_string())?;
+        if let (Some(engine), Some(axis)) = (engine.as_mut(), clutch_axis) {
+            engine
+                .set_axis_normalized(axis, 0.0)
+                .map_err(|error| error.to_string())?;
+        }
+        if let Some(engine) = engine.as_mut() {
+            for mapping in &analog_axes {
+                engine
+                    .set_axis_normalized(mapping.output, 0.0)
+                    .map_err(|error| error.to_string())?;
+            }
+        }
         let mut held_system_buttons = std::collections::BTreeSet::<(String, u32)>::new();
         let identity = engine
             .as_ref()
@@ -2777,15 +3076,163 @@ fn run_virtual_routing_worker(
             *current = VirtualRoutingStatus {
                 active: true,
                 profile_id: Some(profile_id),
-                profile_name: Some(profile_name),
+                profile_name: Some(profile_name.clone()),
                 identity: Some(identity),
-                selection_reason: Some(selection_reason),
+                selection_reason: Some(selection_reason.clone()),
                 active_encoder_modes: encoder_modes,
+                clutch_output_percent: clutch_axis.map(|_| 0.0),
+                clutch_axis: clutch_axis.map(virtual_axis_name).map(str::to_owned),
                 ..VirtualRoutingStatus::default()
             };
         }
         while !stop.load(Ordering::SeqCst) {
-            for event in listener.poll().map_err(|error| error.to_string())? {
+            while let Ok(update) = updates.try_recv() {
+                let switched = (|| -> Result<(String, Vec<ActiveEncoderModeSummary>), String> {
+                    let engine = engine.as_mut().ok_or_else(|| {
+                        "Start a profile with virtual output before switching in place.".to_owned()
+                    })?;
+                    if let Some(axis) = clutch_axis {
+                        engine
+                            .set_axis_normalized(axis, 0.0)
+                            .map_err(|error| error.to_string())?;
+                    }
+                    for mapping in &analog_axes {
+                        engine
+                            .set_axis_normalized(mapping.output, 0.0)
+                            .map_err(|error| error.to_string())?;
+                    }
+                    engine
+                        .set_profile(update.mapping)
+                        .map_err(|error| error.to_string())?;
+                    clutch = update
+                        .clutch
+                        .map(ClutchProcessor::new)
+                        .transpose()
+                        .map_err(|error| error.to_string())?;
+                    clutch_axis = update.clutch_axis;
+                    analog_axes = update.analog_axes;
+                    if let Some(axis) = clutch_axis {
+                        engine
+                            .set_axis_normalized(axis, 0.0)
+                            .map_err(|error| error.to_string())?;
+                    }
+                    for mapping in &analog_axes {
+                        engine
+                            .set_axis_normalized(mapping.output, 0.0)
+                            .map_err(|error| error.to_string())?;
+                    }
+                    profile_id = update.profile_id;
+                    profile_name = update.profile_name;
+                    profile_system_actions = update.profile_system_actions;
+                    global_system_actions = update.global_system_actions;
+                    selection_reason = update.selection_reason;
+                    held_system_buttons.clear();
+                    let identity = engine
+                        .capabilities()
+                        .map_err(|error| error.to_string())?
+                        .identity;
+                    let modes = engine
+                        .active_encoder_modes()
+                        .into_iter()
+                        .map(|(encoder_name, mode_name)| ActiveEncoderModeSummary {
+                            encoder_name: encoder_name.to_owned(),
+                            mode_name: mode_name.to_owned(),
+                        })
+                        .collect::<Vec<_>>();
+                    if let Ok(mut current) = status.lock() {
+                        *current = VirtualRoutingStatus {
+                            active: true,
+                            profile_id: Some(profile_id),
+                            profile_name: Some(profile_name.clone()),
+                            identity: Some(identity.clone()),
+                            selection_reason: Some(selection_reason.clone()),
+                            active_encoder_modes: modes.clone(),
+                            clutch_output_percent: clutch_axis.map(|_| 0.0),
+                            clutch_axis: clutch_axis.map(virtual_axis_name).map(str::to_owned),
+                            ..VirtualRoutingStatus::default()
+                        };
+                    }
+                    Ok((identity, modes))
+                })();
+                let _ = update.ready.send(switched);
+            }
+            for event in listener
+                .poll_controls()
+                .map_err(|error| error.to_string())?
+            {
+                let event = match event {
+                    DirectInputEvent::Axis(event) => {
+                        if let Some(engine) = engine.as_mut() {
+                            for mapping in analog_axes.iter().filter(|mapping| {
+                                mapping.input.device_id() == event.device_id
+                                    && mapping.input.axis_id() == event.axis_id
+                            }) {
+                                let output = mapping.calibration.normalize(event.value);
+                                engine
+                                    .set_axis_normalized(mapping.output, output)
+                                    .map_err(|error| error.to_string())?;
+                                if let Ok(mut current) = status.lock() {
+                                    current.routed_event_count += 1;
+                                    current.last_event =
+                                        Some(format!("{} {:.0}%", mapping.name, output * 100.0));
+                                    update_analog_axis_status(&mut current, mapping, output);
+                                }
+                            }
+                        }
+                        if let (Some(clutch), Some(engine), Some(axis)) =
+                            (clutch.as_mut(), engine.as_mut(), clutch_axis)
+                            && let Some(output) = clutch.handle_axis(
+                                &PhysicalAxis::new(event.device_id, event.axis_id)
+                                    .map_err(|error| error.to_string())?,
+                                event.value,
+                            )
+                        {
+                            engine
+                                .set_axis_normalized(axis, output)
+                                .map_err(|error| error.to_string())?;
+                            if let Ok(mut current) = status.lock() {
+                                let (primary, bite) = clutch.input_values();
+                                current.routed_event_count += 1;
+                                current.clutch_output_percent = Some(output * 100.0);
+                                current.clutch_primary_input_percent = Some(primary * 100.0);
+                                current.clutch_bite_input_percent = bite.map(|value| value * 100.0);
+                                current.last_event = Some(format!("Clutch {:.0}%", output * 100.0));
+                            }
+                        }
+                        continue;
+                    }
+                    DirectInputEvent::Disconnected { device_id, .. } => {
+                        if let Some(engine) = engine.as_mut() {
+                            for mapping in analog_axes
+                                .iter()
+                                .filter(|mapping| mapping.input.device_id() == device_id)
+                            {
+                                engine
+                                    .set_axis_normalized(mapping.output, 0.0)
+                                    .map_err(|error| error.to_string())?;
+                                if let Ok(mut current) = status.lock() {
+                                    update_analog_axis_status(&mut current, mapping, 0.0);
+                                }
+                            }
+                        }
+                        if let (Some(clutch), Some(engine), Some(axis)) =
+                            (clutch.as_mut(), engine.as_mut(), clutch_axis)
+                            && let Some(output) = clutch.disconnect_device(&device_id)
+                        {
+                            engine
+                                .set_axis_normalized(axis, output)
+                                .map_err(|error| error.to_string())?;
+                            if let Ok(mut current) = status.lock() {
+                                let (primary, bite) = clutch.input_values();
+                                current.clutch_output_percent = Some(output * 100.0);
+                                current.clutch_primary_input_percent = Some(primary * 100.0);
+                                current.clutch_bite_input_percent = bite.map(|value| value * 100.0);
+                            }
+                        }
+                        continue;
+                    }
+                    DirectInputEvent::Button(event) => event,
+                };
                 let system_source = (event.device_id.clone(), event.button_id);
                 let changed = update_pressed_system_buttons(
                     &mut held_system_buttons,
@@ -2809,6 +3256,20 @@ fn run_virtual_routing_worker(
                 }
                 let source = PhysicalButton::new(event.device_id, event.button_id)
                     .map_err(|error| error.to_string())?;
+                if let (Some(clutch), Some(engine), Some(axis)) =
+                    (clutch.as_mut(), engine.as_mut(), clutch_axis)
+                    && let Some(output) = clutch.handle_button(&source, event.pressed)
+                {
+                    engine
+                        .set_axis_normalized(axis, output)
+                        .map_err(|error| error.to_string())?;
+                    if let Ok(mut current) = status.lock() {
+                        let (primary, bite) = clutch.input_values();
+                        current.clutch_output_percent = Some(output * 100.0);
+                        current.clutch_primary_input_percent = Some(primary * 100.0);
+                        current.clutch_bite_input_percent = bite.map(|value| value * 100.0);
+                    }
+                }
                 let routed = if let Some(engine) = engine.as_mut() {
                     engine
                         .handle_button(&source, event.pressed)
@@ -2859,6 +3320,16 @@ fn run_virtual_routing_worker(
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
         if let Some(engine) = engine.as_mut() {
+            if let Some(axis) = clutch_axis {
+                engine
+                    .set_axis_normalized(axis, 0.0)
+                    .map_err(|error| error.to_string())?;
+            }
+            for mapping in &analog_axes {
+                engine
+                    .set_axis_normalized(mapping.output, 0.0)
+                    .map_err(|error| error.to_string())?;
+            }
             engine.disconnect().map_err(|error| error.to_string())?;
         }
         Ok(())
@@ -2888,11 +3359,15 @@ fn run_virtual_routing_worker(
     _has_virtual_outputs: bool,
     _profile_system_actions: Vec<SystemActionBinding>,
     _global_system_actions: Vec<SystemActionBinding>,
+    _clutch: Option<ClutchMode>,
+    _clutch_axis: Option<VirtualAxis>,
+    _analog_axes: Vec<RuntimeAnalogAxisMapping>,
     _audio_service: audio::AudioService,
     _stop: Arc<std::sync::atomic::AtomicBool>,
     _status: Arc<Mutex<VirtualRoutingStatus>>,
     ready: std::sync::mpsc::SyncSender<Result<(String, Vec<ActiveEncoderModeSummary>), String>>,
     _selection_reason: String,
+    _updates: std::sync::mpsc::Receiver<VirtualRoutingUpdate>,
 ) {
     let _ = ready.send(Err(
         "Virtual routing is only available in the Windows build.".to_owned(),
@@ -3991,9 +4466,246 @@ fn detect_direct_input_mapping(generation: u64) -> Result<LearnedPhysicalMapping
     Err("No controller button was detected within 30 seconds.".to_owned())
 }
 
+#[cfg(target_os = "windows")]
+fn detect_clutch_input(
+    generation: u64,
+    allow_button: bool,
+) -> Result<ClutchInputCaptureSummary, String> {
+    let mut listener = DirectInputButtonMonitor::new().map_err(|error| error.to_string())?;
+    let started = std::time::Instant::now();
+    let mut axis_started = None::<std::time::Instant>;
+    let mut axes = std::collections::BTreeMap::<(String, u32), (String, i32, i32)>::new();
+    while started.elapsed() < std::time::Duration::from_secs(30) {
+        if LOOKUP_GENERATION.load(Ordering::SeqCst) != generation {
+            return Err("Clutch input learning cancelled.".to_owned());
+        }
+        for event in listener
+            .poll_controls()
+            .map_err(|error| error.to_string())?
+        {
+            match event {
+                DirectInputEvent::Button(event)
+                    if allow_button
+                        && event.pressed
+                        && !event.device_name.to_lowercase().contains("vjoy") =>
+                {
+                    return Ok(ClutchInputCaptureSummary::Button {
+                        device_id: event.device_id,
+                        device_name: event.device_name,
+                        physical_button: event.button_id,
+                    });
+                }
+                DirectInputEvent::Axis(event)
+                    if !event.device_name.to_lowercase().contains("vjoy") =>
+                {
+                    axis_started.get_or_insert_with(std::time::Instant::now);
+                    let entry = axes.entry((event.device_id, event.axis_id)).or_insert((
+                        event.device_name,
+                        event.value,
+                        event.value,
+                    ));
+                    entry.1 = entry.1.min(event.value);
+                    entry.2 = entry.2.max(event.value);
+                }
+                DirectInputEvent::Button(_)
+                | DirectInputEvent::Axis(_)
+                | DirectInputEvent::Disconnected { .. } => {}
+            }
+        }
+        if axis_started
+            .is_some_and(|started| started.elapsed() >= std::time::Duration::from_secs(3))
+        {
+            if let Some(((device_id, axis_id), (device_name, minimum, maximum))) = axes
+                .iter()
+                .max_by_key(|(_, (_, minimum, maximum))| i64::from(*maximum) - i64::from(*minimum))
+                .filter(|(_, (_, minimum, maximum))| {
+                    i64::from(*maximum) - i64::from(*minimum) >= 32
+                })
+            {
+                return Ok(ClutchInputCaptureSummary::Axis {
+                    device_id: device_id.clone(),
+                    device_name: device_name.clone(),
+                    physical_axis: *axis_id,
+                    minimum: *minimum,
+                    maximum: *maximum,
+                });
+            }
+            axis_started = None;
+            axes.clear();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(4));
+    }
+    Err("No clutch input was detected within 30 seconds.".to_owned())
+}
+
 #[cfg(not(target_os = "windows"))]
 fn detect_direct_input_mapping(_generation: u64) -> Result<LearnedPhysicalMapping, String> {
     Err("DirectInput button learning is only available in the Windows build.".to_owned())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn detect_clutch_input(
+    _generation: u64,
+    _allow_button: bool,
+) -> Result<ClutchInputCaptureSummary, String> {
+    Err("Clutch input learning is only available in the Windows build.".to_owned())
+}
+
+fn virtual_axis_name(axis: VirtualAxis) -> &'static str {
+    match axis {
+        VirtualAxis::X => "x",
+        VirtualAxis::Y => "y",
+        VirtualAxis::Z => "z",
+        VirtualAxis::Rx => "rx",
+        VirtualAxis::Ry => "ry",
+        VirtualAxis::Rz => "rz",
+        VirtualAxis::Slider0 => "slider0",
+        VirtualAxis::Slider1 => "slider1",
+        VirtualAxis::Wheel => "wheel",
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn configured_virtual_axes(device_id: u32) -> Vec<String> {
+    VJoyBackend::configured_axes(device_id)
+        .unwrap_or_default()
+        .keys()
+        .copied()
+        .map(virtual_axis_name)
+        .map(str::to_owned)
+        .collect()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configured_virtual_axes(_device_id: u32) -> Vec<String> {
+    VirtualAxis::ALL
+        .into_iter()
+        .map(virtual_axis_name)
+        .map(str::to_owned)
+        .collect()
+}
+
+fn runtime_virtual_axis(axis: VirtualAxisId) -> VirtualAxis {
+    match axis {
+        VirtualAxisId::X => VirtualAxis::X,
+        VirtualAxisId::Y => VirtualAxis::Y,
+        VirtualAxisId::Z => VirtualAxis::Z,
+        VirtualAxisId::Rx => VirtualAxis::Rx,
+        VirtualAxisId::Ry => VirtualAxis::Ry,
+        VirtualAxisId::Rz => VirtualAxis::Rz,
+        VirtualAxisId::Slider0 => VirtualAxis::Slider0,
+        VirtualAxisId::Slider1 => VirtualAxis::Slider1,
+        VirtualAxisId::Wheel => VirtualAxis::Wheel,
+    }
+}
+
+fn runtime_analog_axis(
+    value: &VirtualAnalogAxisMapping,
+) -> Result<RuntimeAnalogAxisMapping, String> {
+    Ok(RuntimeAnalogAxisMapping {
+        name: value.name.clone(),
+        input: PhysicalAxis::new(value.input.device_id.clone(), value.input.physical_axis)
+            .map_err(|error| error.to_string())?,
+        calibration: AxisCalibration::new(
+            value.input.calibration.minimum,
+            value.input.calibration.maximum,
+            value.input.calibration.inverted,
+            f64::from(value.input.calibration.released_deadzone_percent) / 100.0,
+            f64::from(value.input.calibration.engaged_deadzone_percent) / 100.0,
+        )
+        .map_err(|error| error.to_string())?,
+        output: runtime_virtual_axis(value.virtual_axis),
+    })
+}
+
+fn update_analog_axis_status(
+    status: &mut VirtualRoutingStatus,
+    mapping: &RuntimeAnalogAxisMapping,
+    output: f64,
+) {
+    let summary = AnalogAxisOutputSummary {
+        name: mapping.name.clone(),
+        input_percent: output * 100.0,
+        output_percent: output * 100.0,
+        virtual_axis: virtual_axis_name(mapping.output).to_owned(),
+    };
+    if let Some(current) = status
+        .analog_axis_outputs
+        .iter_mut()
+        .find(|current| current.name == mapping.name)
+    {
+        *current = summary;
+    } else {
+        status.analog_axis_outputs.push(summary);
+    }
+}
+
+fn runtime_clutch_mode(
+    mapping: &VirtualClutchMapping,
+    workspace: &WorkspaceClutchSettings,
+) -> Result<ClutchMode, String> {
+    fn calibration(value: &VirtualAxisCalibration) -> Result<AxisCalibration, String> {
+        AxisCalibration::new(
+            value.minimum,
+            value.maximum,
+            value.inverted,
+            f64::from(value.released_deadzone_percent) / 100.0,
+            f64::from(value.engaged_deadzone_percent) / 100.0,
+        )
+        .map_err(|error| error.to_string())
+    }
+    fn axis(value: &VirtualAxisInput) -> Result<ClutchInput, String> {
+        Ok(ClutchInput::axis(
+            PhysicalAxis::new(value.device_id.clone(), value.physical_axis)
+                .map_err(|error| error.to_string())?,
+            calibration(&value.calibration)?,
+        ))
+    }
+    fn input(value: &VirtualClutchInput) -> Result<ClutchInput, String> {
+        match value {
+            VirtualClutchInput::Button {
+                device_id,
+                physical_button,
+                ..
+            } => Ok(ClutchInput::button(
+                PhysicalButton::new(device_id.clone(), *physical_button)
+                    .map_err(|error| error.to_string())?,
+            )),
+            VirtualClutchInput::Axis(value) => axis(value),
+        }
+    }
+    let bite = |profile: u8, shared: bool| {
+        f64::from(if shared {
+            workspace.shared_bite_point_percent
+        } else {
+            profile
+        }) / 100.0
+    };
+    match mapping {
+        VirtualClutchMapping::Direct { input: value } => Ok(ClutchMode::Direct {
+            input: axis(value)?,
+        }),
+        VirtualClutchMapping::Dual {
+            full,
+            bite: bite_input,
+            bite_point_percent,
+            use_workspace_bite_point,
+        } => Ok(ClutchMode::Dual {
+            full: input(full)?,
+            bite: input(bite_input)?,
+            bite_point: bite(*bite_point_percent, *use_workspace_bite_point),
+        }),
+        VirtualClutchMapping::Combined {
+            input: value,
+            firmware_bite_point_percent,
+            bite_point_percent,
+            use_workspace_bite_point,
+        } => Ok(ClutchMode::Combined {
+            input: axis(value)?,
+            firmware_bite_point: firmware_bite_point_percent.map(|value| f64::from(value) / 100.0),
+            bite_point: bite(*bite_point_percent, *use_workspace_bite_point),
+        }),
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -4663,6 +5375,11 @@ pub fn run() {
             preview_virtual_layout,
             import_virtual_layout,
             virtual_profile_mapping,
+            virtual_profile_clutch,
+            save_virtual_profile_clutch,
+            save_virtual_profile_analog_axes,
+            save_workspace_clutch_settings,
+            learn_clutch_input,
             system_action_bindings,
             capture_system_action_control,
             save_system_action_binding,

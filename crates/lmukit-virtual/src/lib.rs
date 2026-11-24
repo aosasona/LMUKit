@@ -373,8 +373,8 @@ impl VirtualInputBackend for MockVirtualBackend {
 #[cfg(test)]
 mod tests {
     use super::{
-        MockVirtualBackend, SetupButtonAllocator, TwoButtonMirror, VirtualInputBackend,
-        next_unused_button,
+        MockVirtualBackend, SetupButtonAllocator, TwoButtonMirror, VirtualAxis, VirtualAxisRange,
+        VirtualInputBackend, next_unused_button,
     };
 
     #[test]
@@ -447,6 +447,22 @@ mod tests {
         assert_eq!(backend.events(), [(1, true), (1, false)]);
         assert!(backend.set_button(0, true).is_err());
         assert!(backend.set_button(3, true).is_err());
+    }
+
+    #[test]
+    fn mock_axes_use_the_configured_driver_range_without_touching_buttons() {
+        let range = VirtualAxisRange::new(1_000, 31_000).unwrap();
+        let mut backend = MockVirtualBackend::new(2).with_axis(VirtualAxis::Z, range);
+        backend.connect().unwrap();
+        backend.set_button(1, true).unwrap();
+        backend
+            .set_axis(VirtualAxis::Z, range.value_for(0.5))
+            .unwrap();
+
+        assert_eq!(backend.axis(VirtualAxis::Z), Some(16_000));
+        assert_eq!(backend.button(1), Some(true));
+        assert!(backend.set_axis(VirtualAxis::Z, 999).is_err());
+        assert!(backend.set_axis(VirtualAxis::Rx, 1_000).is_err());
     }
 
     #[test]

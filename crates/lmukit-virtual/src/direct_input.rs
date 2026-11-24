@@ -461,7 +461,10 @@ impl DirectInputButtonMonitor {
             self.release_and_remove(&device_id, &mut released);
             self.pending_events.extend(released);
         }
-        for device in devices.into_iter().filter(|device| device.button_count > 0) {
+        for device in devices
+            .into_iter()
+            .filter(|device| device.button_count > 0 || device.axis_count > 0)
+        {
             if self.readers.contains_key(&device.device_id) {
                 continue;
             }

@@ -269,6 +269,19 @@ impl ClutchProcessor {
         }
     }
 
+    /// Current calibrated physical travels. The second value is present only
+    /// for independent dual-clutch mode.
+    pub fn input_values(&self) -> (f64, Option<f64>) {
+        match &self.mode {
+            ClutchMode::Direct { input } | ClutchMode::Combined { input, .. } => {
+                (self.input_value(input), None)
+            }
+            ClutchMode::Dual { full, bite, .. } => {
+                (self.input_value(full), Some(self.input_value(bite)))
+            }
+        }
+    }
+
     fn input_value(&self, input: &ClutchInput) -> f64 {
         match &input.source {
             ClutchInputKind::Button(source) => f64::from(self.pressed.contains(source)),

@@ -142,6 +142,40 @@ impl VJoyBackend {
         })
     }
 
+    /// Reads configured axes and their real driver ranges without acquiring or
+    /// resetting the virtual device.
+    pub fn configured_axes(
+        device_id: u32,
+    ) -> Result<std::collections::BTreeMap<VirtualAxis, VirtualAxisRange>> {
+        ensure!(
+            (1..=16).contains(&device_id),
+            "vJoy device ID must be 1..=16"
+        );
+        let api = VJoyApi::shared()?;
+        ensure!(
+            unsafe { (api.enabled)() } != 0,
+            "the vJoy driver is not enabled"
+        );
+        let mut axes = std::collections::BTreeMap::new();
+        for axis in VirtualAxis::ALL {
+            if unsafe { (api.axis_exists)(device_id, axis.hid_usage()) } == 0 {
+                continue;
+            }
+            let mut minimum = 0;
+            let mut maximum = 0;
+            ensure!(
+                unsafe { (api.axis_minimum)(device_id, axis.hid_usage(), &mut minimum) } != 0,
+                "vJoy did not report the {axis:?} axis minimum"
+            );
+            ensure!(
+                unsafe { (api.axis_maximum)(device_id, axis.hid_usage(), &mut maximum) } != 0,
+                "vJoy did not report the {axis:?} axis maximum"
+            );
+            axes.insert(axis, VirtualAxisRange::new(minimum, maximum)?);
+        }
+        Ok(axes)
+    }
+
     fn ensure_connected(&self) -> Result<()> {
         ensure!(self.connected, "vJoy device is not connected");
         Ok(())
