@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Search, Square } from "lucide-react";
+import { RefreshCw, Search, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ConfirmDialog, type Confirmation } from "./components/ConfirmDialog";
@@ -1051,6 +1051,19 @@ export default function App() {
                   <Square size={15} /> Disable remapping
                 </button>
               )}
+              {snapshot.inputMode === "virtual" &&
+                routing.active &&
+                autoProfileSelection.enabled &&
+                autoProfileSelection.paused && (
+                  <button
+                    type="button"
+                    className="ghost live-routing-resume"
+                    disabled={busy}
+                    onClick={() => void resumeAutoProfileSelection()}
+                  >
+                    <RefreshCw size={15} /> Resume auto
+                  </button>
+                )}
               <button
                 type="button"
                 className="ghost"

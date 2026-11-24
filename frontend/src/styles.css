@@ -5062,6 +5062,7 @@ textarea,
   padding: 0 14px;
   border-bottom: 1px solid var(--line);
   background: #151514;
+  overflow-x: auto;
 }
 .profile-input-tabs button {
   flex: 0 0 auto;
@@ -5075,6 +5076,12 @@ textarea,
   background: transparent;
   color: var(--muted);
   cursor: pointer;
+}
+.profile-input-tabs > .secondary {
+  min-height: 32px;
+  align-self: center;
+  margin-left: auto;
+  white-space: nowrap;
 }
 .profile-input-tabs button:hover {
   color: #dce4df;
@@ -7472,6 +7479,59 @@ textarea,
 }
 .clutch-mapping-panel.simplified > footer {
   padding-top: 2px;
+}
+.clutch-binding-walkthrough {
+  border: 1px solid color-mix(in srgb, var(--teal) 24%, var(--line));
+  background: color-mix(in srgb, var(--teal) 5%, #151514);
+}
+.clutch-binding-walkthrough > header {
+  display: grid;
+  gap: 4px;
+  padding: 15px 17px;
+  border-bottom: 1px solid var(--line);
+}
+.clutch-binding-walkthrough > ol {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.clutch-binding-walkthrough li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  min-height: 62px;
+  padding: 11px 17px;
+  border-bottom: 1px solid var(--line);
+}
+.clutch-binding-walkthrough li:last-child {
+  border-bottom: 0;
+}
+.clutch-binding-walkthrough li > b {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 1px solid #485244;
+  color: #aeb9b2;
+  font-size: calc(11px * var(--font-scale));
+}
+.clutch-binding-walkthrough li.complete > b {
+  border-color: rgba(198, 243, 107, 0.55);
+  background: rgba(198, 243, 107, 0.1);
+  color: var(--teal);
+}
+.clutch-binding-walkthrough strong,
+.clutch-binding-walkthrough small {
+  display: block;
+}
+.clutch-binding-walkthrough small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: calc(11px * var(--font-scale));
+  line-height: 1.4;
 }
 
 @media (max-width: 900px) {

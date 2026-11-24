@@ -57,12 +57,14 @@ export function ProfileClutchMapping({
   routing,
   onNotice,
   onConfiguredChange,
+  onStartLive,
 }: {
   profileId: string;
   disabled: boolean;
   routing: VirtualRoutingStatus;
   onNotice: (message: string) => void;
   onConfiguredChange?: (configured: boolean) => void;
+  onStartLive?: () => void;
 }) {
   const [enabled, setEnabled] = useState(false);
   const [axis, setAxis] = useState<VirtualAxisId | "">("");
@@ -320,6 +322,56 @@ export function ProfileClutchMapping({
               </strong>
             </div>
           </div>
+
+          <section className="clutch-binding-walkthrough">
+            <header>
+              <span className="eyebrow">One-time game binding</span>
+              <strong>Bind the vJoy axis as Clutch in the game</strong>
+            </header>
+            <ol>
+              <li className={input ? "complete" : ""}>
+                <b>1</b>
+                <span>
+                  <strong>Save this captured axis</strong>
+                  <small>
+                    Pivot relays your wheel software's finished clutch value.
+                  </small>
+                </span>
+              </li>
+              <li className={routing.active ? "complete" : ""}>
+                <b>2</b>
+                <span>
+                  <strong>Start live remapping</strong>
+                  <small>
+                    Keep Pivot running while the game listens for a clutch
+                    input.
+                  </small>
+                </span>
+                {!routing.active && (
+                  <button
+                    type="button"
+                    className="secondary compact"
+                    disabled={!input || disabled}
+                    onClick={onStartLive}
+                  >
+                    Start remapping
+                  </button>
+                )}
+              </li>
+              <li>
+                <b>3</b>
+                <span>
+                  <strong>
+                    Make the game listen for Clutch, then pull a paddle
+                  </strong>
+                  <small>
+                    It should detect the selected vJoy axis. Clear a direct
+                    physical clutch bind first to avoid duplicate input.
+                  </small>
+                </span>
+              </li>
+            </ol>
+          </section>
 
           <details className="clutch-advanced">
             <summary>Advanced clutch settings</summary>

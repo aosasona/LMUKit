@@ -91,9 +91,9 @@ export function ProfileVirtualMappings({
   const [filter, setFilter] = useState<"all" | "assigned" | "unassigned">(
     "all",
   );
-  const [editorTab, setEditorTab] = useState<"buttons" | "clutch" | "system">(
-    "buttons",
-  );
+  const [editorTab, setEditorTab] = useState<
+    "buttons" | "clutch" | "system" | "defaults"
+  >("buttons");
   const [routing, setRouting] = useState<VirtualRoutingStatus>({
     active: false,
     profileId: null,
@@ -408,7 +408,7 @@ export function ProfileVirtualMappings({
   };
 
   const startRouting = async () => {
-    if (!mappings.length && !systemActionCount) return;
+    if (!mappings.length && !systemActionCount && !hasClutch) return;
     setRoutingBusy(true);
     setError(null);
     try {
@@ -466,12 +466,6 @@ export function ProfileVirtualMappings({
         </div>
         <div className="profile-virtual-mapping-actions">
           <span>{mappings.length} assigned</span>
-          <ProfileEncoderMappings
-            profile={profile}
-            busy={busy}
-            routingActive={routingActive}
-            onNotice={onNotice}
-          />
           {presentation === "card" && (
             <button
               type="button"
@@ -497,64 +491,6 @@ export function ProfileVirtualMappings({
           </span>
         </div>
       )}
-      <div className="profile-defaults">
-        <div className="profile-defaults-heading">
-          <span>
-            <Star />
-            <span>
-              <strong>
-                {isLmu
-                  ? "Automatic class defaults"
-                  : "Automatic car-tag defaults"}
-              </strong>
-              <small>
-                One profile is selected for each{" "}
-                {isLmu ? "class" : "matching tag"} in this workspace.
-              </small>
-            </span>
-          </span>
-          {!profile.classTags.length && (
-            <em>Add {isLmu ? "a class" : "an AC car"} tag first</em>
-          )}
-        </div>
-        {!!profile.classTags.length && (
-          <div className="profile-default-scopes">
-            {profile.classTags.map((classTag) => {
-              const assigned = defaults.find(
-                (entry) =>
-                  entry.classTag.toLowerCase() === classTag.toLowerCase(),
-              );
-              const isThisProfile = assigned?.profileId === profile.id;
-              return (
-                <div className="profile-default-scope" key={classTag}>
-                  <span>
-                    <strong>
-                      {isLmu ? displayClassTag(classTag) : classTag}
-                    </strong>
-                    <small>
-                      {assigned ? assigned.profileName : "No default selected"}
-                    </small>
-                  </span>
-                  <button
-                    type="button"
-                    className={
-                      isThisProfile ? "ghost compact" : "secondary compact"
-                    }
-                    disabled={busy || defaultsBusy !== null}
-                    onClick={() => void changeDefault(classTag, isThisProfile)}
-                  >
-                    {defaultsBusy === classTag
-                      ? "Saving…"
-                      : isThisProfile
-                        ? "Remove default"
-                        : "Make default"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
       <div className="profile-remapping-bar">
         <span>
           <i className={routing.active ? "active" : ""} />
@@ -688,6 +624,19 @@ export function ProfileVirtualMappings({
               >
                 <Mic2 /> System actions
               </button>
+              <button
+                type="button"
+                className={editorTab === "defaults" ? "active" : ""}
+                onClick={() => setEditorTab("defaults")}
+              >
+                <Star /> Auto defaults
+              </button>
+              <ProfileEncoderMappings
+                profile={profile}
+                busy={busy}
+                routingActive={routingActive}
+                onNotice={onNotice}
+              />
             </nav>
 
             <div
@@ -706,6 +655,7 @@ export function ProfileVirtualMappings({
                 routing={routing}
                 onNotice={onNotice}
                 onConfiguredChange={setHasClutch}
+                onStartLive={() => void startRouting()}
               />
             </div>
 
@@ -725,6 +675,77 @@ export function ProfileVirtualMappings({
                 onNotice={onNotice}
                 onCountChange={setSystemActionCount}
               />
+            </div>
+
+            <div
+              className="profile-mapping-tab-panel"
+              hidden={editorTab !== "defaults"}
+            >
+              <div className="profile-defaults">
+                <div className="profile-defaults-heading">
+                  <span>
+                    <Star />
+                    <span>
+                      <strong>
+                        {isLmu
+                          ? "Automatic class defaults"
+                          : "Automatic car-tag defaults"}
+                      </strong>
+                      <small>
+                        One profile is selected for each{" "}
+                        {isLmu ? "class" : "matching tag"}.
+                      </small>
+                    </span>
+                  </span>
+                  {!profile.classTags.length && (
+                    <em>Add {isLmu ? "a class" : "an AC car"} tag first</em>
+                  )}
+                </div>
+                {!!profile.classTags.length && (
+                  <div className="profile-default-scopes">
+                    {profile.classTags.map((classTag) => {
+                      const assigned = defaults.find(
+                        (entry) =>
+                          entry.classTag.toLowerCase() ===
+                          classTag.toLowerCase(),
+                      );
+                      const isThisProfile = assigned?.profileId === profile.id;
+                      return (
+                        <div className="profile-default-scope" key={classTag}>
+                          <span>
+                            <strong>
+                              {isLmu ? displayClassTag(classTag) : classTag}
+                            </strong>
+                            <small>
+                              {assigned
+                                ? assigned.profileName
+                                : "No default selected"}
+                            </small>
+                          </span>
+                          <button
+                            type="button"
+                            className={
+                              isThisProfile
+                                ? "ghost compact"
+                                : "secondary compact"
+                            }
+                            disabled={busy || defaultsBusy !== null}
+                            onClick={() =>
+                              void changeDefault(classTag, isThisProfile)
+                            }
+                          >
+                            {defaultsBusy === classTag
+                              ? "Saving…"
+                              : isThisProfile
+                                ? "Remove default"
+                                : "Make default"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div
