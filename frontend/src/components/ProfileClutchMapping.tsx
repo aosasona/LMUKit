@@ -207,10 +207,17 @@ export function ProfileClutchMapping({
       } else if (target === "full") setFull(inputFromCapture(capture));
       else setBite(inputFromCapture(capture));
     } catch (reason) {
-      setError(errorMessage(reason));
+      const message = errorMessage(reason);
+      if (message.toLowerCase().includes("cancelled"))
+        onNotice("Clutch capture cancelled.");
+      else setError(message);
     } finally {
       setLearning(null);
     }
+  };
+
+  const cancelLearning = () => {
+    void invoke("cancel_binding_lookup");
   };
 
   const updateDirectCalibration = (
@@ -446,13 +453,21 @@ export function ProfileClutchMapping({
                   <button
                     type="button"
                     className="secondary"
-                    disabled={disabled || learning !== null}
-                    onClick={() => void learn("full")}
+                    disabled={
+                      disabled || (learning !== null && learning !== "full")
+                    }
+                    onClick={() =>
+                      learning === "full"
+                        ? cancelLearning()
+                        : void learn("full")
+                    }
                   >
                     {learning === "full" ? (
                       <LoaderCircle className="spin" />
                     ) : null}{" "}
-                    Capture full paddle
+                    {learning === "full"
+                      ? "Cancel capture"
+                      : "Capture full paddle"}
                   </button>
                 </div>
                 <div className="clutch-source">
@@ -466,13 +481,21 @@ export function ProfileClutchMapping({
                   <button
                     type="button"
                     className="secondary"
-                    disabled={disabled || learning !== null}
-                    onClick={() => void learn("bite")}
+                    disabled={
+                      disabled || (learning !== null && learning !== "bite")
+                    }
+                    onClick={() =>
+                      learning === "bite"
+                        ? cancelLearning()
+                        : void learn("bite")
+                    }
                   >
                     {learning === "bite" ? (
                       <LoaderCircle className="spin" />
                     ) : null}{" "}
-                    Capture bite paddle
+                    {learning === "bite"
+                      ? "Cancel capture"
+                      : "Capture bite paddle"}
                   </button>
                 </div>
               </>
@@ -485,20 +508,34 @@ export function ProfileClutchMapping({
                 </span>
                 <strong>{describe(direct)}</strong>
                 <small>
-                  {direct
-                    ? `Captured range ${direct.calibration.minimum} to ${direct.calibration.maximum}`
-                    : "Nothing captured yet"}
+                  {learning === "direct"
+                    ? mode === "combined"
+                      ? "Listening — squeeze and release both paddles across their full travel."
+                      : "Listening — move the clutch across its full travel."
+                    : direct
+                      ? `Captured range ${direct.calibration.minimum} to ${direct.calibration.maximum}`
+                      : "Nothing captured yet"}
                 </small>
                 <button
                   type="button"
                   className="secondary"
-                  disabled={disabled || learning !== null}
-                  onClick={() => void learn("direct")}
+                  disabled={
+                    disabled || (learning !== null && learning !== "direct")
+                  }
+                  onClick={() =>
+                    learning === "direct"
+                      ? cancelLearning()
+                      : void learn("direct")
+                  }
                 >
                   {learning === "direct" ? (
                     <LoaderCircle className="spin" />
                   ) : null}{" "}
-                  {direct ? "Capture again" : "Start capture"}
+                  {learning === "direct"
+                    ? "Cancel capture"
+                    : direct
+                      ? "Capture again"
+                      : "Start capture"}
                 </button>
               </div>
             )}
