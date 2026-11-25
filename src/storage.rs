@@ -441,7 +441,11 @@ pub struct CompanionApp {
     pub enabled: bool,
     /// The launch modes in which this helper should start with LMU. Existing
     /// settings predate this field, so they continue to launch in both modes.
-    #[serde(default = "default_companion_launch_modes")]
+    #[serde(
+        default = "default_companion_launch_modes",
+        rename = "launchModes",
+        alias = "launch_modes"
+    )]
     pub launch_modes: Vec<LaunchMode>,
 }
 
@@ -3636,7 +3640,9 @@ mod tests {
             .unwrap();
         apps.retain(|app| app.get("name").and_then(serde_json::Value::as_str) != Some("SteamVR"));
         for app in apps {
-            app.as_object_mut().unwrap().remove("launch_modes");
+            let app = app.as_object_mut().unwrap();
+            app.remove("launchModes");
+            app.remove("launch_modes");
         }
         fs::write(
             root.join("settings.json"),
@@ -3664,6 +3670,28 @@ mod tests {
                 .launch_modes
                 .contains(&LaunchMode::Vr)
         );
+    }
+
+    #[test]
+    fn serializes_companion_launch_modes_for_the_frontend_and_reads_the_v0611_name() {
+        let app = CompanionApp {
+            name: "SteamVR".into(),
+            path: PathBuf::new(),
+            enabled: false,
+            launch_modes: vec![LaunchMode::Vr],
+        };
+        let value = serde_json::to_value(&app).unwrap();
+        assert_eq!(value["launchModes"], serde_json::json!(["vr"]));
+        assert!(value.get("launch_modes").is_none());
+
+        let legacy: CompanionApp = serde_json::from_value(serde_json::json!({
+            "name": "SteamVR",
+            "path": "",
+            "enabled": false,
+            "launch_modes": ["vr"]
+        }))
+        .unwrap();
+        assert_eq!(legacy.launch_modes, vec![LaunchMode::Vr]);
     }
 
     #[test]

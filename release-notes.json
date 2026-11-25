@@ -1,10 +1,10 @@
 {
-  "version": "0.6.11",
-  "title": "Mode-specific launch setup",
-  "summary": "This release makes companion apps fit your Desktop and OpenXR launch modes.",
+  "version": "0.6.12",
+  "title": "Settings stability fix",
+  "summary": "This corrective release restores the companion launch settings page.",
   "highlights": [
-    "Assign every companion app to Desktop, VR, or both, so each Steam launch starts only the helpers you want.",
-    "SteamVR is now an optional built-in VR-only helper: select its vrstartup.exe path and enable it when you want it started before LMU.",
-    "Existing launchers refresh automatically after valid mode or companion changes, without copying Steam launch options again."
+    "Fixed a release-only data-name mismatch that could leave Settings blank when showing companion launch options.",
+    "Existing companion settings written by v0.6.11 remain readable.",
+    "Added a defensive UI fallback so missing launch-mode data cannot crash the Settings page."
   ]
 }

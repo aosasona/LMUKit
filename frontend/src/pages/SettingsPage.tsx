@@ -273,9 +273,10 @@ export function SettingsPage(props: Props) {
     setApps((current) =>
       current.map((app, currentIndex) => {
         if (currentIndex !== index) return app;
-        const launchModes = app.launchModes.includes(targetMode)
-          ? app.launchModes.filter((entry) => entry !== targetMode)
-          : [...app.launchModes, targetMode];
+        const currentModes = app.launchModes ?? ["desktop", "vr"];
+        const launchModes = currentModes.includes(targetMode)
+          ? currentModes.filter((entry) => entry !== targetMode)
+          : [...currentModes, targetMode];
         return { ...app, launchModes };
       }),
     );
@@ -552,6 +553,7 @@ export function SettingsPage(props: Props) {
           <div className="companion-list">
             {apps.map((app, index) => {
               const errors = launchIssues[index] ?? [];
+              const appLaunchModes = app.launchModes ?? ["desktop", "vr"];
               return (
                 <div className="companion-entry" key={index}>
                   <div
@@ -613,7 +615,7 @@ export function SettingsPage(props: Props) {
                     <button
                       type="button"
                       className={
-                        app.launchModes.includes("desktop") ? "active" : ""
+                        appLaunchModes.includes("desktop") ? "active" : ""
                       }
                       onClick={() => toggleAppLaunchMode(index, "desktop")}
                     >
@@ -621,7 +623,7 @@ export function SettingsPage(props: Props) {
                     </button>
                     <button
                       type="button"
-                      className={app.launchModes.includes("vr") ? "active" : ""}
+                      className={appLaunchModes.includes("vr") ? "active" : ""}
                       onClick={() => toggleAppLaunchMode(index, "vr")}
                     >
                       VR
