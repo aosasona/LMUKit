@@ -1,10 +1,10 @@
 {
-  "version": "0.6.12",
-  "title": "Settings stability fix",
-  "summary": "This corrective release restores the companion launch settings page.",
+  "version": "0.6.13",
+  "title": "Clearer setup and recovery",
+  "summary": "SteamVR and vJoy setup are now explicit, guided, and easier to diagnose.",
   "highlights": [
-    "Fixed a release-only data-name mismatch that could leave Settings blank when showing companion launch options.",
-    "Existing companion settings written by v0.6.11 remain readable.",
-    "Added a defensive UI fallback so missing launch-mode data cannot crash the Settings page."
+    "Added a clear Desktop, OpenXR, and SteamVR launch selector with a dedicated SteamVR launcher setup panel.",
+    "Added an in-app vJoy installation and device 1 configuration guide with a 128-button readiness check.",
+    "Page failures now show a recoverable error instead of a blank workspace, and updater preparation no longer blocks the interface."
   ]
 }
