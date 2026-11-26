@@ -933,13 +933,18 @@ fn exit_app(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
-fn prepare_for_update(
-    routing_state: State<'_, VirtualRoutingState>,
-    setup_state: State<'_, VirtualSetupState>,
-    hotkey_state: State<'_, HotkeyState>,
-    pulse_state: State<'_, ManualPulseState>,
-    auto_state: State<'_, AutoProfileState>,
-) -> Result<(), String> {
+async fn prepare_for_update(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || prepare_for_update_inner(&app))
+        .await
+        .map_err(|error| format!("Update preparation stopped unexpectedly: {error}"))?
+}
+
+fn prepare_for_update_inner(app: &tauri::AppHandle) -> Result<(), String> {
+    let routing_state = app.state::<VirtualRoutingState>();
+    let setup_state = app.state::<VirtualSetupState>();
+    let hotkey_state = app.state::<HotkeyState>();
+    let pulse_state = app.state::<ManualPulseState>();
+    let auto_state = app.state::<AutoProfileState>();
     let mut setup = setup_state.0.lock().map_err(|error| error.to_string())?;
     if setup
         .allocator
@@ -970,6 +975,11 @@ fn prepare_for_update(
         "Stopped live remapping and released virtual outputs before update installation",
     );
     Ok(())
+}
+
+#[tauri::command]
+fn report_frontend_error(detail: String) {
+    diagnostics::error("frontend.page.crash", detail);
 }
 
 #[tauri::command]
@@ -2398,6 +2408,74 @@ async fn startup_health(
             button_count: None,
         }),
     }
+}
+
+#[tauri::command]
+async fn vjoy_setup_health(
+    app_state: State<'_, AppState>,
+    routing_state: State<'_, VirtualRoutingState>,
+) -> Result<StartupHealth, String> {
+    let routing = routing_state
+        .status
+        .lock()
+        .map_err(|error| error.to_string())?
+        .clone();
+    if routing.active {
+        return Ok(StartupHealth {
+            level: "ready",
+            title: "vJoy is in use".to_owned(),
+            message: format!(
+                "{} is currently routing through {}. Stop remapping before changing the vJoy configuration.",
+                routing.profile_name.as_deref().unwrap_or("A profile"),
+                routing.identity.as_deref().unwrap_or("vJoy")
+            ),
+            button_count: None,
+        });
+    }
+
+    let device_id = app_state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())?
+        .settings
+        .virtual_device_id;
+    match tauri::async_runtime::spawn_blocking(move || inspect_virtual_device(device_id)).await {
+        Ok(Ok(capabilities)) if capabilities.button_count >= 128 => Ok(StartupHealth {
+            level: "ready",
+            title: "vJoy is configured".to_owned(),
+            message: format!(
+                "{} is available with {} buttons.",
+                capabilities.identity, capabilities.button_count
+            ),
+            button_count: Some(capabilities.button_count),
+        }),
+        Ok(Ok(capabilities)) => Ok(StartupHealth {
+            level: "warning",
+            title: "Increase the button count".to_owned(),
+            message: format!(
+                "{} exposes {} buttons. Open Configure vJoy and set device 1 to 128 before binding games.",
+                capabilities.identity, capabilities.button_count
+            ),
+            button_count: Some(capabilities.button_count),
+        }),
+        Ok(Err(error)) => Ok(StartupHealth {
+            level: "error",
+            title: "vJoy is not ready".to_owned(),
+            message: error,
+            button_count: None,
+        }),
+        Err(error) => Ok(StartupHealth {
+            level: "error",
+            title: "The vJoy check stopped".to_owned(),
+            message: error.to_string(),
+            button_count: None,
+        }),
+    }
+}
+
+#[tauri::command]
+fn open_vjoy_download_page() -> Result<(), String> {
+    open_external_url("https://github.com/BrunnerInnovation/vJoy/releases")
 }
 
 #[tauri::command]
@@ -4817,6 +4895,24 @@ fn reveal_directory(path: &std::path::Path) -> Result<(), String> {
         .map_err(|error| format!("Could not open {}: {error}", path.display()))
 }
 
+#[cfg(target_os = "windows")]
+fn open_external_url(url: &str) -> Result<(), String> {
+    std::process::Command::new("explorer.exe")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not open the download page: {error}"))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn open_external_url(url: &str) -> Result<(), String> {
+    std::process::Command::new("xdg-open")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not open the download page: {error}"))
+}
+
 #[cfg(not(target_os = "windows"))]
 fn reveal_directory(path: &std::path::Path) -> Result<(), String> {
     std::process::Command::new("xdg-open")
@@ -5460,9 +5556,12 @@ pub fn run() {
             set_assetto_corsa_path,
             set_input_mode,
             set_virtual_auto_start,
+            vjoy_setup_health,
+            open_vjoy_download_page,
             set_log_retention_days,
             exit_app,
             prepare_for_update,
+            report_frontend_error,
             save_app_settings,
             set_profile_hotkey,
             companion_launch_option,

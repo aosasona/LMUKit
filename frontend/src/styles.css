@@ -3690,14 +3690,41 @@ textarea,
   padding: 15px;
   color: #758079;
 }
+
+.page-crash {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 560px);
+  align-items: start;
+  gap: 16px;
+  max-width: 680px;
+  margin: 36px auto;
+  padding: 24px;
+  border: 1px solid rgba(230, 140, 130, 0.38);
+  background: rgba(84, 35, 31, 0.2);
+}
+.page-crash > svg {
+  width: 32px;
+  height: 32px;
+  color: #e9a098;
+}
+.page-crash h2 {
+  margin: 4px 0 8px;
+  color: var(--text);
+}
+.page-crash p {
+  margin: 0 0 18px;
+  color: var(--muted);
+  line-height: 1.55;
+}
 .launch-mode {
   display: inline-grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(100%, 390px);
   margin-top: 20px;
   border: 1px solid var(--line);
 }
 .launch-mode button {
-  min-width: 110px;
+  min-width: 0;
   height: 38px;
   border: 0;
   background: #161615;
@@ -3710,6 +3737,42 @@ textarea,
 .launch-mode button.active {
   background: #292d1e;
   color: #d8f2a5;
+}
+.launch-mode-explanation {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+  line-height: 1.45;
+}
+.steamvr-setup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  max-width: 720px;
+  margin-top: 13px;
+  padding: 14px 16px;
+  border: 1px solid rgba(198, 243, 107, 0.28);
+  background: rgba(41, 45, 30, 0.42);
+}
+.steamvr-setup > div {
+  min-width: 0;
+}
+.steamvr-setup strong,
+.steamvr-setup small {
+  display: block;
+}
+.steamvr-setup small {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.steamvr-setup button {
+  flex: 0 0 auto;
+}
+.steamvr-setup button svg {
+  width: 15px;
 }
 .companion-list {
   display: grid;
@@ -6453,10 +6516,14 @@ textarea,
 .virtual-default-switcher button svg {
   width: 15px;
 }
+.virtual-driver-details,
 .virtual-setup-details,
 .virtual-layout-details {
   padding: 0;
   overflow: hidden;
+}
+.virtual-driver-details {
+  order: 3;
 }
 .virtual-setup-details {
   order: 4;
@@ -6464,6 +6531,7 @@ textarea,
 .virtual-layout-details {
   order: 5;
 }
+.virtual-driver-details > summary,
 .virtual-setup-details > summary,
 .virtual-layout-details > summary {
   min-height: 66px;
@@ -6475,30 +6543,124 @@ textarea,
   cursor: pointer;
   list-style: none;
 }
+.virtual-driver-details > summary::-webkit-details-marker,
 .virtual-setup-details > summary::-webkit-details-marker,
 .virtual-layout-details > summary::-webkit-details-marker {
   display: none;
 }
+.virtual-driver-details > summary strong,
+.virtual-driver-details > summary small,
 .virtual-setup-details > summary strong,
 .virtual-setup-details > summary small,
 .virtual-layout-details > summary strong,
 .virtual-layout-details > summary small {
   display: block;
 }
+.virtual-driver-details > summary small,
 .virtual-setup-details > summary small,
 .virtual-layout-details > summary small {
   margin-top: 4px;
   color: var(--muted);
   font-size: calc(11px * var(--font-scale));
 }
+.virtual-driver-details > summary > span:last-child,
 .virtual-setup-details > summary > span:last-child,
 .virtual-layout-details > summary > span:last-child {
   color: var(--teal);
   font-size: calc(12px * var(--font-scale));
 }
+.virtual-driver-details[open] > summary,
 .virtual-setup-details[open] > summary,
 .virtual-layout-details[open] > summary {
   border-bottom: 1px solid var(--line);
+}
+.vjoy-install-guide {
+  padding: 20px;
+}
+.vjoy-install-copy h2 {
+  margin: 4px 0 6px;
+  font-size: calc(19px * var(--font-scale));
+}
+.vjoy-install-copy p {
+  max-width: 720px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.vjoy-install-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 18px 0 0;
+  padding: 0;
+  background: var(--line);
+  list-style: none;
+}
+.vjoy-install-steps li {
+  display: flex;
+  gap: 11px;
+  min-width: 0;
+  padding: 15px;
+  background: #151515;
+}
+.vjoy-install-steps b {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid #41483d;
+  color: var(--teal);
+}
+.vjoy-install-steps strong,
+.vjoy-install-steps small {
+  display: block;
+}
+.vjoy-install-steps small {
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.vjoy-install-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.vjoy-install-actions button svg {
+  width: 15px;
+}
+.vjoy-install-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  background: #121312;
+}
+.vjoy-install-result > svg {
+  width: 18px;
+  flex: 0 0 auto;
+}
+.vjoy-install-result strong,
+.vjoy-install-result small {
+  display: block;
+}
+.vjoy-install-result small {
+  margin-top: 3px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.vjoy-install-result.ready {
+  border-color: rgba(198, 243, 107, 0.28);
+}
+.vjoy-install-result.ready > svg {
+  color: var(--teal);
+}
+.vjoy-install-result.warning > svg,
+.vjoy-install-result.error > svg {
+  color: var(--amber);
 }
 .virtual-layout-details .virtual-setup-grid {
   margin: 18px;
@@ -6828,6 +6990,7 @@ textarea,
     border-left: 0;
   }
   .virtual-wizard-steps,
+  .vjoy-install-steps,
   .virtual-wizard-console,
   .virtual-manual-flow,
   .virtual-manual-create {
@@ -6839,6 +7002,13 @@ textarea,
   }
   .virtual-wizard-steps > div:last-child {
     border-bottom: 0;
+  }
+  .steamvr-setup {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .steamvr-setup button {
+    align-self: flex-start;
   }
   .virtual-manual-flow > div {
     border-right: 0;

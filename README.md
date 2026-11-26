@@ -124,7 +124,7 @@ Press `Ctrl+Alt+Space` anywhere in Windows to open the compact profile switcher.
 
 #### vJoy requirement and configuration
 
-vJoy is required only for **Virtual Input Mode**. Install the signed Windows driver from the [BrunnerInnovation vJoy releases](https://github.com/BrunnerInnovation/vJoy/releases) and accept any administrator or restart prompts from its installer. Pivot deliberately does not bundle or install a controller driver.
+vJoy is required only for **Virtual Input Mode**. Pivot's **Virtual Input → Install and configure vJoy** guide opens the signed [BrunnerInnovation vJoy releases](https://github.com/BrunnerInnovation/vJoy/releases), walks through device 1 configuration, and verifies the installed device and button count. Installation and administrator consent remain explicit: Pivot deliberately does not bundle or silently install a controller driver.
 
 Configure the virtual device before assigning it in LMU:
 
@@ -194,7 +194,7 @@ Saving preserves unknown JSON data and creates a recovery backup first. Pivot wa
 
 ### LMU and companion apps
 
-Open **Settings → LMU and companion apps**, choose **Desktop** or **VR (OpenXR)**, then add and enable the helpers you want. Use each helper's **Desktop** and **VR** buttons to choose which mode starts it. The built-in SteamVR entry is disabled by default and VR-only: choose SteamVR's `vrstartup.exe`, then enable it if you want Pivot to start SteamVR before LMU. Paths, launch mode, and companion-app changes save automatically.
+Open **Settings → LMU and companion apps** and choose **Desktop**, **OpenXR**, or **SteamVR**. OpenXR launches LMU with `+XR` through the current Windows OpenXR runtime. SteamVR presents a setup panel for its `vrstartup.exe`, starts it first, and then launches LMU with the same native `+XR` argument. Use each helper's **Desktop** and **VR** buttons to choose which mode starts it. Paths, launch mode, and companion-app changes save automatically.
 
 **Copy Steam launch option** creates Pivot's launcher and copies the command. Paste it into:
 

@@ -7,6 +7,7 @@ import { ConfirmDialog, type Confirmation } from "./components/ConfirmDialog";
 import { InputModeSwitch, type InputMode } from "./components/InputModeSwitch";
 import { TitleBar } from "./components/TitleBar";
 import { QuickProfileSwitcher } from "./components/QuickProfileSwitcher";
+import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import { StartupHealthBanner } from "./components/StartupHealthBanner";
 import { UpdateDialog } from "./components/UpdateDialog";
 import type {
@@ -1071,170 +1072,175 @@ export default function App() {
             </div>
           </header>
           <div className="content">
-            {page === "home" && snapshot.inputMode === "virtual" && (
-              <StartupHealthBanner
-                health={startupHealth}
-                loading={startupHealthLoading}
-                onRefresh={() => void checkStartupHealth()}
-              />
-            )}
-            {page === "home" &&
-              snapshot.activeWorkspaceKind === "le_mans_ultimate" && (
-                <OverviewPage
-                  active={active}
-                  activeDirty={visibleActiveDirty}
-                  selected={selected}
-                  wheelImageUrl={wheelImageUrl}
-                  wheelImageRevision={wheelImageRevision}
+            <PageErrorBoundary resetKey={page}>
+              {page === "home" && snapshot.inputMode === "virtual" && (
+                <StartupHealthBanner
+                  health={startupHealth}
+                  loading={startupHealthLoading}
+                  onRefresh={() => void checkStartupHealth()}
+                />
+              )}
+              {page === "home" &&
+                snapshot.activeWorkspaceKind === "le_mans_ultimate" && (
+                  <OverviewPage
+                    active={active}
+                    activeDirty={visibleActiveDirty}
+                    selected={selected}
+                    wheelImageUrl={wheelImageUrl}
+                    wheelImageRevision={wheelImageRevision}
+                    profiles={snapshot.profiles}
+                    busy={busy}
+                    inputMode={snapshot.inputMode}
+                    routing={routing}
+                    carContext={carContext}
+                    autoProfileSelection={autoProfileSelection}
+                    onSetAutoProfileSelection={changeAutoProfileSelection}
+                    onResumeAutoProfileSelection={resumeAutoProfileSelection}
+                    onDismissDirty={() =>
+                      setDismissedDirtyProfileId(active?.id ?? null)
+                    }
+                    onNavigate={navigate}
+                    onActivate={activate}
+                    onUpdate={updateProfile}
+                  />
+                )}
+              {page === "home" &&
+                snapshot.activeWorkspaceKind !== "le_mans_ultimate" &&
+                activeWorkspace && (
+                  <WorkspaceOverviewPage
+                    workspace={activeWorkspace}
+                    profiles={snapshot.profiles}
+                    routing={routing}
+                    carContext={acCarContext}
+                    autoProfileSelection={autoProfileSelection}
+                    busy={busy}
+                    onSetAutoProfileSelection={changeAutoProfileSelection}
+                    onResumeAutoProfileSelection={resumeAutoProfileSelection}
+                    onNavigate={navigate}
+                  />
+                )}
+              {page === "profiles" && (
+                <ProfilesPage
                   profiles={snapshot.profiles}
+                  wheels={snapshot.wheels}
+                  selected={selected}
+                  wheelImageRevision={wheelImageRevision}
+                  activeId={snapshot.activeProfile}
+                  activeDirty={visibleActiveDirty}
+                  selectedId={selectedId}
+                  query={query}
                   busy={busy}
                   inputMode={snapshot.inputMode}
                   routing={routing}
-                  carContext={carContext}
-                  autoProfileSelection={autoProfileSelection}
-                  onSetAutoProfileSelection={changeAutoProfileSelection}
-                  onResumeAutoProfileSelection={resumeAutoProfileSelection}
                   onDismissDirty={() =>
                     setDismissedDirtyProfileId(active?.id ?? null)
                   }
-                  onNavigate={navigate}
+                  loading={loading}
+                  setQuery={setQuery}
+                  setSelectedId={setSelectedId}
                   onActivate={activate}
+                  onEdit={(profile) => {
+                    setSelectedId(profile.id);
+                    navigate("bindings");
+                  }}
+                  onImport={importPreset}
+                  onCapture={captureProfile}
+                  onCreateVirtual={createVirtualProfile}
                   onUpdate={updateProfile}
+                  onDuplicate={duplicateProfile}
+                  onDelete={deleteProfile}
+                  onReveal={revealProfiles}
+                  onRemoveDevice={removeDevice}
+                  onSaveCategories={saveCategories}
+                  onCreateWheel={createWheel}
+                  onAssignWheel={assignWheel}
+                  onNotice={setNotice}
+                  workspaceKind={snapshot.activeWorkspaceKind}
                 />
               )}
-            {page === "home" &&
-              snapshot.activeWorkspaceKind !== "le_mans_ultimate" &&
-              activeWorkspace && (
-                <WorkspaceOverviewPage
-                  workspace={activeWorkspace}
-                  profiles={snapshot.profiles}
-                  routing={routing}
-                  carContext={acCarContext}
-                  autoProfileSelection={autoProfileSelection}
+              {page === "bindings" && (
+                <ProfileEditorPage
+                  profile={selected}
+                  bindings={bindings}
+                  document={profileDocument}
+                  baseline={profileDocumentBaseline}
+                  loading={profileDocumentLoading}
                   busy={busy}
-                  onSetAutoProfileSelection={changeAutoProfileSelection}
-                  onResumeAutoProfileSelection={resumeAutoProfileSelection}
+                  inputMode={snapshot.inputMode}
+                  wheelImageRevision={wheelImageRevision}
+                  onClear={clearBinding}
+                  onAssign={assignBinding}
+                  onChange={setProfileDocument}
+                  onSave={saveProfileDocument}
+                  onNotice={setNotice}
+                  workspaceKind={snapshot.activeWorkspaceKind}
+                />
+              )}
+              {page === "wheels" && (
+                <WheelsPage
+                  wheels={snapshot.wheels}
+                  profiles={snapshot.profiles}
+                  busy={busy}
+                  imageRevision={wheelImageRevision}
+                  onCreate={createLibraryWheel}
+                  onUpdate={updateLibraryWheel}
+                  onDelete={deleteLibraryWheel}
+                  onSaveImage={saveLibraryWheelImage}
+                  onRemoveImage={removeLibraryWheelImage}
+                />
+              )}
+              {page === "virtual" && (
+                <VirtualInputPage
+                  busy={busy}
+                  inputMode={snapshot.inputMode}
+                  profiles={snapshot.profiles}
+                  onNotice={setNotice}
+                  onOpenProfiles={() => navigate("profiles")}
+                  workspaceKind={snapshot.activeWorkspaceKind}
+                />
+              )}
+              {page === "game" && (
+                <GameSettingsPage
+                  document={gameSettings}
+                  baseline={gameSettingsBaseline}
+                  loading={gameSettingsLoading}
+                  busy={busy}
+                  onChange={setGameSettings}
+                  onReload={() => void loadGameSettings()}
+                  onSave={saveGameSettings}
+                />
+              )}
+              {page === "settings" && (
+                <SettingsPage
+                  fontScale={snapshot.uiFontScale}
+                  busy={busy}
+                  profiles={snapshot.profiles}
+                  configPath={snapshot.lmuConfigPath}
+                  settingsPath={snapshot.lmuSettingsPath}
+                  assettoCorsaPath={snapshot.assettoCorsaPath}
+                  companionApps={snapshot.companionApps}
+                  launchMode={snapshot.lmuLaunchMode}
+                  autoStartVirtualProfile={snapshot.autoStartVirtualProfile}
+                  workspaceKind={snapshot.activeWorkspaceKind}
+                  appUpdate={updater.state}
+                  onSaveFontScale={saveFontScale}
+                  onSetVirtualAutoStart={setVirtualAutoStart}
+                  onSaveAssettoCorsaPath={saveAssettoCorsaPath}
+                  onSaveSettings={saveAppSettings}
+                  onSetHotkey={setProfileHotkey}
+                  onCheckForUpdates={() => void updater.checkForUpdates()}
+                  onRequestUpdateInstall={() => setUpdateInstallRequested(true)}
+                  onCreateLaunchOption={createLaunchOption}
+                  onBrowse={browseForPath}
+                />
+              )}
+              {page === "help" && (
+                <HelpPage
+                  inputMode={snapshot.inputMode}
                   onNavigate={navigate}
                 />
               )}
-            {page === "profiles" && (
-              <ProfilesPage
-                profiles={snapshot.profiles}
-                wheels={snapshot.wheels}
-                selected={selected}
-                wheelImageRevision={wheelImageRevision}
-                activeId={snapshot.activeProfile}
-                activeDirty={visibleActiveDirty}
-                selectedId={selectedId}
-                query={query}
-                busy={busy}
-                inputMode={snapshot.inputMode}
-                routing={routing}
-                onDismissDirty={() =>
-                  setDismissedDirtyProfileId(active?.id ?? null)
-                }
-                loading={loading}
-                setQuery={setQuery}
-                setSelectedId={setSelectedId}
-                onActivate={activate}
-                onEdit={(profile) => {
-                  setSelectedId(profile.id);
-                  navigate("bindings");
-                }}
-                onImport={importPreset}
-                onCapture={captureProfile}
-                onCreateVirtual={createVirtualProfile}
-                onUpdate={updateProfile}
-                onDuplicate={duplicateProfile}
-                onDelete={deleteProfile}
-                onReveal={revealProfiles}
-                onRemoveDevice={removeDevice}
-                onSaveCategories={saveCategories}
-                onCreateWheel={createWheel}
-                onAssignWheel={assignWheel}
-                onNotice={setNotice}
-                workspaceKind={snapshot.activeWorkspaceKind}
-              />
-            )}
-            {page === "bindings" && (
-              <ProfileEditorPage
-                profile={selected}
-                bindings={bindings}
-                document={profileDocument}
-                baseline={profileDocumentBaseline}
-                loading={profileDocumentLoading}
-                busy={busy}
-                inputMode={snapshot.inputMode}
-                wheelImageRevision={wheelImageRevision}
-                onClear={clearBinding}
-                onAssign={assignBinding}
-                onChange={setProfileDocument}
-                onSave={saveProfileDocument}
-                onNotice={setNotice}
-                workspaceKind={snapshot.activeWorkspaceKind}
-              />
-            )}
-            {page === "wheels" && (
-              <WheelsPage
-                wheels={snapshot.wheels}
-                profiles={snapshot.profiles}
-                busy={busy}
-                imageRevision={wheelImageRevision}
-                onCreate={createLibraryWheel}
-                onUpdate={updateLibraryWheel}
-                onDelete={deleteLibraryWheel}
-                onSaveImage={saveLibraryWheelImage}
-                onRemoveImage={removeLibraryWheelImage}
-              />
-            )}
-            {page === "virtual" && (
-              <VirtualInputPage
-                busy={busy}
-                inputMode={snapshot.inputMode}
-                profiles={snapshot.profiles}
-                onNotice={setNotice}
-                onOpenProfiles={() => navigate("profiles")}
-                workspaceKind={snapshot.activeWorkspaceKind}
-              />
-            )}
-            {page === "game" && (
-              <GameSettingsPage
-                document={gameSettings}
-                baseline={gameSettingsBaseline}
-                loading={gameSettingsLoading}
-                busy={busy}
-                onChange={setGameSettings}
-                onReload={() => void loadGameSettings()}
-                onSave={saveGameSettings}
-              />
-            )}
-            {page === "settings" && (
-              <SettingsPage
-                fontScale={snapshot.uiFontScale}
-                busy={busy}
-                profiles={snapshot.profiles}
-                configPath={snapshot.lmuConfigPath}
-                settingsPath={snapshot.lmuSettingsPath}
-                assettoCorsaPath={snapshot.assettoCorsaPath}
-                companionApps={snapshot.companionApps}
-                launchMode={snapshot.lmuLaunchMode}
-                autoStartVirtualProfile={snapshot.autoStartVirtualProfile}
-                workspaceKind={snapshot.activeWorkspaceKind}
-                appUpdate={updater.state}
-                onSaveFontScale={saveFontScale}
-                onSetVirtualAutoStart={setVirtualAutoStart}
-                onSaveAssettoCorsaPath={saveAssettoCorsaPath}
-                onSaveSettings={saveAppSettings}
-                onSetHotkey={setProfileHotkey}
-                onCheckForUpdates={() => void updater.checkForUpdates()}
-                onRequestUpdateInstall={() => setUpdateInstallRequested(true)}
-                onCreateLaunchOption={createLaunchOption}
-                onBrowse={browseForPath}
-              />
-            )}
-            {page === "help" && (
-              <HelpPage inputMode={snapshot.inputMode} onNavigate={navigate} />
-            )}
+            </PageErrorBoundary>
           </div>
           <footer>
             <span className="status-dot" />

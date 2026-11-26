@@ -113,6 +113,17 @@ export function SettingsPage(props: Props) {
   const [assettoRoot, setAssettoRoot] = useState(assettoCorsaPath);
   const [apps, setApps] = useState(companionApps);
   const [mode, setMode] = useState(launchMode);
+  const [vrRuntime, setVrRuntime] = useState<"openxr" | "steamvr">(() =>
+    launchMode === "vr" &&
+    companionApps.some(
+      (app) =>
+        app.name.trim().toLowerCase() === "steamvr" &&
+        app.enabled &&
+        (app.launchModes ?? ["vr"]).includes("vr"),
+    )
+      ? "steamvr"
+      : "openxr",
+  );
   const [saveState, setSaveState] = useState<
     "saved" | "pending" | "saving" | "error"
   >("saved");
@@ -137,6 +148,11 @@ export function SettingsPage(props: Props) {
     gameSettings.trim() !== settingsPath ||
     JSON.stringify(apps) !== JSON.stringify(companionApps) ||
     mode !== launchMode;
+  const steamVrIndex = apps.findIndex(
+    (app) => app.name.trim().toLowerCase() === "steamvr",
+  );
+  const steamVrApp = steamVrIndex >= 0 ? apps[steamVrIndex] : null;
+  const steamVrConfigured = Boolean(steamVrApp?.path.trim());
 
   useEffect(() => setDraftScale(fontScale), [fontScale]);
   useEffect(() => setAssettoRoot(assettoCorsaPath), [assettoCorsaPath]);
@@ -287,6 +303,49 @@ export function SettingsPage(props: Props) {
       return next;
     });
     setLaunchCopyState("idle");
+  };
+  const selectLaunchPreset = async (
+    preset: "desktop" | "openxr" | "steamvr",
+  ) => {
+    if (preset === "desktop") {
+      setMode("desktop");
+      return;
+    }
+    setMode("vr");
+    if (preset === "openxr") {
+      setVrRuntime("openxr");
+      if (steamVrIndex >= 0) updateApp(steamVrIndex, { enabled: false });
+      return;
+    }
+    setVrRuntime("steamvr");
+    if (!steamVrConfigured) return;
+
+    const launchModes = steamVrApp?.launchModes ?? ["vr"];
+    const next = {
+      name: "SteamVR",
+      path: steamVrApp?.path ?? "",
+      enabled: true,
+      launchModes: launchModes.includes("vr")
+        ? launchModes
+        : [...launchModes, "vr" as const],
+    };
+    if (steamVrIndex >= 0) updateApp(steamVrIndex, next);
+    else setApps((current) => [...current, next]);
+  };
+
+  const browseSteamVr = async () => {
+    const path = await onBrowse("executable", steamVrApp?.path);
+    if (!path) return;
+    const next: CompanionApp = {
+      name: "SteamVR",
+      path,
+      enabled: true,
+      launchModes: ["vr"],
+    };
+    if (steamVrIndex >= 0) updateApp(steamVrIndex, next);
+    else setApps((current) => [...current, next]);
+    setMode("vr");
+    setVrRuntime("steamvr");
   };
 
   const copyLaunchOption = async () => {
@@ -539,17 +598,58 @@ export function SettingsPage(props: Props) {
           <div className="launch-mode">
             <button
               className={mode === "desktop" ? "active" : ""}
-              onClick={() => setMode("desktop")}
+              onClick={() => void selectLaunchPreset("desktop")}
             >
               Desktop
             </button>
             <button
-              className={mode === "vr" ? "active" : ""}
-              onClick={() => setMode("vr")}
+              className={
+                mode === "vr" && vrRuntime === "openxr" ? "active" : ""
+              }
+              onClick={() => void selectLaunchPreset("openxr")}
             >
-              VR (OpenXR)
+              OpenXR
+            </button>
+            <button
+              className={
+                mode === "vr" && vrRuntime === "steamvr" ? "active" : ""
+              }
+              onClick={() => void selectLaunchPreset("steamvr")}
+            >
+              SteamVR
             </button>
           </div>
+          <p className="launch-mode-explanation">
+            {mode === "desktop"
+              ? "Starts LMU on the desktop without +XR."
+              : vrRuntime === "steamvr"
+                ? "Starts SteamVR first, then launches LMU through its OpenXR +XR mode."
+                : "Launches LMU with +XR using your current Windows OpenXR runtime."}
+          </p>
+          {mode === "vr" && vrRuntime === "steamvr" && (
+            <div className="steamvr-setup">
+              <div>
+                <strong>
+                  {steamVrConfigured
+                    ? "SteamVR is configured"
+                    : "Choose SteamVR's launcher"}
+                </strong>
+                <small>
+                  {steamVrConfigured
+                    ? steamVrApp?.path
+                    : "Select vrstartup.exe. Pivot will start it before LMU and still pass LMU its native +XR argument."}
+                </small>
+              </div>
+              <button
+                type="button"
+                className={steamVrConfigured ? "secondary" : "primary"}
+                onClick={() => void browseSteamVr()}
+              >
+                <FolderOpen />
+                {steamVrConfigured ? "Change" : "Choose vrstartup.exe"}
+              </button>
+            </div>
+          )}
           <div className="companion-list">
             {apps.map((app, index) => {
               const errors = launchIssues[index] ?? [];

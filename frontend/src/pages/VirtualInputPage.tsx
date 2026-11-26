@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   AlertTriangle,
   Check,
+  Download,
   Gamepad2,
   LoaderCircle,
   Radio,
@@ -22,6 +23,7 @@ import type {
   VirtualSetupEvent,
   VirtualSetupStatus,
   Workspace,
+  StartupHealth,
 } from "../models";
 import type { InputMode } from "../components/InputModeSwitch";
 
@@ -54,6 +56,8 @@ export function VirtualInputPage({
   const [setup, setSetup] = useState<VirtualSetupStatus | null>(null);
   const [setupBusy, setSetupBusy] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
+  const [vjoyHealth, setVjoyHealth] = useState<StartupHealth | null>(null);
+  const [vjoyChecking, setVjoyChecking] = useState(false);
   const [lastPulse, setLastPulse] = useState<VirtualButtonPulse | null>(null);
   const [setupActionName, setSetupActionName] = useState("");
   const [setupActionArmed, setSetupActionArmed] = useState(false);
@@ -87,6 +91,30 @@ export function VirtualInputPage({
     new Set(profiles.flatMap((profile) => profile.classTags)),
   ).sort();
   const availableClassesKey = availableClasses.join("\u0000");
+
+  const openVjoyDownload = async () => {
+    try {
+      await invoke("open_vjoy_download_page");
+    } catch (reason) {
+      onNotice(String(reason));
+    }
+  };
+
+  const checkVjoySetup = async () => {
+    setVjoyChecking(true);
+    try {
+      setVjoyHealth(await invoke<StartupHealth>("vjoy_setup_health"));
+    } catch (reason) {
+      setVjoyHealth({
+        level: "error",
+        title: "The vJoy check failed",
+        message: String(reason),
+        buttonCount: null,
+      });
+    } finally {
+      setVjoyChecking(false);
+    }
+  };
 
   useEffect(() => {
     if (!availableClasses.length) {
@@ -553,6 +581,88 @@ export function VirtualInputPage({
           <span>Steering, pedals, and FFB always remain direct.</span>
         </div>
       </div>
+
+      <details className="virtual-driver-details panel">
+        <summary>
+          <span>
+            <strong>Install and configure vJoy</strong>
+            <small>
+              Required once for Virtual Input · device 1 · 128 buttons
+            </small>
+          </span>
+          <span>Open guide</span>
+        </summary>
+        <div className="vjoy-install-guide">
+          <div className="vjoy-install-copy">
+            <span className="eyebrow">External driver</span>
+            <h2>Prepare the stable virtual controller</h2>
+            <p>
+              Pivot uses vJoy but never installs or reconfigures its driver
+              silently. Complete these steps once before teaching a game its
+              virtual controls.
+            </p>
+          </div>
+          <ol className="vjoy-install-steps">
+            <li>
+              <b>1</b>
+              <span>
+                <strong>Download and install vJoy</strong>
+                <small>
+                  Use the signed BrunnerInnovation release and approve its
+                  Windows installer prompts.
+                </small>
+              </span>
+            </li>
+            <li>
+              <b>2</b>
+              <span>
+                <strong>Open Configure vJoy</strong>
+                <small>
+                  Select device 1, enable it, and set Buttons to 128. Enable an
+                  axis only if you plan to relay a clutch through Pivot.
+                </small>
+              </span>
+            </li>
+            <li>
+              <b>3</b>
+              <span>
+                <strong>Restart if asked, then verify</strong>
+                <small>
+                  Keep the descriptor stable after binding games; changing the
+                  button count later can make Windows enumerate a new device.
+                </small>
+              </span>
+            </li>
+          </ol>
+          <div className="vjoy-install-actions">
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => void openVjoyDownload()}
+            >
+              <Download /> Open vJoy releases
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={vjoyChecking}
+              onClick={() => void checkVjoySetup()}
+            >
+              {vjoyChecking ? <LoaderCircle className="spin" /> : <RefreshCw />}
+              Check device 1
+            </button>
+          </div>
+          {vjoyHealth && (
+            <div className={`vjoy-install-result ${vjoyHealth.level}`}>
+              {vjoyHealth.level === "ready" ? <Check /> : <AlertTriangle />}
+              <span>
+                <strong>{vjoyHealth.title}</strong>
+                <small>{vjoyHealth.message}</small>
+              </span>
+            </div>
+          )}
+        </div>
+      </details>
 
       <details className="virtual-setup-details panel">
         <summary>
