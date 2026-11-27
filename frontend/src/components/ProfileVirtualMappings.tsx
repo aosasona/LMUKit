@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
   Crosshair,
+  Copy,
   Gamepad2,
   Gauge,
   LoaderCircle,
@@ -93,7 +94,6 @@ export function ProfileVirtualMappings({
   const [filter, setFilter] = useState<"all" | "assigned" | "unassigned">(
     "all",
   );
-  const [applyToWheel, setApplyToWheel] = useState(false);
   const [editorTab, setEditorTab] = useState<
     "buttons" | "clutch" | "system" | "defaults"
   >("buttons");
@@ -221,23 +221,6 @@ export function ProfileVirtualMappings({
     setSavingMapping(true);
     setError(null);
     try {
-      if (applyToWheel && profile.wheelId) {
-        const result = await invoke<WheelVirtualMapping>(
-          "save_wheel_virtual_profile_button",
-          {
-            profileId: profile.id,
-            proposed: capture.mapping,
-            replaceConflict,
-          },
-        );
-        setMappings(result.mappings);
-        setInspection(null);
-        setConfirmation(null);
-        onNotice(
-          `${capture.mapping.logicalAction} mapped to ${describeControl(capture.mapping)} across ${result.profileCount} ${profile.wheelName ?? "wheel"} profile${result.profileCount === 1 ? "" : "s"}.`,
-        );
-        return;
-      }
       const next = await invoke<VirtualProfileMapping[]>(
         "save_virtual_profile_button",
         {
@@ -281,7 +264,7 @@ export function ProfileVirtualMappings({
           .join(", ");
         setConfirmation({
           title: "What should this control trigger?",
-          description: `${control} currently triggers ${existing}. It can trigger those actions together with “${action}”, or replace them.${applyToWheel ? ` Your choice will also be applied to every ${profile.wheelName ?? "wheel"} profile.` : ""}`,
+          description: `${control} currently triggers ${existing}. It can trigger those actions together with “${action}”, or replace them. This only changes the current profile.`,
           confirmLabel: "Trigger both",
           onConfirm: () => void saveCapturedMapping(capture, false, true),
           alternateLabel: "Replace mapping",
@@ -302,6 +285,38 @@ export function ProfileVirtualMappings({
     } finally {
       setLearning(null);
     }
+  };
+
+  const shareMappingWithWheelProfiles = (mapping: VirtualProfileMapping) => {
+    if (!profile.wheelId) return;
+    const wheelName = profile.wheelName ?? "this wheel";
+    setConfirmation({
+      title: `Use this control in all ${wheelName} profiles?`,
+      description: `${describeControl(mapping)} will trigger “${mapping.logicalAction}” in every ${wheelName} profile in this workspace. Existing profile-specific mappings are preserved; this control may trigger multiple actions where another mapping already uses it.`,
+      confirmLabel: "Apply this binding",
+      onConfirm: () => {
+        setSavingMapping(true);
+        setError(null);
+        void invoke<WheelVirtualMapping>("save_wheel_virtual_profile_button", {
+          profileId: profile.id,
+          proposed: mapping,
+          replaceConflict: false,
+        })
+          .then((result) => {
+            setMappings(result.mappings);
+            setConfirmation(null);
+            onNotice(
+              `${mapping.logicalAction} now uses ${describeControl(mapping)} across ${result.profileCount} ${wheelName} profile${result.profileCount === 1 ? "" : "s"}.`,
+            );
+          })
+          .catch((reason) => {
+            const message = String(reason);
+            setError(message);
+            onNotice(message);
+          })
+          .finally(() => setSavingMapping(false));
+      },
+    });
   };
 
   const cancelLearning = async () => {
@@ -802,26 +817,6 @@ export function ProfileVirtualMappings({
                     ),
                   )}
                 </div>
-                {profile.wheelId && (
-                  <label className="profile-wheel-share-toggle">
-                    <input
-                      type="checkbox"
-                      checked={applyToWheel}
-                      disabled={routingActive || savingMapping}
-                      onChange={(event) =>
-                        setApplyToWheel(event.target.checked)
-                      }
-                    />
-                    <span>
-                      <strong>
-                        All {profile.wheelName ?? "wheel"} profiles
-                      </strong>
-                      <small>
-                        Keep the same physical control across this wheel
-                      </small>
-                    </span>
-                  </label>
-                )}
                 <button
                   type="button"
                   className="secondary compact"
@@ -937,14 +932,30 @@ export function ProfileVirtualMappings({
                                 ))}
                                 {mapping.deviceName || "Physical controller"} ·
                                 Button {mapping.physicalButton}
-                                <button
-                                  type="button"
-                                  aria-label={`Remove ${action.action} mapping`}
-                                  disabled={routingActive}
-                                  onClick={() => void remove(mapping)}
-                                >
-                                  <Trash2 />
-                                </button>
+                                <span className="profile-mapping-source-actions">
+                                  {profile.wheelId && (
+                                    <button
+                                      type="button"
+                                      aria-label={`Use this ${action.action} binding in all ${profile.wheelName ?? "wheel"} profiles`}
+                                      title={`Use this binding in all ${profile.wheelName ?? "wheel"} profiles`}
+                                      disabled={routingActive || savingMapping}
+                                      onClick={() =>
+                                        shareMappingWithWheelProfiles(mapping)
+                                      }
+                                    >
+                                      <Copy />
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    aria-label={`Remove ${action.action} mapping`}
+                                    title="Remove this binding"
+                                    disabled={routingActive}
+                                    onClick={() => void remove(mapping)}
+                                  >
+                                    <Trash2 />
+                                  </button>
+                                </span>
                               </span>
                             ))}
                           </div>
