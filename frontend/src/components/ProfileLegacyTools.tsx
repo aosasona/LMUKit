@@ -52,8 +52,8 @@ export function ProfileLegacyTools({
     <section className="profile-editor-legacy embedded">
       <header className="profile-editor-legacy-head">
         <div>
-          <span className="eyebrow">Saved DirectInput configuration</span>
-          <h3>LMU file tools</h3>
+          <span className="eyebrow">Advanced compatibility</span>
+          <h3>Legacy LMU file tools</h3>
           <p>
             Edit the profile file used by Legacy mode. This does not change its
             live Virtual Input mappings.

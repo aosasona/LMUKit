@@ -1,10 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { RefreshCw, Search, Square } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ConfirmDialog, type Confirmation } from "./components/ConfirmDialog";
-import { InputModeSwitch, type InputMode } from "./components/InputModeSwitch";
+import type { InputMode } from "./components/InputModeSwitch";
 import { TitleBar } from "./components/TitleBar";
 import { QuickProfileSwitcher } from "./components/QuickProfileSwitcher";
 import { PageErrorBoundary } from "./components/PageErrorBoundary";
@@ -1059,7 +1059,14 @@ export default function App() {
 
   return (
     <div className="window-shell">
-      <TitleBar onError={setNotice} onExit={() => setExitRequested(true)} />
+      <TitleBar
+        onError={setNotice}
+        onExit={() => setExitRequested(true)}
+        remappingActive={snapshot.inputMode === "virtual" && routing.active}
+        remappingProfile={routing.profileName}
+        busy={busy}
+        onDisableRemapping={() => void stopLiveRouting()}
+      />
       <div className="app-shell">
         <Sidebar
           page={page}
@@ -1083,25 +1090,6 @@ export default function App() {
               <h1>{pageTitle(page)}</h1>
             </div>
             <div className="top-actions">
-              {snapshot.activeWorkspaceKind === "le_mans_ultimate" ? (
-                <InputModeSwitch
-                  mode={snapshot.inputMode}
-                  busy={busy}
-                  onChange={changeInputMode}
-                />
-              ) : (
-                <span className="workspace-mode-chip">Virtual Input</span>
-              )}
-              {snapshot.inputMode === "virtual" && routing.active && (
-                <button
-                  type="button"
-                  className="ghost live-routing-stop"
-                  disabled={busy}
-                  onClick={() => void stopLiveRouting()}
-                >
-                  <Square size={15} /> Disable remapping
-                </button>
-              )}
               {snapshot.inputMode === "virtual" &&
                 routing.active &&
                 autoProfileSelection.enabled &&
@@ -1122,7 +1110,6 @@ export default function App() {
               >
                 <Search size={17} /> Search <kbd>Ctrl K</kbd>
               </button>
-              <button className="avatar">A</button>
             </div>
           </header>
           <div
@@ -1281,10 +1268,12 @@ export default function App() {
                   companionApps={snapshot.companionApps}
                   launchMode={snapshot.lmuLaunchMode}
                   autoStartVirtualProfile={snapshot.autoStartVirtualProfile}
+                  inputMode={snapshot.inputMode}
                   workspaceKind={snapshot.activeWorkspaceKind}
                   appUpdate={updater.state}
                   onSaveFontScale={saveFontScale}
                   onSetVirtualAutoStart={setVirtualAutoStart}
+                  onInputModeChange={changeInputMode}
                   onSaveAssettoCorsaPath={saveAssettoCorsaPath}
                   onSaveSettings={saveAppSettings}
                   onSetHotkey={setProfileHotkey}

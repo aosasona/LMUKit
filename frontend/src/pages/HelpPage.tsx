@@ -98,7 +98,7 @@ const legacySteps: GuideStep[] = [
   {
     title: "Prepare the next LMU launch",
     detail:
-      "Close LMU, select Legacy JSON in the title bar, and activate the profile. LMU does not hot-reload direct input.json, so start or restart the game afterward.",
+      "Close LMU, open Settings → Advanced compatibility, select Legacy JSON, and activate the profile. LMU does not hot-reload direct input.json, so start or restart the game afterward.",
     action: "Open overview",
     page: "home",
   },

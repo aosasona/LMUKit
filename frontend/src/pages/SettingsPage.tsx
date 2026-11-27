@@ -17,6 +17,7 @@ import {
   Trash2,
   Type,
   Upload,
+  Wrench,
 } from "lucide-react";
 import {
   useEffect,
@@ -33,6 +34,7 @@ import type {
 } from "../models";
 import type { AppUpdateState } from "../hooks/useAppUpdater";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
+import { InputModeSwitch, type InputMode } from "../components/InputModeSwitch";
 
 const MIN_SCALE = 0.85;
 const MAX_SCALE = 1.4;
@@ -55,10 +57,12 @@ type Props = {
   companionApps: CompanionApp[];
   launchMode: "desktop" | "vr";
   autoStartVirtualProfile: boolean;
+  inputMode: InputMode;
   workspaceKind: Workspace["kind"];
   appUpdate: AppUpdateState;
   onSaveFontScale: (scale: number) => void;
   onSetVirtualAutoStart: (enabled: boolean) => void;
+  onInputModeChange: (mode: InputMode) => void;
   onSaveAssettoCorsaPath: (path: string) => void;
   onSaveSettings: (
     configPath: string,
@@ -103,10 +107,12 @@ export function SettingsPage(props: Props) {
     companionApps,
     launchMode,
     autoStartVirtualProfile,
+    inputMode,
     workspaceKind,
     appUpdate,
     onSaveFontScale,
     onSetVirtualAutoStart,
+    onInputModeChange,
     onSaveAssettoCorsaPath,
     onSaveSettings,
     onSetHotkey,
@@ -925,6 +931,42 @@ export function SettingsPage(props: Props) {
           <div className="settings-transfer-message">{exportMessage}</div>
         )}
       </section>
+
+      {isLmu && (
+        <details className="settings-card legacy-compatibility-card">
+          <summary>
+            <span className="settings-icon">
+              <Wrench />
+            </span>
+            <span>
+              <small>Advanced compatibility</small>
+              <strong>Legacy JSON profile switching</strong>
+              <em>
+                {inputMode === "legacy"
+                  ? "Currently active"
+                  : "Available when needed"}
+              </em>
+            </span>
+          </summary>
+          <div className="legacy-compatibility-content">
+            <p>
+              Legacy mode replaces LMU&apos;s saved{" "}
+              <code>direct input.json</code>
+              and requires the game to restart. Virtual Input is the current,
+              recommended workflow and switches mappings live.
+            </p>
+            <InputModeSwitch
+              mode={inputMode}
+              busy={busy}
+              onChange={onInputModeChange}
+            />
+            <small>
+              Saved Legacy profiles remain intact. Their file editor is still
+              available from a profile&apos;s actions menu.
+            </small>
+          </div>
+        </details>
+      )}
 
       <section className="settings-card app-update-card">
         <SettingsHeading

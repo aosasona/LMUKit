@@ -189,6 +189,39 @@ button {
   height: 19px;
   object-fit: contain;
 }
+.titlebar-actions {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+.titlebar-routing-stop {
+  align-self: center;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 6px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 107, 107, 0.26);
+  background: rgba(255, 107, 107, 0.07);
+  color: #e5aaa6;
+  cursor: pointer;
+  font-size: calc(11px * var(--font-scale));
+}
+.titlebar-routing-stop:hover:not(:disabled) {
+  border-color: rgba(255, 107, 107, 0.5);
+  background: rgba(255, 107, 107, 0.13);
+  color: #ffd2cf;
+}
+.titlebar-routing-stop:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+.titlebar-routing-stop svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
 .window-controls {
   align-self: stretch;
   display: flex;
@@ -3702,6 +3735,72 @@ textarea,
 .settings-toggle-row strong,
 .settings-toggle-row small {
   display: block;
+}
+.legacy-compatibility-card {
+  padding: 0;
+}
+.legacy-compatibility-card > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 15px;
+  padding: 18px 24px;
+  cursor: pointer;
+  list-style: none;
+}
+.legacy-compatibility-card > summary::-webkit-details-marker {
+  display: none;
+}
+.legacy-compatibility-card > summary > span:last-child {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 16px;
+}
+.legacy-compatibility-card summary small,
+.legacy-compatibility-card summary strong {
+  display: block;
+}
+.legacy-compatibility-card summary small {
+  grid-column: 1;
+  color: var(--muted);
+  font-size: calc(10px * var(--font-scale));
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.legacy-compatibility-card summary strong {
+  grid-column: 1;
+  margin-top: 3px;
+  color: #dfe7e2;
+  font-size: calc(14px * var(--font-scale));
+}
+.legacy-compatibility-card summary em {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  color: var(--muted);
+  font-size: calc(11px * var(--font-scale));
+  font-style: normal;
+}
+.legacy-compatibility-card[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+.legacy-compatibility-content {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+  padding: 20px 24px 24px;
+}
+.legacy-compatibility-content p,
+.legacy-compatibility-content > small {
+  max-width: 760px;
+  margin: 0;
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+  line-height: 1.55;
+}
+.legacy-compatibility-content > small {
+  font-size: calc(11px * var(--font-scale));
 }
 .settings-toggle-row strong {
   color: #dfe7e2;

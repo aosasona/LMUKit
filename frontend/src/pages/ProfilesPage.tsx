@@ -1,6 +1,5 @@
 import {
   CircleCheck,
-  FileJson,
   FolderOpen,
   Gauge,
   Gamepad2,
@@ -346,7 +345,7 @@ export function ProfilesPage(props: Props) {
                       onSelect: () => onDetailTabChange("buttons"),
                     },
                     {
-                      label: "Edit LMU configuration",
+                      label: "Open Legacy LMU file tools",
                       hidden: !isLmu,
                       onSelect: () => onDetailTabChange("lmu-file"),
                     },
@@ -434,14 +433,6 @@ export function ProfilesPage(props: Props) {
               >
                 <Mic2 /> System actions
               </button>
-              {isLmu && (
-                <button
-                  className={detailTab === "lmu-file" ? "active" : ""}
-                  onClick={() => onDetailTabChange("lmu-file")}
-                >
-                  <FileJson /> LMU file tools
-                </button>
-              )}
             </nav>
             {detailTab === "overview" && (
               <div className="profile-detail-section">
