@@ -28,7 +28,7 @@ jobs:
           rustup default 1.91.1
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6.1.1
         with:
           version: 10
 
@@ -121,7 +121,7 @@ jobs:
             $releaseNotes.highlights | ForEach-Object { "- $_" }
           ) -join "`n"
           $signature = (Get-Content $installerSignature -Raw).Trim()
-          $downloadUrl = "https://github.com/aosasona/LMUKit/releases/download/$tag/$installerName"
+          $downloadUrl = "https://github.com/aosasona/Pivot/releases/download/$tag/$installerName"
           $manifest = [ordered]@{
             version = $version
             notes = $notes
