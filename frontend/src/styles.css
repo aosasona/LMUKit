@@ -8065,8 +8065,13 @@ textarea,
 .virtual-input-page,
 .help-workspace {
   width: 100%;
+  max-width: none;
   margin-left: 0;
   margin-right: auto;
+}
+
+.system-action-editor {
+  max-width: none;
 }
 
 .profiles-page.panel {
