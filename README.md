@@ -53,6 +53,7 @@ _Assetto Corsa keeps its profiles and named actions separate while reusing the g
 - Hide to the Windows notification area while live remapping continues, see the active workspace/profile, start or stop the last live profile, switch profiles, or check for updates directly from the tray.
 - Check vJoy capacity, workspace profiles, and the current route in a compact Overview health banner; starting a profile warns when one of its mapped physical devices is disconnected.
 - Inspect virtual-input health and attached controllers, open rotating local logs, and export a privacy-redacted diagnostic report from Settings.
+- Export profiles, mappings, shared wheels and images, and app settings as one portable ZIP for transfer to another Windows PC.
 - Check for signed Pivot updates automatically or manually from Settings, review release notes, and install without losing profiles or settings. Pivot stops remapping and releases virtual outputs immediately before starting the installer.
 - Observe LMU's current player car, normalized class, session state, data source, and freshness on Overview through the game's read-only shared-memory interface.
 - Guide one-time vJoy binding setup, save LMU's named action layout, learn and test physical buttons and modifier combinations per profile, warn before replacing conflicting mappings, configure digital encoder modes, assign one automatic default profile per car class, and switch experimental live DirectInput-to-vJoy routing without recreating the virtual controller.
@@ -214,6 +215,12 @@ The generated command now points to `%LOCALAPPDATA%\Pivot\launch-lmu-with-compan
 Open **Settings → Diagnostics and logs** to check vJoy routing health, the active profile and input mode, and privacy-safe summaries of attached DirectInput controllers. The panel can open the log folder or export a diagnostic JSON report suitable for a bug report.
 
 Pivot keeps date-named logs in its application-data `logs` folder. Entries use readable ISO-style UTC timestamps. Each file is capped at 2 MB, with at most three same-day segments, so repeated failures cannot grow storage without bound. Logs are retained for five days by default; change the period from 1 to 30 days in the diagnostics panel. Normal logs record application and routing lifecycle events, not individual button presses. Exported reports omit configured filesystem paths and DirectInput device-instance identifiers; review any report before sharing it.
+
+### Back up or move Pivot
+
+Open **Settings → Export Pivot settings** to create a portable ZIP containing `settings.json`, every profile and virtual mapping, and the shared wheel library with its managed images. The archive also contains a manifest and restore instructions. It deliberately excludes diagnostic logs, recovery backups, game-owned LMU/AC files, vJoy, and other drivers.
+
+On the destination PC, install Pivot and vJoy normally, close Pivot, then extract the exported `settings.json`, `profiles`, and `wheels` into Pivot's existing application-data folder. Paths to games and companion applications are machine-specific and may need to be selected again.
 
 ### App updates
 

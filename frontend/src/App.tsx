@@ -953,7 +953,12 @@ export default function App() {
     }
   };
   const browseForPath = async (
-    kind: "bindings" | "settings" | "executable" | "assetto_corsa_folder",
+    kind:
+      | "bindings"
+      | "settings"
+      | "executable"
+      | "assetto_corsa_folder"
+      | "pivot_export",
     initialPath?: string,
   ) => {
     try {

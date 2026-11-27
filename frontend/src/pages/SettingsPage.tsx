@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   Activity,
   AlertCircle,
+  Archive,
   Check,
   Copy,
   Download,
@@ -73,7 +74,12 @@ type Props = {
     launchMode: "desktop" | "vr",
   ) => Promise<string | null>;
   onBrowse: (
-    kind: "bindings" | "settings" | "executable" | "assetto_corsa_folder",
+    kind:
+      | "bindings"
+      | "settings"
+      | "executable"
+      | "assetto_corsa_folder"
+      | "pivot_export",
     initialPath?: string,
   ) => Promise<string | null>;
 };
@@ -138,6 +144,8 @@ export function SettingsPage(props: Props) {
   const [diagnosticsMessage, setDiagnosticsMessage] = useState<string | null>(
     null,
   );
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
   const saveRevision = useRef(0);
   const saveSettings = useRef(onSaveSettings);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
@@ -247,6 +255,28 @@ export function SettingsPage(props: Props) {
       setDiagnosticsMessage(String(error));
     } finally {
       setDiagnosticsBusy(false);
+    }
+  };
+  const exportPortableSettings = async () => {
+    setExportBusy(true);
+    setExportMessage(null);
+    try {
+      await saveQueue.current.catch(() => undefined);
+      if (dirty || pendingSave.current) {
+        await saveSettings.current(bindings, gameSettings, apps, mode);
+        pendingSave.current = false;
+        setSaveState("saved");
+      }
+      const destination = await onBrowse("pivot_export");
+      if (!destination) return;
+      const path = await invoke<string>("export_portable_settings", {
+        destination,
+      });
+      setExportMessage(`Portable settings saved to ${path}`);
+    } catch (error) {
+      setExportMessage(String(error));
+    } finally {
+      setExportBusy(false);
     }
   };
   const updateLogRetention = async (days: number) => {
@@ -796,6 +826,41 @@ export function SettingsPage(props: Props) {
           </div>
         </section>
       )}
+
+      <section className="settings-card settings-transfer-card">
+        <SettingsHeading
+          icon={<Archive />}
+          eyebrow="Backup & transfer"
+          title="Export Pivot settings"
+        >
+          Create one portable ZIP containing your profiles, mappings, shared
+          wheels, images, and app settings.
+        </SettingsHeading>
+        <div className="settings-transfer-row">
+          <span>
+            <strong>
+              {profiles.length} profile{profiles.length === 1 ? "" : "s"} and
+              all shared wheels
+            </strong>
+            <small>
+              Logs, recovery backups, game files, and vJoy are not included.
+              Paths may need to be selected again on the other PC.
+            </small>
+          </span>
+          <button
+            type="button"
+            className="primary"
+            disabled={busy || exportBusy}
+            onClick={() => void exportPortableSettings()}
+          >
+            {exportBusy ? <LoaderCircle className="spin" /> : <Download />}
+            {exportBusy ? "Creating backup…" : "Export settings ZIP"}
+          </button>
+        </div>
+        {exportMessage && (
+          <div className="settings-transfer-message">{exportMessage}</div>
+        )}
+      </section>
 
       <section className="settings-card app-update-card">
         <SettingsHeading

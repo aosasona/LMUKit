@@ -4272,6 +4272,10 @@ fn pick_file_dialog(kind: &str, initial_path: Option<&str>) -> Result<Option<Str
         );
         return run_picker_script(&script);
     }
+    if kind == "pivot_export" {
+        let script = "Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.SaveFileDialog; $d.Filter='ZIP archives (*.zip)|*.zip'; $d.DefaultExt='zip'; $d.AddExtension=$true; $d.OverwritePrompt=$true; $d.FileName=('Pivot-settings-' + (Get-Date -Format 'yyyy-MM-dd') + '.zip'); if($d.ShowDialog() -eq 'OK'){[Console]::Write($d.FileName)}";
+        return run_picker_script(script);
+    }
     let (filter, filename) = match kind {
         "bindings" => ("JSON files (*.json)|*.json", "direct input.json"),
         "settings" => ("JSON files (*.json)|*.json", "Settings.JSON"),
@@ -4554,6 +4558,20 @@ fn delete_profile(profile_id: Uuid, state: State<'_, AppState>) -> Result<(), St
 fn reveal_profiles(state: State<'_, AppState>) -> Result<(), String> {
     let store = state.0.lock().map_err(|error| error.to_string())?;
     reveal_directory(&store.profiles_dir())
+}
+
+#[tauri::command]
+fn export_portable_settings(
+    destination: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let destination = std::path::PathBuf::from(destination);
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .export_portable_bundle(&destination)
+        .map_err(|error| format!("Could not export Pivot's settings: {error}"))?;
+    diagnostics::info("settings.export", "Exported a portable settings backup");
+    Ok(destination.display().to_string())
 }
 
 #[tauri::command]
@@ -5874,6 +5892,7 @@ pub fn run() {
             duplicate_profile,
             delete_profile,
             reveal_profiles,
+            export_portable_settings,
             diagnostic_status,
             reveal_logs,
             export_diagnostic_report,

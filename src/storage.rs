@@ -3,11 +3,13 @@ use directories::{BaseDirs, ProjectDirs};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs,
+    fs::{self, File},
+    io::{Read, Write},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 use uuid::Uuid;
+use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 pub const CONFIG_FILE_NAME: &str = "direct input.json";
 pub const LMU_WORKSPACE_ID: &str = "le-mans-ultimate";
@@ -1441,6 +1443,74 @@ impl Store {
         self.root.clone()
     }
 
+    pub fn export_portable_bundle(&self, destination: &Path) -> Result<()> {
+        ensure!(
+            destination
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("zip")),
+            "Choose a .zip filename for the Pivot backup."
+        );
+        let parent = destination
+            .parent()
+            .context("the Pivot backup has no parent directory")?;
+        fs::create_dir_all(parent).context("could not create the backup destination")?;
+        let staged = destination.with_extension("zip.tmp");
+        if staged.exists() {
+            fs::remove_file(&staged).context("could not replace a previous staged backup")?;
+        }
+
+        let result = (|| -> Result<()> {
+            let file = File::create(&staged).context("could not create the Pivot backup")?;
+            let mut archive = ZipWriter::new(file);
+            let options = SimpleFileOptions::default()
+                .compression_method(CompressionMethod::Deflated)
+                .unix_permissions(0o644);
+            let manifest = serde_json::json!({
+                "format": "pivot-portable-settings",
+                "formatVersion": 1,
+                "product": "Pivot",
+                "appVersion": env!("CARGO_PKG_VERSION"),
+                "contents": ["settings.json", "profiles/", "wheels/"],
+            });
+            add_archive_bytes(
+                &mut archive,
+                "manifest.json",
+                &serde_json::to_vec_pretty(&manifest)?,
+                options,
+            )?;
+            add_archive_bytes(
+                &mut archive,
+                "settings.json",
+                &serde_json::to_vec_pretty(&self.settings)?,
+                options,
+            )?;
+            add_archive_bytes(
+                &mut archive,
+                "RESTORE.txt",
+                b"Pivot portable settings backup\r\n\r\nClose Pivot on the destination PC, then extract settings.json, profiles, and wheels into Pivot's existing application-data folder. Start Pivot again and reselect any game or companion-app paths that differ on the new PC. Logs, diagnostics, recovery backups, game files, and drivers are intentionally not included.\r\n",
+                options,
+            )?;
+            add_archive_directory(
+                &mut archive,
+                &self.root.join("profiles"),
+                "profiles",
+                options,
+            )?;
+            add_archive_directory(&mut archive, &self.root.join("wheels"), "wheels", options)?;
+            archive
+                .finish()
+                .context("could not finish the Pivot backup")?;
+            Ok(())
+        })();
+        if let Err(error) = result {
+            let _ = fs::remove_file(&staged);
+            return Err(error);
+        }
+        replace_file(&staged, destination).context("could not save the Pivot backup")?;
+        Ok(())
+    }
+
     pub fn wheels(&self) -> Result<Vec<Wheel>> {
         let mut wheels: Vec<Wheel> = Vec::new();
         for entry in fs::read_dir(self.root.join("wheels"))? {
@@ -2716,6 +2786,57 @@ fn replace_file(staged: &Path, destination: &Path) -> std::io::Result<()> {
         fs::remove_file(destination)?;
     }
     fs::rename(staged, destination)
+}
+
+fn add_archive_bytes(
+    archive: &mut ZipWriter<File>,
+    name: &str,
+    bytes: &[u8],
+    options: SimpleFileOptions,
+) -> Result<()> {
+    archive
+        .start_file(name, options)
+        .with_context(|| format!("could not add {name} to the Pivot backup"))?;
+    archive
+        .write_all(bytes)
+        .with_context(|| format!("could not write {name} to the Pivot backup"))?;
+    Ok(())
+}
+
+fn add_archive_directory(
+    archive: &mut ZipWriter<File>,
+    directory: &Path,
+    archive_directory: &str,
+    options: SimpleFileOptions,
+) -> Result<()> {
+    if !directory.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(directory)
+        .with_context(|| format!("could not read {}", directory.display()))?
+    {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| anyhow::anyhow!("a backup filename is not valid Unicode"))?;
+        let archive_name = format!("{archive_directory}/{name}");
+        if file_type.is_dir() {
+            add_archive_directory(archive, &entry.path(), &archive_name, options)?;
+        } else if file_type.is_file() {
+            let mut bytes = Vec::new();
+            File::open(entry.path())
+                .with_context(|| format!("could not open {archive_name}"))?
+                .read_to_end(&mut bytes)
+                .with_context(|| format!("could not read {archive_name}"))?;
+            add_archive_bytes(archive, &archive_name, &bytes, options)?;
+        }
+    }
+    Ok(())
 }
 
 fn batch_path(path: &Path) -> String {
@@ -5552,5 +5673,45 @@ mod tests {
 
         assert!(error.to_string().contains("executable could not be found"));
         assert!(!store.root.join("launch-lmu-with-companions.cmd").exists());
+    }
+
+    #[test]
+    fn exports_portable_settings_without_logs_or_recovery_backups() {
+        let temp = tempfile::tempdir().unwrap();
+        let data = temp.path().join("data");
+        let mut store = Store::open_at(data.clone()).unwrap();
+        let profile = store.create_virtual_profile("Portable profile").unwrap();
+        let wheel = store
+            .create_wheel(Some("Simagic".into()), "GT Neo".into())
+            .unwrap();
+        store
+            .assign_profile_wheel(profile.id, Some(wheel.id))
+            .unwrap();
+        fs::write(
+            data.join("wheels")
+                .join(wheel.id.to_string())
+                .join("wheel-image.png"),
+            b"managed image",
+        )
+        .unwrap();
+        fs::create_dir_all(data.join("logs")).unwrap();
+        fs::write(data.join("logs").join("ignored.log"), b"private log").unwrap();
+        fs::write(data.join("backups").join("ignored.json"), b"backup").unwrap();
+        let destination = temp.path().join("pivot-settings.zip");
+
+        store.export_portable_bundle(&destination).unwrap();
+
+        let mut archive = zip::ZipArchive::new(File::open(destination).unwrap()).unwrap();
+        let names = (0..archive.len())
+            .map(|index| archive.by_index(index).unwrap().name().to_owned())
+            .collect::<BTreeSet<_>>();
+        assert!(names.contains("manifest.json"));
+        assert!(names.contains("settings.json"));
+        assert!(names.contains("RESTORE.txt"));
+        assert!(names.contains(&format!("profiles/{}/profile.json", profile.id)));
+        assert!(names.contains(&format!("wheels/{}/wheel.json", wheel.id)));
+        assert!(names.contains(&format!("wheels/{}/wheel-image.png", wheel.id)));
+        assert!(!names.iter().any(|name| name.starts_with("logs/")));
+        assert!(!names.iter().any(|name| name.starts_with("backups/")));
     }
 }

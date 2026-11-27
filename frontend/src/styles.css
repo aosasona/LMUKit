@@ -3622,6 +3622,47 @@ textarea,
 .settings-icon svg {
   width: 20px;
 }
+.settings-transfer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  background: #121211;
+}
+.settings-transfer-row > span {
+  min-width: 0;
+}
+.settings-transfer-row strong,
+.settings-transfer-row small {
+  display: block;
+}
+.settings-transfer-row strong {
+  color: #dce4df;
+  font-size: calc(13px * var(--font-scale));
+}
+.settings-transfer-row small {
+  max-width: 720px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: calc(11px * var(--font-scale));
+  line-height: 1.5;
+}
+.settings-transfer-row button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.settings-transfer-message {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--teal);
+  background: rgba(198, 243, 107, 0.055);
+  color: #aebbb4;
+  font-size: calc(11px * var(--font-scale));
+  overflow-wrap: anywhere;
+}
 .font-scale-control {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr) 38px auto;
@@ -8072,6 +8113,17 @@ textarea,
 
 .system-action-editor {
   max-width: none;
+}
+
+@media (max-width: 760px) {
+  .settings-transfer-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-transfer-row button {
+    justify-content: center;
+  }
 }
 
 .profiles-page.panel {
