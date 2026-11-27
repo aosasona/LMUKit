@@ -217,6 +217,17 @@ export type WheelVirtualMapping = {
   mappings: VirtualProfileMapping[];
   profileCount: number;
 };
+export type LiveInputDevice = {
+  deviceId: string;
+  deviceName: string;
+  buttonCount: number;
+};
+export type LiveInputEvent = {
+  deviceId: string;
+  deviceName: string;
+  buttonId: number;
+  pressed: boolean;
+};
 export type VirtualProfileDefault = {
   classTag: string;
   profileId: string;

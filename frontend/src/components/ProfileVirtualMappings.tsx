@@ -30,6 +30,7 @@ import type {
 } from "../models";
 import { ActionMenu } from "./ActionMenu";
 import { ConfirmDialog, type Confirmation } from "./ConfirmDialog";
+import { LiveInputGrid } from "./LiveInputGrid";
 import { ProfileEncoderMappings } from "./ProfileEncoderMappings";
 import { ProfileClutchMapping } from "./ProfileClutchMapping";
 import { SystemActionMappings } from "./SystemActionMappings";
@@ -866,144 +867,150 @@ export function ProfileVirtualMappings({
                 />
               </div>
 
-              {inspection && (
-                <div className="profile-control-inspection">
-                  <Crosshair />
-                  <span>
-                    <strong>{inspection.control}</strong>
-                    <small>
-                      {inspection.matches.length
-                        ? inspection.matches
-                            .map(
-                              (match) =>
-                                `${match.logicalAction} · vJoy B${match.virtualButton}`,
-                            )
-                            .join(" · ")
-                        : "Not mapped in this profile"}
-                    </small>
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Clear tested control"
-                    onClick={() => setInspection(null)}
-                  >
-                    <X />
-                  </button>
-                </div>
-              )}
-
-              <div className="profile-mapping-dialog-list">
-                {visibleActions.map((action) => {
-                  const assigned = mappings.filter(
-                    (mapping) => mapping.logicalAction === action.action,
-                  );
-                  return (
-                    <div
-                      className={
-                        inspection?.matches.some(
-                          (match) => match.logicalAction === action.action,
-                        )
-                          ? "profile-mapping-row tested"
-                          : "profile-mapping-row"
-                      }
-                      key={action.action}
-                    >
+              <div className="profile-mapping-content">
+                <div className="profile-mapping-list-pane">
+                  {inspection && (
+                    <div className="profile-control-inspection">
+                      <Crosshair />
                       <span>
-                        <strong>{action.action}</strong>
-                        <small>vJoy B{action.virtualButton}</small>
+                        <strong>{inspection.control}</strong>
+                        <small>
+                          {inspection.matches.length
+                            ? inspection.matches
+                                .map(
+                                  (match) =>
+                                    `${match.logicalAction} · vJoy B${match.virtualButton}`,
+                                )
+                                .join(" · ")
+                            : "Not mapped in this profile"}
+                        </small>
                       </span>
-                      <div className="profile-mapping-sources">
-                        {assigned.map((mapping) => (
-                          <span
-                            key={`${mapping.deviceId}-${mapping.physicalButton}-${mapping.modifiers
-                              .map(
-                                (modifier) =>
-                                  `${modifier.deviceId}-${modifier.physicalButton}`,
-                              )
-                              .join("+")}`}
-                          >
-                            {mapping.modifiers.map((modifier) => (
+                      <button
+                        type="button"
+                        aria-label="Clear tested control"
+                        onClick={() => setInspection(null)}
+                      >
+                        <X />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="profile-mapping-dialog-list">
+                    {visibleActions.map((action) => {
+                      const assigned = mappings.filter(
+                        (mapping) => mapping.logicalAction === action.action,
+                      );
+                      return (
+                        <div
+                          className={
+                            inspection?.matches.some(
+                              (match) => match.logicalAction === action.action,
+                            )
+                              ? "profile-mapping-row tested"
+                              : "profile-mapping-row"
+                          }
+                          key={action.action}
+                        >
+                          <span>
+                            <strong>{action.action}</strong>
+                            <small>vJoy B{action.virtualButton}</small>
+                          </span>
+                          <div className="profile-mapping-sources">
+                            {assigned.map((mapping) => (
                               <span
-                                className="profile-mapping-modifier"
-                                key={`${modifier.deviceId}-${modifier.physicalButton}`}
+                                key={`${mapping.deviceId}-${mapping.physicalButton}-${mapping.modifiers
+                                  .map(
+                                    (modifier) =>
+                                      `${modifier.deviceId}-${modifier.physicalButton}`,
+                                  )
+                                  .join("+")}`}
                               >
-                                {modifier.deviceName || "Physical controller"} ·
-                                Button {modifier.physicalButton} +
+                                {mapping.modifiers.map((modifier) => (
+                                  <span
+                                    className="profile-mapping-modifier"
+                                    key={`${modifier.deviceId}-${modifier.physicalButton}`}
+                                  >
+                                    {modifier.deviceName ||
+                                      "Physical controller"}{" "}
+                                    · Button {modifier.physicalButton} +
+                                  </span>
+                                ))}
+                                {mapping.deviceName || "Physical controller"} ·
+                                Button {mapping.physicalButton}
+                                <button
+                                  type="button"
+                                  aria-label={`Remove ${action.action} mapping`}
+                                  disabled={routingActive}
+                                  onClick={() => void remove(mapping)}
+                                >
+                                  <Trash2 />
+                                </button>
                               </span>
                             ))}
-                            {mapping.deviceName || "Physical controller"} ·
-                            Button {mapping.physicalButton}
+                          </div>
+                          <div className="profile-mapping-assign-actions">
                             <button
                               type="button"
-                              aria-label={`Remove ${action.action} mapping`}
-                              disabled={routingActive}
-                              onClick={() => void remove(mapping)}
+                              className="secondary compact"
+                              disabled={
+                                busy ||
+                                routingActive ||
+                                learning !== null ||
+                                migrating ||
+                                testing ||
+                                savingMapping
+                              }
+                              onClick={() => void learn(action.action)}
                             >
-                              <Trash2 />
+                              {learning === action.action ? (
+                                <>
+                                  <Radio className="spin" /> Press one, or hold
+                                  + press…
+                                </>
+                              ) : assigned.length ? (
+                                "Add control"
+                              ) : (
+                                "Bind control"
+                              )}
                             </button>
-                          </span>
-                        ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {!visibleActions.length && (
+                      <div className="profile-mapping-no-results">
+                        No actions match this search and filter.
                       </div>
-                      <div className="profile-mapping-assign-actions">
-                        <button
-                          type="button"
-                          className="secondary compact"
-                          disabled={
-                            busy ||
-                            routingActive ||
-                            learning !== null ||
-                            migrating ||
-                            testing ||
-                            savingMapping
-                          }
-                          onClick={() => void learn(action.action)}
-                        >
-                          {learning === action.action ? (
-                            <>
-                              <Radio className="spin" /> Press one, or hold +
-                              press…
-                            </>
-                          ) : assigned.length ? (
-                            "Add control"
-                          ) : (
-                            "Bind control"
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-                {!visibleActions.length && (
-                  <div className="profile-mapping-no-results">
-                    No actions match this search and filter.
+                    )}
                   </div>
-                )}
-              </div>
 
-              <footer>
-                <span>
-                  {visibleActions.length} of {actions.length} actions ·{" "}
-                  {mappings.length} physical mappings
-                </span>
-                {learning || testing ? (
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => void cancelLearning()}
-                  >
-                    <Square /> Cancel control capture
-                  </button>
-                ) : presentation === "card" ? (
-                  <button
-                    type="button"
-                    className="primary"
-                    disabled={savingMapping}
-                    onClick={() => void closeEditor()}
-                  >
-                    Done
-                  </button>
-                ) : null}
-              </footer>
+                  <footer>
+                    <span>
+                      {visibleActions.length} of {actions.length} actions ·{" "}
+                      {mappings.length} physical mappings
+                    </span>
+                    {learning || testing ? (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => void cancelLearning()}
+                      >
+                        <Square /> Cancel control capture
+                      </button>
+                    ) : presentation === "card" ? (
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={savingMapping}
+                        onClick={() => void closeEditor()}
+                      >
+                        Done
+                      </button>
+                    ) : null}
+                  </footer>
+                </div>
+                <LiveInputGrid />
+              </div>
             </div>
           </section>
         </div>

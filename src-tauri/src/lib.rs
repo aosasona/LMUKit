@@ -50,6 +50,13 @@ struct AudioState(audio::AudioService);
 struct HotkeyState(std::sync::mpsc::Sender<HotkeyUpdate>);
 struct VirtualSetupState(Mutex<VirtualSetupSession>);
 struct ManualPulseState(Arc<AtomicU64>);
+struct LiveInputState(Mutex<Option<LiveInputSession>>);
+
+struct LiveInputSession {
+    id: u64,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    worker: std::thread::JoinHandle<()>,
+}
 struct VirtualRoutingState {
     operation: Mutex<()>,
     session: Mutex<Option<VirtualRoutingSession>>,
@@ -217,6 +224,23 @@ struct AnalogAxisOutputSummary {
 struct ActiveEncoderModeSummary {
     encoder_name: String,
     mode_name: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LiveInputDeviceSummary {
+    device_id: String,
+    device_name: String,
+    button_count: u32,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LiveInputEventSummary {
+    device_id: String,
+    device_name: String,
+    button_id: u32,
+    pressed: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -2103,6 +2127,143 @@ async fn capture_virtual_profile_button(
         mapping: mapping_summary(&proposed),
         conflicting_actions,
     })
+}
+
+#[cfg(target_os = "windows")]
+fn visible_live_input_devices(monitor: &DirectInputButtonMonitor) -> Vec<LiveInputDeviceSummary> {
+    monitor
+        .device_summaries()
+        .into_iter()
+        .filter(|device| !device.product_name.to_ascii_lowercase().contains("vjoy"))
+        .map(|device| LiveInputDeviceSummary {
+            device_id: device.device_id,
+            device_name: device.product_name,
+            button_count: device.button_count,
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn start_live_input_monitor(
+    monitor_id: u64,
+    app: tauri::AppHandle,
+    state: State<'_, LiveInputState>,
+) -> Result<Vec<LiveInputDeviceSummary>, String> {
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, state);
+        Err("Live controller input is available in the Windows app.".to_owned())
+    }
+    #[cfg(target_os = "windows")]
+    {
+        stop_live_input_monitor_inner(&state)?;
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let worker_stop = Arc::clone(&stop);
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+        let worker = std::thread::spawn(move || {
+            let mut monitor = match DirectInputButtonMonitor::new() {
+                Ok(monitor) => monitor,
+                Err(error) => {
+                    let _ = ready_tx.send(Err(error.to_string()));
+                    return;
+                }
+            };
+            let mut previous_devices = visible_live_input_devices(&monitor);
+            if ready_tx.send(Ok(previous_devices.clone())).is_err() {
+                return;
+            }
+            while !worker_stop.load(Ordering::Acquire) {
+                match monitor.poll_controls() {
+                    Ok(events) => {
+                        for event in events {
+                            match event {
+                                DirectInputEvent::Button(event)
+                                    if !event.device_name.to_ascii_lowercase().contains("vjoy") =>
+                                {
+                                    let _ = app.emit(
+                                        "live-input-event",
+                                        LiveInputEventSummary {
+                                            device_id: event.device_id,
+                                            device_name: event.device_name,
+                                            button_id: event.button_id,
+                                            pressed: event.pressed,
+                                        },
+                                    );
+                                }
+                                DirectInputEvent::Disconnected { .. }
+                                | DirectInputEvent::Axis(_)
+                                | DirectInputEvent::Button(_) => {}
+                            }
+                        }
+                        let current_devices = visible_live_input_devices(&monitor);
+                        if current_devices
+                            .iter()
+                            .map(|device| (&device.device_id, device.button_count))
+                            .collect::<Vec<_>>()
+                            != previous_devices
+                                .iter()
+                                .map(|device| (&device.device_id, device.button_count))
+                                .collect::<Vec<_>>()
+                        {
+                            previous_devices = current_devices.clone();
+                            let _ = app.emit("live-input-devices", current_devices);
+                        }
+                    }
+                    Err(error) => {
+                        let _ = app.emit("live-input-error", error.to_string());
+                        break;
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(4));
+            }
+        });
+        let devices = match ready_rx.recv() {
+            Ok(Ok(devices)) => devices,
+            Ok(Err(error)) => {
+                let _ = worker.join();
+                return Err(error);
+            }
+            Err(_) => {
+                let _ = worker.join();
+                return Err("The live input monitor did not start.".to_owned());
+            }
+        };
+        *state.0.lock().map_err(|error| error.to_string())? = Some(LiveInputSession {
+            id: monitor_id,
+            stop,
+            worker,
+        });
+        Ok(devices)
+    }
+}
+
+fn stop_live_input_monitor_inner(state: &LiveInputState) -> Result<(), String> {
+    let session = state.0.lock().map_err(|error| error.to_string())?.take();
+    if let Some(session) = session {
+        session.stop.store(true, Ordering::Release);
+        session
+            .worker
+            .join()
+            .map_err(|_| "The live input monitor stopped unexpectedly.".to_owned())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_live_input_monitor(
+    monitor_id: u64,
+    state: State<'_, LiveInputState>,
+) -> Result<(), String> {
+    let should_stop = state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())?
+        .as_ref()
+        .is_some_and(|session| session.id == monitor_id);
+    if should_stop {
+        stop_live_input_monitor_inner(&state)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -5484,6 +5645,7 @@ pub fn run() {
             Mutex::new(VirtualSetupSession::default()),
         ))
         .manage(ManualPulseState(Arc::new(AtomicU64::new(0))))
+        .manage(LiveInputState(Mutex::new(None)))
         .manage(VirtualRoutingState {
             operation: Mutex::new(()),
             session: Mutex::new(None),
@@ -5664,6 +5826,8 @@ pub fn run() {
             save_virtual_profile_encoder_group,
             remove_virtual_profile_encoder_group,
             capture_virtual_profile_button,
+            start_live_input_monitor,
+            stop_live_input_monitor,
             save_virtual_profile_button,
             save_wheel_virtual_profile_button,
             inspect_virtual_profile_button,
