@@ -1239,10 +1239,6 @@ main {
   border-bottom: 1px solid var(--line);
   background: #151514;
 }
-.profile-defaults-shortcut {
-  margin-left: auto;
-  white-space: nowrap;
-}
 .search-select {
   position: relative;
   min-width: 210px;
@@ -4452,12 +4448,6 @@ textarea,
 .profile-detail-wheel svg {
   width: 28px;
 }
-.profile-defaults-icon {
-  color: var(--teal);
-}
-.profile-defaults-icon svg {
-  fill: currentColor;
-}
 .profile-detail-head-controls {
   display: flex;
   align-items: center;
@@ -5181,106 +5171,227 @@ textarea,
     flex-wrap: wrap;
   }
 }
-.profiles-defaults-workspace {
-  min-height: 420px;
-  padding: 28px 30px 40px;
-  border: 1px solid var(--line);
-  background: #121211;
-}
-.profile-defaults-manager {
+.automatic-selection-page {
   width: 100%;
-  max-width: 940px;
-}
-.profile-defaults-manager > header {
+  max-width: 1180px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 16px;
-  padding: 0 0 24px;
-  border-bottom: 1px solid var(--line);
+  align-content: start;
+  gap: 22px;
+  padding-bottom: 28px;
 }
-.profile-defaults-heading-icon {
-  width: 42px;
-  height: 42px;
+.automatic-selection-hero {
   display: grid;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--teal) 30%, var(--line));
-  background: color-mix(in srgb, var(--teal) 9%, transparent);
-  color: var(--teal);
+  grid-template-columns: minmax(0, 1fr) minmax(330px, 0.65fr);
+  align-items: stretch;
+  border: 1px solid var(--line);
+  background: #141413;
 }
-.profile-defaults-heading-icon svg {
-  width: 20px;
-  height: 20px;
-}
-.profile-defaults-manager h2 {
-  margin: 3px 0 0;
-  font-size: calc(22px * var(--font-scale));
-  line-height: 1.2;
-}
-.profile-defaults-manager p {
-  max-width: 680px;
-  margin: 7px 0 0;
-  color: var(--muted);
-  font-size: calc(12px * var(--font-scale));
-  line-height: 1.5;
-}
-.profile-default-assignment-list {
-  display: grid;
-}
-.profile-default-assignment-list > div {
-  min-height: 76px;
-  display: grid;
-  grid-template-columns: minmax(190px, 0.55fr) minmax(320px, 1fr);
+.automatic-selection-heading {
+  min-width: 0;
+  display: flex;
   align-items: center;
   gap: 18px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--line);
-  transition: background 120ms ease;
+  padding: 26px 28px;
 }
-.profile-default-assignment-list > div:hover {
-  background: rgba(255, 255, 255, 0.018);
+.automatic-selection-icon {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--teal) 35%, var(--line));
+  background: color-mix(in srgb, var(--teal) 9%, #141413);
+  color: var(--teal);
 }
-.profile-default-assignment-list > div.busy {
-  opacity: 0.62;
-  pointer-events: none;
+.automatic-selection-icon svg {
+  width: 23px;
+  height: 23px;
 }
-.profile-default-class strong,
-.profile-default-assignment-list small {
+.automatic-selection-heading h2 {
+  margin: 4px 0 0;
+  font-size: calc(24px * var(--font-scale));
+  line-height: 1.2;
+}
+.automatic-selection-heading p {
+  max-width: 660px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: calc(13px * var(--font-scale));
+  line-height: 1.55;
+}
+.automatic-selection-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: center;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 22px 24px;
+  border-left: 1px solid var(--line);
+  background: #181817;
+}
+.automatic-selection-control > div strong,
+.automatic-selection-control > div span {
   display: block;
 }
-.profile-default-class strong.class-tag {
-  width: fit-content;
-  padding: 4px 8px;
+.automatic-selection-control > div strong {
+  color: #e2e9e5;
+  font-size: calc(13px * var(--font-scale));
+}
+.automatic-selection-control > div span {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: calc(11px * var(--font-scale));
+  line-height: 1.45;
+}
+.automatic-selection-control > button {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+.automatic-selection-summary {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.automatic-selection-summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.automatic-selection-summary strong {
+  color: var(--teal);
+  font-size: calc(24px * var(--font-scale));
+}
+.automatic-selection-summary span,
+.automatic-selection-summary p {
+  color: var(--muted);
   font-size: calc(12px * var(--font-scale));
 }
-.profile-default-assignment-list small {
-  margin-top: 7px;
+.automatic-selection-summary p {
+  margin: 0;
+}
+.automatic-default-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.automatic-default-card {
+  --class-color: #7f8b84;
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--class-color);
+  background: #151514;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease;
+}
+.automatic-default-card:hover {
+  border-right-color: #333632;
+  border-bottom-color: #333632;
+  border-left-color: #333632;
+  background: #171716;
+}
+.automatic-default-card.busy {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.automatic-default-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.automatic-class-tag {
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--class-color) 60%, transparent);
+  background: color-mix(in srgb, var(--class-color) 14%, #151514);
+  color: color-mix(in srgb, var(--class-color) 65%, white);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 750;
+  letter-spacing: 0.65px;
+  text-transform: uppercase;
+}
+.automatic-default-card > header em {
+  color: #7c8982;
+  font-size: calc(11px * var(--font-scale));
+  font-style: normal;
+}
+.automatic-profile-preview {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+}
+.automatic-wheel-image {
+  width: 118px;
+  height: 88px;
+  display: grid;
+  place-items: center;
+  object-fit: contain;
+  background: #1d1e19;
+  color: #78836a;
+}
+.automatic-wheel-image svg {
+  width: 30px;
+}
+.automatic-profile-preview > div {
+  min-width: 0;
+}
+.automatic-profile-preview small,
+.automatic-profile-preview span {
+  display: block;
   color: var(--muted);
   font-size: calc(11px * var(--font-scale));
 }
-.profile-default-assignment-list .search-select {
-  width: 100%;
-  grid-template-columns: 110px minmax(220px, 1fr);
+.automatic-profile-preview h3 {
+  margin: 5px 0;
+  overflow: hidden;
+  font-size: calc(18px * var(--font-scale));
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.profile-default-assignment-list .search-select summary {
-  min-height: 42px;
-  padding: 0 12px;
-  background: #111210;
+.automatic-default-card .search-select {
+  width: 100%;
+  grid-template-columns: auto minmax(180px, 1fr);
+}
+.automatic-default-card .search-select summary {
+  min-height: 40px;
+  background: #101110;
   font-size: calc(12px * var(--font-scale));
 }
-@media (max-width: 760px) {
-  .profiles-defaults-workspace {
-    padding: 22px 18px 32px;
-  }
-  .profile-defaults-manager > header {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-  .profile-defaults-manager > header > button {
-    grid-column: 1 / -1;
-    justify-self: start;
-  }
-  .profile-default-assignment-list > div {
+.automatic-selection-empty {
+  grid-column: 1 / -1;
+}
+@media (max-width: 900px) {
+  .automatic-selection-hero,
+  .automatic-default-grid {
     grid-template-columns: 1fr;
+  }
+  .automatic-selection-control {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}
+@media (max-width: 600px) {
+  .automatic-selection-heading {
+    align-items: flex-start;
+    padding: 22px 18px;
+  }
+  .automatic-selection-icon {
+    width: 42px;
+    height: 42px;
+  }
+  .automatic-profile-preview {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+  .automatic-wheel-image {
+    width: 88px;
+    height: 70px;
   }
 }
 .profile-mapping-dialog {
@@ -7889,6 +8000,7 @@ textarea,
    floating in the centre of wide windows. */
 .dashboard-grid,
 .workspace-overview,
+.automatic-selection-page,
 .profiles-page,
 .binding-editor,
 .profile-editor-page,

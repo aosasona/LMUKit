@@ -365,6 +365,7 @@ export type JsonObject = { [key: string]: JsonValue };
 export type Page =
   | "home"
   | "profiles"
+  | "automatic"
   | "wheels"
   | "bindings"
   | "virtual"

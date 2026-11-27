@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   Power,
   Settings,
+  Sparkles,
   Workflow,
   Wrench,
 } from "lucide-react";
@@ -18,6 +19,7 @@ import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 const items = [
   ["home", "Overview", LayoutDashboard],
   ["profiles", "Profiles", Gamepad2],
+  ["automatic", "Automatic selection", Sparkles],
   ["wheels", "Wheels", Disc3],
   ["virtual", "Virtual input", Workflow],
   ["game", "Game settings", Wrench],

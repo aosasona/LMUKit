@@ -38,6 +38,7 @@ import { pageTitle } from "./lib/navigation";
 import { releaseNotesFor } from "./lib/releaseNotes";
 import { useAppUpdater } from "./hooks/useAppUpdater";
 import { GameSettingsPage } from "./pages/GameSettingsPage";
+import { AutomaticSelectionPage } from "./pages/AutomaticSelectionPage";
 import { HelpPage } from "./pages/HelpPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ProfilesPage, type ProfileDetailTab } from "./pages/ProfilesPage";
@@ -1200,7 +1201,6 @@ export default function App() {
                   onCreateWheel={createWheel}
                   onAssignWheel={assignWheel}
                   onNotice={setNotice}
-                  onRefresh={refresh}
                   workspaceKind={snapshot.activeWorkspaceKind}
                   bindings={bindings}
                   profileDocument={profileDocument}
@@ -1210,6 +1210,20 @@ export default function App() {
                   onAssignBinding={assignBinding}
                   onProfileDocumentChange={setProfileDocument}
                   onSaveProfileDocument={saveProfileDocument}
+                />
+              )}
+              {page === "automatic" && (
+                <AutomaticSelectionPage
+                  profiles={snapshot.profiles}
+                  workspaceKind={snapshot.activeWorkspaceKind}
+                  inputMode={snapshot.inputMode}
+                  status={autoProfileSelection}
+                  busy={busy}
+                  wheelImageRevision={wheelImageRevision}
+                  onSetEnabled={changeAutoProfileSelection}
+                  onResume={resumeAutoProfileSelection}
+                  onNotice={setNotice}
+                  onChanged={refresh}
                 />
               )}
               {page === "wheels" && (

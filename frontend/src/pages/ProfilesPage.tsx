@@ -8,7 +8,6 @@ import {
   Mic2,
   Play,
   Search,
-  Star,
   Upload,
 } from "lucide-react";
 import { useState } from "react";
@@ -16,7 +15,6 @@ import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
 import type { InputMode } from "../components/InputModeSwitch";
 import { ProfileTagPicker } from "../components/ProfileTagPicker";
-import { ProfileDefaultsManager } from "../components/ProfileDefaultsManager";
 import { ProfileLegacyTools } from "../components/ProfileLegacyTools";
 import {
   ProfileVirtualMappings,
@@ -24,7 +22,7 @@ import {
 } from "../components/ProfileVirtualMappings";
 import { WheelImage } from "../components/WheelImage";
 import { SearchSelect } from "../components/SearchSelect";
-import { displayClassTag } from "../lib/classTags";
+import { DEFAULT_LMU_CLASS_TAGS, displayClassTag } from "../lib/classTags";
 import type {
   Device,
   Binding,
@@ -36,13 +34,7 @@ import type {
   Workspace,
 } from "../models";
 
-export type ProfileDetailTab =
-  | "overview"
-  | ProfileInputSection
-  | "defaults"
-  | "lmu-file";
-
-const DEFAULT_CLASSES = ["GT3", "GTE", "LMP3", "LMP2", "HY"] as const;
+export type ProfileDetailTab = "overview" | ProfileInputSection | "lmu-file";
 
 function wheelLabel(profile: Profile) {
   return (
@@ -89,7 +81,6 @@ type Props = {
   onCreateWheel: (profile: Profile, brand: string, name: string) => void;
   onAssignWheel: (profile: Profile, wheel: Wheel | null) => void;
   onNotice: (message: string) => void;
-  onRefresh: () => Promise<void>;
   onDismissDirty: () => void;
   workspaceKind: Workspace["kind"];
   bindings: Binding[];
@@ -138,7 +129,6 @@ export function ProfilesPage(props: Props) {
     onCreateWheel,
     onAssignWheel,
     onNotice,
-    onRefresh,
     onDismissDirty,
     workspaceKind,
     bindings,
@@ -196,471 +186,445 @@ export function ProfilesPage(props: Props) {
         if (isLmu) acceptFiles(event.dataTransfer.files);
       }}
     >
-      {detailTab !== "defaults" && (
-        <div className="profiles-toolbar">
-          <div className="search-box">
-            <Search size={17} />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search your profiles"
-            />
-          </div>
-          <div className="profile-tools">
-            <div className="capture-box">
-              <input
-                value={captureName}
-                onChange={(event) => setCaptureName(event.target.value)}
-                placeholder="New profile name"
-              />
-              <button
-                disabled={busy || !captureName.trim()}
-                onClick={() => {
-                  if (isLmu) onCapture(captureName);
-                  else onCreateVirtual(captureName);
-                  setCaptureName("");
-                }}
-              >
-                {isLmu ? "Capture LMU" : "Create profile"}
-              </button>
-            </div>
-            <button className="secondary compact" onClick={onReveal}>
-              <FolderOpen /> Folder
-            </button>
-            {isLmu && (
-              <label className="primary compact image-picker">
-                <Upload /> Import
-                <input
-                  type="file"
-                  accept="application/json,.json"
-                  disabled={busy}
-                  onChange={(event) => {
-                    acceptFiles(event.target.files);
-                    event.target.value = "";
-                  }}
-                />
-              </label>
-            )}
-          </div>
-        </div>
-      )}
-      {detailTab !== "defaults" &&
-        (wheelOptions.length > 0 || classTags.length > 0) && (
-          <div className="category-browser">
-            <SearchSelect
-              label="Wheel"
-              value={wheelFilter}
-              options={wheelOptions}
-              onChange={setWheelFilter}
-            />
-            <SearchSelect
-              label={isLmu ? "Class" : "Car tag"}
-              value={classFilter}
-              options={classTags}
-              formatOption={isLmu ? displayClassTag : undefined}
-              onChange={setClassFilter}
-            />
-            <button
-              type="button"
-              className="secondary compact profile-defaults-shortcut"
-              onClick={() => onDetailTabChange("defaults")}
-            >
-              <Star /> Manage automatic defaults
-            </button>
-          </div>
-        )}
-      {detailTab === "defaults" ? (
-        <div className="profiles-defaults-workspace">
-          <ProfileDefaultsManager
-            profiles={profiles}
-            workspaceKind={workspaceKind}
-            onNotice={onNotice}
-            onClose={() => onDetailTabChange("overview")}
-            onChanged={onRefresh}
+      <div className="profiles-toolbar">
+        <div className="search-box">
+          <Search size={17} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search your profiles"
           />
         </div>
-      ) : (
-        <div className="profiles-workspace">
-          <div className="profile-list-pane">
-            {loading &&
-              Array.from({ length: 6 }, (_, index) => (
-                <div className="profile-list-item skeleton" key={index} />
-              ))}
-            {visibleProfiles.map((profile) => (
-              <button
-                className={
-                  selectedId === profile.id
-                    ? "profile-list-item selected"
-                    : "profile-list-item"
-                }
-                key={profile.id}
-                onClick={() => setSelectedId(profile.id)}
-              >
-                <WheelImage
-                  wheelId={profile.wheelId}
-                  hasImage={profile.hasWheelImage}
-                  alt={`${profile.wheelName ?? profile.name} wheel`}
-                  className="profile-list-wheel"
-                  revision={wheelImageRevision}
-                />
-                <span className="profile-list-copy">
-                  <span className="profile-list-title">
-                    <strong>{profile.name}</strong>
-                    {legacyMode && profile.id === activeId && (
-                      <em className={activeDirty ? "dirty" : ""}>
-                        {activeDirty ? "Changed" : "Prepared"}
-                      </em>
-                    )}
-                  </span>
-                  <span className="profile-tags compact-tags">
-                    {wheelLabel(profile) && (
-                      <span className="wheel-tag">{wheelLabel(profile)}</span>
-                    )}
-                    {profile.classTags.map((tag) => (
-                      <span
-                        className={`class-tag class-${classSlug(tag)}`}
-                        key={`class-${tag}`}
-                      >
-                        {isLmu ? displayClassTag(tag) : tag}
-                      </span>
-                    ))}
-                    {!profile.classTags.length && (
-                      <span className="generic-tag">Generic</span>
-                    )}
-                    {profile.customTags.map((tag) => (
-                      <span className="custom-tag" key={`custom-${tag}`}>
-                        {tag}
-                      </span>
-                    ))}
-                  </span>
-                </span>
-                {profile.hotkeySlot && <kbd>Ctrl Alt {profile.hotkeySlot}</kbd>}
-              </button>
-            ))}
-            {!loading && !visibleProfiles.length && (
-              <div className="empty large">
-                <Gamepad2 />
-                <strong>
-                  {profiles.length
-                    ? "No matching profiles"
-                    : "Your garage is empty"}
-                </strong>
-                <span>
-                  {profiles.length
-                    ? "Clear the search or adjust the filters."
-                    : isLmu
-                      ? "Drop a preset here, import one, or capture LMU."
-                      : "Create a profile, assign a wheel, then map its physical controls."}
-                </span>
-              </div>
-            )}
+        <div className="profile-tools">
+          <div className="capture-box">
+            <input
+              value={captureName}
+              onChange={(event) => setCaptureName(event.target.value)}
+              placeholder="New profile name"
+            />
+            <button
+              disabled={busy || !captureName.trim()}
+              onClick={() => {
+                if (isLmu) onCapture(captureName);
+                else onCreateVirtual(captureName);
+                setCaptureName("");
+              }}
+            >
+              {isLmu ? "Capture LMU" : "Create profile"}
+            </button>
           </div>
-          {selected ? (
-            <aside className="profile-detail-pane">
-              <header className="profile-detail-head">
-                <WheelImage
-                  wheelId={selected.wheelId}
-                  hasImage={selected.hasWheelImage}
-                  alt={`${selected.wheelName ?? selected.name} wheel`}
-                  className="profile-detail-wheel"
-                  revision={wheelImageRevision}
-                />
-                <div>
-                  <h3>{selected.name}</h3>
-                  <small>{wheelLabel(selected) ?? "No wheel assigned"}</small>
-                </div>
-                <div className="profile-detail-head-controls">
-                  <ActionMenu
-                    items={[
-                      {
-                        label: "Edit button mappings",
-                        onSelect: () => onDetailTabChange("buttons"),
-                      },
-                      {
-                        label: "Edit LMU configuration",
-                        hidden: !isLmu,
-                        onSelect: () => onDetailTabChange("lmu-file"),
-                      },
-                      {
-                        label: "Duplicate profile",
-                        onSelect: () => onDuplicate(selected),
-                      },
-                      {
-                        label: legacyMode
-                          ? "Prepare for next LMU launch"
-                          : "Use this profile live",
-                        hidden:
-                          (legacyMode &&
-                            selected.id === activeId &&
-                            !activeDirty) ||
-                          selectedIsLive,
-                        onSelect: () => onActivate(selected),
-                      },
-                      {
-                        label: "Show profiles folder",
-                        onSelect: onReveal,
-                      },
-                      {
-                        label: "Update from LMU",
-                        hidden:
-                          !legacyMode ||
-                          !selected.differsFromLive ||
-                          (selected.id === activeId && !activeDirty),
-                        separatorBefore: true,
-                        onSelect: () =>
-                          setConfirmation({
-                            title: `Update ${selected.name} from LMU?`,
-                            description:
-                              "This replaces the saved profile with LMU's current bindings. A recovery backup will be created first.",
-                            confirmLabel: "Update from LMU",
-                            onConfirm: () => {
-                              onUpdate(selected);
-                              setConfirmation(null);
-                            },
-                          }),
-                      },
-                      {
-                        label: "Delete profile",
-                        danger: true,
-                        separatorBefore: !selected.differsFromLive,
-                        onSelect: () =>
-                          setConfirmation({
-                            title: `Delete ${selected.name}?`,
-                            description:
-                              "This permanently removes the saved profile. LMU's live configuration and the shared wheel library are not changed.",
-                            confirmLabel: "Delete profile",
-                            danger: true,
-                            onConfirm: () => {
-                              onDelete(selected);
-                              setConfirmation(null);
-                            },
-                          }),
-                      },
-                    ]}
-                  />
-                </div>
-              </header>
-              <nav className="profile-detail-tabs" aria-label="Profile section">
-                <button
-                  className={detailTab === "overview" ? "active" : ""}
-                  onClick={() => onDetailTabChange("overview")}
-                >
-                  <IdCard /> Overview
-                </button>
-                <button
-                  className={detailTab === "buttons" ? "active" : ""}
-                  onClick={() => onDetailTabChange("buttons")}
-                >
-                  <Gamepad2 /> Buttons
-                </button>
-                <button
-                  className={detailTab === "clutch" ? "active" : ""}
-                  onClick={() => onDetailTabChange("clutch")}
-                >
-                  <Gauge /> Clutch
-                </button>
-                <button
-                  className={detailTab === "system" ? "active" : ""}
-                  onClick={() => onDetailTabChange("system")}
-                >
-                  <Mic2 /> System actions
-                </button>
-                {isLmu && (
-                  <button
-                    className={detailTab === "lmu-file" ? "active" : ""}
-                    onClick={() => onDetailTabChange("lmu-file")}
-                  >
-                    <FileJson /> LMU file tools
-                  </button>
-                )}
-              </nav>
-              {detailTab === "overview" && (
-                <div className="profile-detail-section">
-                  <div className="profile-detail-metrics">
-                    {isLmu && (
-                      <span>
-                        <strong>{selected.bindingCount}</strong> file bindings
-                      </span>
-                    )}
-                    <span>
-                      <strong>{selected.devices.length}</strong> devices
-                    </span>
-                    <span>
-                      <strong>{selected.hotkeySlot ?? "—"}</strong>{" "}
-                      {selected.hotkeySlot ? "shortcut slot" : "no shortcut"}
-                    </span>
-                  </div>
-                  {legacyMode && selected.id === activeId && activeDirty && (
-                    <div className="profile-dirty-notice">
-                      <span>
-                        LMU's live bindings differ from this profile. Update the
-                        saved copy from the actions menu, or use this profile
-                        again to restore its bindings.
-                      </span>
-                      <button type="button" onClick={onDismissDirty}>
-                        Dismiss
-                      </button>
-                    </div>
+          <button className="secondary compact" onClick={onReveal}>
+            <FolderOpen /> Folder
+          </button>
+          {isLmu && (
+            <label className="primary compact image-picker">
+              <Upload /> Import
+              <input
+                type="file"
+                accept="application/json,.json"
+                disabled={busy}
+                onChange={(event) => {
+                  acceptFiles(event.target.files);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+          )}
+        </div>
+      </div>
+      {(wheelOptions.length > 0 || classTags.length > 0) && (
+        <div className="category-browser">
+          <SearchSelect
+            label="Wheel"
+            value={wheelFilter}
+            options={wheelOptions}
+            onChange={setWheelFilter}
+          />
+          <SearchSelect
+            label={isLmu ? "Class" : "Car tag"}
+            value={classFilter}
+            options={classTags}
+            formatOption={isLmu ? displayClassTag : undefined}
+            onChange={setClassFilter}
+          />
+        </div>
+      )}
+      <div className="profiles-workspace">
+        <div className="profile-list-pane">
+          {loading &&
+            Array.from({ length: 6 }, (_, index) => (
+              <div className="profile-list-item skeleton" key={index} />
+            ))}
+          {visibleProfiles.map((profile) => (
+            <button
+              className={
+                selectedId === profile.id
+                  ? "profile-list-item selected"
+                  : "profile-list-item"
+              }
+              key={profile.id}
+              onClick={() => setSelectedId(profile.id)}
+            >
+              <WheelImage
+                wheelId={profile.wheelId}
+                hasImage={profile.hasWheelImage}
+                alt={`${profile.wheelName ?? profile.name} wheel`}
+                className="profile-list-wheel"
+                revision={wheelImageRevision}
+              />
+              <span className="profile-list-copy">
+                <span className="profile-list-title">
+                  <strong>{profile.name}</strong>
+                  {legacyMode && profile.id === activeId && (
+                    <em className={activeDirty ? "dirty" : ""}>
+                      {activeDirty ? "Changed" : "Prepared"}
+                    </em>
                   )}
-                  <CategoryEditor
-                    key={selected.id}
-                    profile={selected}
-                    wheels={wheels}
-                    busy={busy}
-                    onSave={onSaveCategories}
-                    onCreateWheel={onCreateWheel}
-                    onAssignWheel={onAssignWheel}
-                    isLmu={isLmu}
-                  />
-                  {isLmu && (
-                    <div className="profile-devices-head">
-                      <div>
-                        <span className="eyebrow">Connected hardware</span>
-                        <h4>Profile devices</h4>
-                      </div>
-                      <small>
-                        Removing a device also removes its bindings.
-                      </small>
-                    </div>
+                </span>
+                <span className="profile-tags compact-tags">
+                  {wheelLabel(profile) && (
+                    <span className="wheel-tag">{wheelLabel(profile)}</span>
                   )}
-                  {isLmu && (
-                    <div className="device-list">
-                      {selected.devices.map((device) => (
-                        <div className="device-row" key={device.key}>
-                          <span className="device-thumb">
-                            <Gamepad2 />
-                          </span>
-                          <div>
-                            <strong>{device.name}</strong>
-                            <small>
-                              {device.bindingCount} binding
-                              {device.bindingCount === 1 ? "" : "s"} ·{" "}
-                              {device.key}
-                            </small>
-                          </div>
-                          <ActionMenu
-                            label={`Actions for ${device.name}`}
-                            items={[
-                              {
-                                label: "Delete device",
-                                danger: true,
-                                onSelect: () =>
-                                  setConfirmation({
-                                    title: `Delete ${device.name}?`,
-                                    description: `This removes the device and its ${device.bindingCount} binding${device.bindingCount === 1 ? "" : "s"} from ${selected.name}. A recovery backup will be created.`,
-                                    confirmLabel: "Delete device",
-                                    danger: true,
-                                    onConfirm: () => {
-                                      onRemoveDevice(selected, device);
-                                      setConfirmation(null);
-                                    },
-                                  }),
-                              },
-                            ]}
-                          />
-                        </div>
-                      ))}
-                      {!selected.devices.length && (
-                        <div className="empty">
-                          This profile has no registered devices.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <div className="profile-activation-bar">
-                    <div>
-                      {(legacyMode &&
-                        selected.id === activeId &&
-                        !activeDirty) ||
-                      selectedIsLive ? (
-                        <CircleCheck />
-                      ) : (
-                        <Play />
-                      )}
-                      <span>
-                        <strong>
-                          {legacyMode
-                            ? selected.id === activeId && !activeDirty
-                              ? "Profile ready"
-                              : "Prepare this profile"
-                            : selectedIsLive
-                              ? "Live remapping active"
-                              : "Use this profile live"}
-                        </strong>
-                        <small>
-                          {legacyMode
-                            ? "LMU will load it the next time the game starts."
-                            : selectedIsLive
-                              ? `${routing.identity ?? "vJoy"} · ${routing.selectionReason ?? "Active profile"}`
-                              : "Pivot will route its assigned wheel buttons through vJoy."}
-                        </small>
-                      </span>
-                    </div>
-                    <button
-                      className="primary"
-                      disabled={
-                        busy ||
-                        (legacyMode &&
-                          selected.id === activeId &&
-                          !activeDirty) ||
-                        selectedIsLive
-                      }
-                      onClick={() => onActivate(selected)}
+                  {profile.classTags.map((tag) => (
+                    <span
+                      className={`class-tag class-${classSlug(tag)}`}
+                      key={`class-${tag}`}
                     >
-                      {legacyMode
-                        ? selected.id === activeId
-                          ? activeDirty
-                            ? "Restore saved profile"
-                            : "Currently active"
-                          : "Activate for next LMU launch"
-                        : selectedIsLive
-                          ? "Currently live"
-                          : "Start live remapping"}
-                    </button>
-                  </div>
-                </div>
-              )}
-              {(["buttons", "clutch", "system"] as const).includes(
-                detailTab as ProfileInputSection,
-              ) && (
-                <div className="profile-detail-section profile-inputs-section">
-                  <ProfileVirtualMappings
-                    key={`virtual-${selected.id}`}
-                    profile={selected}
-                    busy={busy}
-                    inputMode={inputMode}
-                    onNotice={onNotice}
-                    presentation="workspace"
-                    workspaceKind={workspaceKind}
-                    workspaceSection={detailTab as ProfileInputSection}
-                  />
-                </div>
-              )}
-              {detailTab === "lmu-file" && isLmu && (
-                <div className="profile-detail-section profile-file-section">
-                  <ProfileLegacyTools
-                    profile={selected}
-                    bindings={bindings}
-                    document={profileDocument}
-                    baseline={profileDocumentBaseline}
-                    loading={profileDocumentLoading}
-                    busy={busy}
-                    onClear={onClearBinding}
-                    onAssign={onAssignBinding}
-                    onChange={onProfileDocumentChange}
-                    onSave={onSaveProfileDocument}
-                  />
-                </div>
-              )}
-            </aside>
-          ) : (
-            <div className="profile-detail-pane empty large">
+                      {isLmu ? displayClassTag(tag) : tag}
+                    </span>
+                  ))}
+                  {!profile.classTags.length && (
+                    <span className="generic-tag">Generic</span>
+                  )}
+                  {profile.customTags.map((tag) => (
+                    <span className="custom-tag" key={`custom-${tag}`}>
+                      {tag}
+                    </span>
+                  ))}
+                </span>
+              </span>
+              {profile.hotkeySlot && <kbd>Ctrl Alt {profile.hotkeySlot}</kbd>}
+            </button>
+          ))}
+          {!loading && !visibleProfiles.length && (
+            <div className="empty large">
               <Gamepad2 />
-              <strong>Select a profile</strong>
+              <strong>
+                {profiles.length
+                  ? "No matching profiles"
+                  : "Your garage is empty"}
+              </strong>
+              <span>
+                {profiles.length
+                  ? "Clear the search or adjust the filters."
+                  : isLmu
+                    ? "Drop a preset here, import one, or capture LMU."
+                    : "Create a profile, assign a wheel, then map its physical controls."}
+              </span>
             </div>
           )}
         </div>
-      )}
+        {selected ? (
+          <aside className="profile-detail-pane">
+            <header className="profile-detail-head">
+              <WheelImage
+                wheelId={selected.wheelId}
+                hasImage={selected.hasWheelImage}
+                alt={`${selected.wheelName ?? selected.name} wheel`}
+                className="profile-detail-wheel"
+                revision={wheelImageRevision}
+              />
+              <div>
+                <h3>{selected.name}</h3>
+                <small>{wheelLabel(selected) ?? "No wheel assigned"}</small>
+              </div>
+              <div className="profile-detail-head-controls">
+                <ActionMenu
+                  items={[
+                    {
+                      label: "Edit button mappings",
+                      onSelect: () => onDetailTabChange("buttons"),
+                    },
+                    {
+                      label: "Edit LMU configuration",
+                      hidden: !isLmu,
+                      onSelect: () => onDetailTabChange("lmu-file"),
+                    },
+                    {
+                      label: "Duplicate profile",
+                      onSelect: () => onDuplicate(selected),
+                    },
+                    {
+                      label: legacyMode
+                        ? "Prepare for next LMU launch"
+                        : "Use this profile live",
+                      hidden:
+                        (legacyMode &&
+                          selected.id === activeId &&
+                          !activeDirty) ||
+                        selectedIsLive,
+                      onSelect: () => onActivate(selected),
+                    },
+                    {
+                      label: "Show profiles folder",
+                      onSelect: onReveal,
+                    },
+                    {
+                      label: "Update from LMU",
+                      hidden:
+                        !legacyMode ||
+                        !selected.differsFromLive ||
+                        (selected.id === activeId && !activeDirty),
+                      separatorBefore: true,
+                      onSelect: () =>
+                        setConfirmation({
+                          title: `Update ${selected.name} from LMU?`,
+                          description:
+                            "This replaces the saved profile with LMU's current bindings. A recovery backup will be created first.",
+                          confirmLabel: "Update from LMU",
+                          onConfirm: () => {
+                            onUpdate(selected);
+                            setConfirmation(null);
+                          },
+                        }),
+                    },
+                    {
+                      label: "Delete profile",
+                      danger: true,
+                      separatorBefore: !selected.differsFromLive,
+                      onSelect: () =>
+                        setConfirmation({
+                          title: `Delete ${selected.name}?`,
+                          description:
+                            "This permanently removes the saved profile. LMU's live configuration and the shared wheel library are not changed.",
+                          confirmLabel: "Delete profile",
+                          danger: true,
+                          onConfirm: () => {
+                            onDelete(selected);
+                            setConfirmation(null);
+                          },
+                        }),
+                    },
+                  ]}
+                />
+              </div>
+            </header>
+            <nav className="profile-detail-tabs" aria-label="Profile section">
+              <button
+                className={detailTab === "overview" ? "active" : ""}
+                onClick={() => onDetailTabChange("overview")}
+              >
+                <IdCard /> Overview
+              </button>
+              <button
+                className={detailTab === "buttons" ? "active" : ""}
+                onClick={() => onDetailTabChange("buttons")}
+              >
+                <Gamepad2 /> Buttons
+              </button>
+              <button
+                className={detailTab === "clutch" ? "active" : ""}
+                onClick={() => onDetailTabChange("clutch")}
+              >
+                <Gauge /> Clutch
+              </button>
+              <button
+                className={detailTab === "system" ? "active" : ""}
+                onClick={() => onDetailTabChange("system")}
+              >
+                <Mic2 /> System actions
+              </button>
+              {isLmu && (
+                <button
+                  className={detailTab === "lmu-file" ? "active" : ""}
+                  onClick={() => onDetailTabChange("lmu-file")}
+                >
+                  <FileJson /> LMU file tools
+                </button>
+              )}
+            </nav>
+            {detailTab === "overview" && (
+              <div className="profile-detail-section">
+                <div className="profile-detail-metrics">
+                  {isLmu && (
+                    <span>
+                      <strong>{selected.bindingCount}</strong> file bindings
+                    </span>
+                  )}
+                  <span>
+                    <strong>{selected.devices.length}</strong> devices
+                  </span>
+                  <span>
+                    <strong>{selected.hotkeySlot ?? "—"}</strong>{" "}
+                    {selected.hotkeySlot ? "shortcut slot" : "no shortcut"}
+                  </span>
+                </div>
+                {legacyMode && selected.id === activeId && activeDirty && (
+                  <div className="profile-dirty-notice">
+                    <span>
+                      LMU's live bindings differ from this profile. Update the
+                      saved copy from the actions menu, or use this profile
+                      again to restore its bindings.
+                    </span>
+                    <button type="button" onClick={onDismissDirty}>
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+                <CategoryEditor
+                  key={selected.id}
+                  profile={selected}
+                  wheels={wheels}
+                  busy={busy}
+                  onSave={onSaveCategories}
+                  onCreateWheel={onCreateWheel}
+                  onAssignWheel={onAssignWheel}
+                  isLmu={isLmu}
+                />
+                {isLmu && (
+                  <div className="profile-devices-head">
+                    <div>
+                      <span className="eyebrow">Connected hardware</span>
+                      <h4>Profile devices</h4>
+                    </div>
+                    <small>Removing a device also removes its bindings.</small>
+                  </div>
+                )}
+                {isLmu && (
+                  <div className="device-list">
+                    {selected.devices.map((device) => (
+                      <div className="device-row" key={device.key}>
+                        <span className="device-thumb">
+                          <Gamepad2 />
+                        </span>
+                        <div>
+                          <strong>{device.name}</strong>
+                          <small>
+                            {device.bindingCount} binding
+                            {device.bindingCount === 1 ? "" : "s"} ·{" "}
+                            {device.key}
+                          </small>
+                        </div>
+                        <ActionMenu
+                          label={`Actions for ${device.name}`}
+                          items={[
+                            {
+                              label: "Delete device",
+                              danger: true,
+                              onSelect: () =>
+                                setConfirmation({
+                                  title: `Delete ${device.name}?`,
+                                  description: `This removes the device and its ${device.bindingCount} binding${device.bindingCount === 1 ? "" : "s"} from ${selected.name}. A recovery backup will be created.`,
+                                  confirmLabel: "Delete device",
+                                  danger: true,
+                                  onConfirm: () => {
+                                    onRemoveDevice(selected, device);
+                                    setConfirmation(null);
+                                  },
+                                }),
+                            },
+                          ]}
+                        />
+                      </div>
+                    ))}
+                    {!selected.devices.length && (
+                      <div className="empty">
+                        This profile has no registered devices.
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="profile-activation-bar">
+                  <div>
+                    {(legacyMode && selected.id === activeId && !activeDirty) ||
+                    selectedIsLive ? (
+                      <CircleCheck />
+                    ) : (
+                      <Play />
+                    )}
+                    <span>
+                      <strong>
+                        {legacyMode
+                          ? selected.id === activeId && !activeDirty
+                            ? "Profile ready"
+                            : "Prepare this profile"
+                          : selectedIsLive
+                            ? "Live remapping active"
+                            : "Use this profile live"}
+                      </strong>
+                      <small>
+                        {legacyMode
+                          ? "LMU will load it the next time the game starts."
+                          : selectedIsLive
+                            ? `${routing.identity ?? "vJoy"} · ${routing.selectionReason ?? "Active profile"}`
+                            : "Pivot will route its assigned wheel buttons through vJoy."}
+                      </small>
+                    </span>
+                  </div>
+                  <button
+                    className="primary"
+                    disabled={
+                      busy ||
+                      (legacyMode &&
+                        selected.id === activeId &&
+                        !activeDirty) ||
+                      selectedIsLive
+                    }
+                    onClick={() => onActivate(selected)}
+                  >
+                    {legacyMode
+                      ? selected.id === activeId
+                        ? activeDirty
+                          ? "Restore saved profile"
+                          : "Currently active"
+                        : "Activate for next LMU launch"
+                      : selectedIsLive
+                        ? "Currently live"
+                        : "Start live remapping"}
+                  </button>
+                </div>
+              </div>
+            )}
+            {(["buttons", "clutch", "system"] as const).includes(
+              detailTab as ProfileInputSection,
+            ) && (
+              <div className="profile-detail-section profile-inputs-section">
+                <ProfileVirtualMappings
+                  key={`virtual-${selected.id}`}
+                  profile={selected}
+                  busy={busy}
+                  inputMode={inputMode}
+                  onNotice={onNotice}
+                  presentation="workspace"
+                  workspaceKind={workspaceKind}
+                  workspaceSection={detailTab as ProfileInputSection}
+                />
+              </div>
+            )}
+            {detailTab === "lmu-file" && isLmu && (
+              <div className="profile-detail-section profile-file-section">
+                <ProfileLegacyTools
+                  profile={selected}
+                  bindings={bindings}
+                  document={profileDocument}
+                  baseline={profileDocumentBaseline}
+                  loading={profileDocumentLoading}
+                  busy={busy}
+                  onClear={onClearBinding}
+                  onAssign={onAssignBinding}
+                  onChange={onProfileDocumentChange}
+                  onSave={onSaveProfileDocument}
+                />
+              </div>
+            )}
+          </aside>
+        ) : (
+          <div className="profile-detail-pane empty large">
+            <Gamepad2 />
+            <strong>Select a profile</strong>
+          </div>
+        )}
+      </div>
       <ConfirmDialog
         confirmation={confirmation}
         busy={busy}
@@ -774,7 +738,7 @@ function CategoryEditor({
           </div>
         )}
         <ProfileTagPicker
-          classOptions={isLmu ? DEFAULT_CLASSES : []}
+          classOptions={isLmu ? DEFAULT_LMU_CLASS_TAGS : []}
           classTags={classes}
           customTags={customTags}
           onChange={(tags) => {
