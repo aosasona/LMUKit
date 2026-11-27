@@ -614,6 +614,10 @@ main {
   padding: 0 32px 24px;
   overflow: auto;
 }
+.content.content-fixed {
+  display: flex;
+  overflow: hidden;
+}
 
 .startup-health {
   display: grid;
@@ -1216,13 +1220,15 @@ main {
   }
 }
 .profiles-page {
-  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
   display: flex;
   flex-direction: column;
   max-width: 1420px;
   margin: auto;
   padding: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 .category-browser {
   padding: 13px 18px;
@@ -5279,7 +5285,7 @@ textarea,
   min-height: 0;
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 258px;
+  grid-template-columns: minmax(0, 1fr) clamp(200px, 26%, 240px);
   overflow: hidden;
 }
 .profile-mapping-list-pane {
@@ -5287,16 +5293,17 @@ textarea,
   min-height: 0;
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
 }
 .profile-mapping-dialog.inline .profile-mapping-content {
-  overflow: visible;
+  overflow: hidden;
 }
 .profile-mapping-dialog.inline .profile-mapping-list-pane {
-  min-height: 520px;
+  min-height: 0;
 }
 .profile-mapping-dialog.inline .profile-mapping-tab-panel,
 .profile-mapping-dialog.inline .profile-mapping-dialog-list {
-  overflow: visible;
+  overflow-y: auto;
 }
 .profile-mapping-toolbar {
   flex: 0 0 auto;
@@ -5870,6 +5877,16 @@ textarea,
 .profile-mapping-assign-actions button {
   justify-content: center;
   white-space: nowrap;
+}
+@container (max-width: 470px) {
+  .profile-mapping-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    padding: 11px;
+  }
+  .profile-mapping-assign-actions {
+    justify-self: start;
+  }
 }
 .profile-mapping-notice,
 .profile-mapping-empty {

@@ -1114,7 +1114,11 @@ export default function App() {
               <button className="avatar">A</button>
             </div>
           </header>
-          <div className="content">
+          <div
+            className={
+              page === "profiles" ? "content content-fixed" : "content"
+            }
+          >
             <PageErrorBoundary resetKey={page}>
               {page === "home" && snapshot.inputMode === "virtual" && (
                 <StartupHealthBanner
