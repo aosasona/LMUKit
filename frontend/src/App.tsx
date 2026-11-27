@@ -1200,6 +1200,7 @@ export default function App() {
                   onCreateWheel={createWheel}
                   onAssignWheel={assignWheel}
                   onNotice={setNotice}
+                  onRefresh={refresh}
                   workspaceKind={snapshot.activeWorkspaceKind}
                   bindings={bindings}
                   profileDocument={profileDocument}

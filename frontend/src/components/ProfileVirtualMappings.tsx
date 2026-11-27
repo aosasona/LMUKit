@@ -10,19 +10,16 @@ import {
   Search,
   SlidersHorizontal,
   Square,
-  Star,
   Trash2,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { displayClassTag } from "../lib/classTags";
 import type {
   Profile,
   VirtualAction,
   VirtualButtonCapture,
   VirtualControlInspection,
   VirtualMappingImport,
-  VirtualProfileDefault,
   VirtualProfileMapping,
   VirtualProfileReadiness,
   VirtualRoutingStatus,
@@ -37,7 +34,7 @@ import { ProfileClutchMapping } from "./ProfileClutchMapping";
 import { SystemActionMappings } from "./SystemActionMappings";
 import type { InputMode } from "./InputModeSwitch";
 
-export type ProfileInputSection = "buttons" | "clutch" | "system" | "defaults";
+export type ProfileInputSection = "buttons" | "clutch" | "system";
 
 function searchTokens(value: string) {
   return value
@@ -84,8 +81,6 @@ export function ProfileVirtualMappings({
   const [mappings, setMappings] = useState<VirtualProfileMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [migrating, setMigrating] = useState(false);
-  const [defaultsBusy, setDefaultsBusy] = useState<string | null>(null);
-  const [defaults, setDefaults] = useState<VirtualProfileDefault[]>([]);
   const [learning, setLearning] = useState<string | null>(null);
   const [savingMapping, setSavingMapping] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -173,14 +168,12 @@ export function ProfileVirtualMappings({
         profileId: profile.id,
       }),
       invoke<VirtualRoutingStatus>("virtual_routing_status"),
-      invoke<VirtualProfileDefault[]>("virtual_profile_defaults"),
     ])
-      .then(([nextActions, nextMappings, routing, nextDefaults]) => {
+      .then(([nextActions, nextMappings, routing]) => {
         if (cancelled) return;
         setActions(nextActions);
         setMappings(nextMappings);
         setRouting(routing);
-        setDefaults(nextDefaults);
       })
       .catch((reason) => {
         if (!cancelled) setError(String(reason));
@@ -424,30 +417,6 @@ export function ProfileVirtualMappings({
     }
   };
 
-  const changeDefault = async (classTag: string, remove: boolean) => {
-    setDefaultsBusy(classTag);
-    setError(null);
-    try {
-      const next = await invoke<VirtualProfileDefault[]>(
-        remove
-          ? "clear_virtual_profile_default"
-          : "set_virtual_profile_default",
-        remove ? { classTag } : { profileId: profile.id, classTag },
-      );
-      setDefaults(next);
-      onNotice(
-        remove
-          ? `${isLmu ? displayClassTag(classTag) : classTag} default removed.`
-          : `${profile.name} is now the automatic default for ${isLmu ? displayClassTag(classTag) : classTag}.`,
-      );
-    } catch (reason) {
-      setError(String(reason));
-      onNotice(String(reason));
-    } finally {
-      setDefaultsBusy(null);
-    }
-  };
-
   const startRouting = async () => {
     if (!mappings.length && !systemActionCount && !hasClutch) return;
     setRoutingBusy(true);
@@ -644,7 +613,7 @@ export function ProfileVirtualMappings({
               )}
             </header>
 
-            {routingActive && activeSection !== "defaults" && (
+            {routingActive && (
               <div className="profile-mapping-notice">
                 Disable live remapping before changing this profile's inputs.
               </div>
@@ -676,13 +645,6 @@ export function ProfileVirtualMappings({
                   onClick={() => setEditorTab("system")}
                 >
                   <Mic2 /> System actions
-                </button>
-                <button
-                  type="button"
-                  className={activeSection === "defaults" ? "active" : ""}
-                  onClick={() => setEditorTab("defaults")}
-                >
-                  <Star /> Auto defaults
                 </button>
                 <ProfileEncoderMappings
                   profile={profile}
@@ -729,87 +691,6 @@ export function ProfileVirtualMappings({
                 onNotice={onNotice}
                 onCountChange={setSystemActionCount}
               />
-            </div>
-
-            <div
-              className="profile-mapping-tab-panel"
-              hidden={activeSection !== "defaults"}
-            >
-              <div className="profile-defaults">
-                <div className="profile-defaults-heading">
-                  <span>
-                    <Star />
-                    <span>
-                      <strong>Automatic switching</strong>
-                      <small>
-                        {isLmu
-                          ? "When LMU reports a class, Pivot can start its chosen profile."
-                          : "When AC reports a matching car tag, Pivot can start its chosen profile."}
-                      </small>
-                    </span>
-                  </span>
-                  {!profile.classTags.length && (
-                    <em>Add {isLmu ? "a class" : "an AC car"} tag first</em>
-                  )}
-                </div>
-                {!!profile.classTags.length && (
-                  <div className="profile-default-scopes">
-                    {profile.classTags.map((classTag) => {
-                      const assigned = defaults.find(
-                        (entry) =>
-                          entry.classTag.toLowerCase() ===
-                          classTag.toLowerCase(),
-                      );
-                      const isThisProfile = assigned?.profileId === profile.id;
-                      return (
-                        <div className="profile-default-scope" key={classTag}>
-                          <span>
-                            <strong>
-                              {isLmu ? displayClassTag(classTag) : classTag}
-                            </strong>
-                            <small>
-                              {assigned
-                                ? assigned.profileName
-                                : "No default selected"}
-                            </small>
-                          </span>
-                          {isThisProfile ? (
-                            <div className="profile-default-current">
-                              <span>
-                                <Star /> Default
-                              </span>
-                              <ActionMenu
-                                label={`Actions for ${isLmu ? displayClassTag(classTag) : classTag} default`}
-                                items={[
-                                  {
-                                    label: "Remove default",
-                                    danger: true,
-                                    onSelect: () =>
-                                      void changeDefault(classTag, true),
-                                  },
-                                ]}
-                              />
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              className="primary compact"
-                              disabled={busy || defaultsBusy !== null}
-                              onClick={() =>
-                                void changeDefault(classTag, false)
-                              }
-                            >
-                              {defaultsBusy === classTag
-                                ? "Saving…"
-                                : `Set as ${isLmu ? displayClassTag(classTag) : classTag} default`}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
             </div>
 
             <div
