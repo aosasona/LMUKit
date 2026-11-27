@@ -213,6 +213,10 @@ export type VirtualMappingImport = {
   skippedUnknownDevice: number;
   conflictingControls: number;
 };
+export type WheelVirtualMapping = {
+  mappings: VirtualProfileMapping[];
+  profileCount: number;
+};
 export type VirtualProfileDefault = {
   classTag: string;
   profileId: string;

@@ -514,6 +514,13 @@ struct VirtualMappingImportSummary {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct WheelVirtualMappingSummary {
+    mappings: Vec<VirtualProfileMappingSummary>,
+    profile_count: usize,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct VirtualProfileDefaultSummary {
     class_tag: String,
     profile_id: Uuid,
@@ -2130,6 +2137,40 @@ fn save_virtual_profile_button(
         .assign_profile_virtual_button(profile_id, proposed, conflict_resolution)
         .map(|mapping| mapping_summaries(Some(&mapping)))
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_wheel_virtual_profile_button(
+    profile_id: Uuid,
+    proposed: VirtualProfileMappingSummary,
+    replace_conflict: bool,
+    state: State<'_, AppState>,
+) -> Result<WheelVirtualMappingSummary, String> {
+    let store = state.0.lock().map_err(|error| error.to_string())?;
+    let profile = find_profile(&store, profile_id)?;
+    if !store
+        .virtual_layout_for_workspace(&profile.workspace_id)
+        .iter()
+        .any(|entry| entry.logical_action == proposed.logical_action)
+    {
+        return Err("That action is not in this workspace's saved button layout.".to_owned());
+    }
+    let conflict_resolution = if replace_conflict {
+        VirtualButtonConflictResolution::Replace
+    } else {
+        VirtualButtonConflictResolution::AlsoTrigger
+    };
+    let (mapping, profile_count) = store
+        .assign_wheel_virtual_button(
+            profile_id,
+            stored_button_mapping(proposed),
+            conflict_resolution,
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(WheelVirtualMappingSummary {
+        mappings: mapping_summaries(Some(&mapping)),
+        profile_count,
+    })
 }
 
 #[tauri::command]
@@ -5624,6 +5665,7 @@ pub fn run() {
             remove_virtual_profile_encoder_group,
             capture_virtual_profile_button,
             save_virtual_profile_button,
+            save_wheel_virtual_profile_button,
             inspect_virtual_profile_button,
             remove_virtual_profile_button,
             virtual_routing_status,

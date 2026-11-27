@@ -5216,12 +5216,38 @@ textarea,
 .profile-mapping-toolbar {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: minmax(210px, 1fr) auto auto auto;
+  grid-template-columns: minmax(210px, 1fr) auto auto auto auto;
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
   background: #171716;
+}
+.profile-wheel-share-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  background: #121211;
+  cursor: pointer;
+}
+.profile-wheel-share-toggle input {
+  flex: 0 0 auto;
+}
+.profile-wheel-share-toggle strong,
+.profile-wheel-share-toggle small {
+  display: block;
+  white-space: nowrap;
+}
+.profile-wheel-share-toggle strong {
+  font-size: calc(11px * var(--font-scale));
+}
+.profile-wheel-share-toggle small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: calc(9px * var(--font-scale));
 }
 
 .system-action-editor {

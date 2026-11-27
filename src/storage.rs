@@ -1056,34 +1056,51 @@ impl Store {
             .find(|profile| profile.id == profile_id)
             .context("That profile no longer exists.")?;
         let mut mapping = profile.virtual_mapping.unwrap_or_default();
-        let conflicting_actions = mapping
-            .buttons
-            .iter()
-            .filter(|entry| same_virtual_button_control(entry, &proposed))
-            .filter(|entry| entry.logical_action != proposed.logical_action)
-            .map(|entry| entry.logical_action.clone())
-            .collect::<BTreeSet<_>>();
-        if !conflicting_actions.is_empty() {
-            ensure!(
-                conflict_resolution != VirtualButtonConflictResolution::Reject,
-                "That control is already mapped to {}. Choose whether to also trigger or replace the existing mapping.",
-                conflicting_actions
-                    .into_iter()
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
-        mapping.buttons.retain(|entry| {
-            let same_control = same_virtual_button_control(entry, &proposed);
-            if conflict_resolution == VirtualButtonConflictResolution::Replace {
-                !same_control
-            } else {
-                !(same_control && entry.logical_action == proposed.logical_action)
-            }
-        });
-        mapping.buttons.push(proposed);
+        apply_virtual_button_mapping(&mut mapping, &proposed, conflict_resolution)?;
         self.set_profile_virtual_mapping(profile_id, Some(mapping.clone()))?;
         Ok(mapping)
+    }
+
+    pub fn assign_wheel_virtual_button(
+        &self,
+        profile_id: Uuid,
+        proposed: VirtualButtonMapping,
+        conflict_resolution: VirtualButtonConflictResolution,
+    ) -> Result<(VirtualProfileMapping, usize)> {
+        let source = self
+            .profiles()?
+            .into_iter()
+            .find(|profile| profile.id == profile_id)
+            .context("That profile no longer exists.")?;
+        let wheel_id = source
+            .wheel_id
+            .context("Assign this profile to a wheel before sharing its controls.")?;
+        let workspace_id = source.workspace_id.clone();
+        let layout = self.virtual_layout_for_workspace(&workspace_id);
+        let profiles = self
+            .profiles()?
+            .into_iter()
+            .filter(|profile| {
+                profile.workspace_id == workspace_id && profile.wheel_id == Some(wheel_id)
+            })
+            .map(|mut profile| {
+                let mut mapping = profile.virtual_mapping.take().unwrap_or_default();
+                apply_virtual_button_mapping(&mut mapping, &proposed, conflict_resolution)?;
+                validate_virtual_mapping(&mapping, layout)?;
+                profile.virtual_mapping = Some(mapping);
+                Ok(profile)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        ensure!(!profiles.is_empty(), "No profiles use that wheel.");
+        let selected_mapping = profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .and_then(|profile| profile.virtual_mapping.clone())
+            .context("The selected profile was not included in the wheel update.")?;
+        for profile in &profiles {
+            self.save_profile_metadata(profile)?;
+        }
+        Ok((selected_mapping, profiles.len()))
     }
 
     pub fn set_profile_system_actions(
@@ -3294,6 +3311,40 @@ fn same_virtual_button_control(left: &VirtualButtonMapping, right: &VirtualButto
                 .collect::<BTreeSet<_>>()
 }
 
+fn apply_virtual_button_mapping(
+    mapping: &mut VirtualProfileMapping,
+    proposed: &VirtualButtonMapping,
+    conflict_resolution: VirtualButtonConflictResolution,
+) -> Result<()> {
+    let conflicting_actions = mapping
+        .buttons
+        .iter()
+        .filter(|entry| same_virtual_button_control(entry, proposed))
+        .filter(|entry| entry.logical_action != proposed.logical_action)
+        .map(|entry| entry.logical_action.clone())
+        .collect::<BTreeSet<_>>();
+    if !conflicting_actions.is_empty() {
+        ensure!(
+            conflict_resolution != VirtualButtonConflictResolution::Reject,
+            "That control is already mapped to {}. Choose whether to also trigger or replace the existing mapping.",
+            conflicting_actions
+                .into_iter()
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    mapping.buttons.retain(|entry| {
+        let same_control = same_virtual_button_control(entry, proposed);
+        if conflict_resolution == VirtualButtonConflictResolution::Replace {
+            !same_control
+        } else {
+            !(same_control && entry.logical_action == proposed.logical_action)
+        }
+    });
+    mapping.buttons.push(proposed.clone());
+    Ok(())
+}
+
 fn validate_virtual_label(value: &str, label: &str) -> Result<()> {
     ensure!(!value.trim().is_empty(), "{label} must not be empty.");
     ensure!(value == value.trim(), "{label} must not have outer spaces.");
@@ -3645,6 +3696,70 @@ mod tests {
                 .map(|entry| entry.logical_action.as_str())
                 .collect::<BTreeSet<_>>(),
             BTreeSet::from(["RaceLab — Recenter VR", "Recenter VR"])
+        );
+    }
+
+    #[test]
+    fn shares_one_control_across_profiles_for_the_same_wheel_only() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open_at(temp.path().join("lmukit")).unwrap();
+        let wheel = store
+            .create_wheel(Some("Simagic".into()), "GT Neo".into())
+            .unwrap();
+        let other_wheel = store.create_wheel(None, "FX Pro".into()).unwrap();
+        let first = store.create_virtual_profile("GT3").unwrap();
+        let second = store.create_virtual_profile("Hypercar").unwrap();
+        let unrelated = store.create_virtual_profile("Other wheel").unwrap();
+        store
+            .assign_profile_wheel(first.id, Some(wheel.id))
+            .unwrap();
+        store
+            .assign_profile_wheel(second.id, Some(wheel.id))
+            .unwrap();
+        store
+            .assign_profile_wheel(unrelated.id, Some(other_wheel.id))
+            .unwrap();
+        store.settings.virtual_layout = vec![VirtualLayoutEntry {
+            logical_action: "FFBHub — Toggle overlay".into(),
+            virtual_button: 1,
+        }];
+        let proposed = VirtualButtonMapping {
+            device_id: "wheel".into(),
+            device_name: "GT Neo".into(),
+            physical_button: 12,
+            modifiers: Vec::new(),
+            logical_action: "FFBHub — Toggle overlay".into(),
+        };
+
+        let (_, count) = store
+            .assign_wheel_virtual_button(
+                first.id,
+                proposed.clone(),
+                VirtualButtonConflictResolution::AlsoTrigger,
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+        let profiles = store.profiles().unwrap();
+        for id in [first.id, second.id] {
+            assert_eq!(
+                profiles
+                    .iter()
+                    .find(|profile| profile.id == id)
+                    .unwrap()
+                    .virtual_mapping
+                    .as_ref()
+                    .unwrap()
+                    .buttons,
+                vec![proposed.clone()]
+            );
+        }
+        assert!(
+            profiles
+                .iter()
+                .find(|profile| profile.id == unrelated.id)
+                .unwrap()
+                .virtual_mapping
+                .is_none()
         );
     }
 

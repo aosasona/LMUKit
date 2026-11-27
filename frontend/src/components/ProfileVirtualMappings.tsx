@@ -25,6 +25,7 @@ import type {
   VirtualProfileMapping,
   VirtualProfileReadiness,
   VirtualRoutingStatus,
+  WheelVirtualMapping,
   Workspace,
 } from "../models";
 import { ActionMenu } from "./ActionMenu";
@@ -91,6 +92,7 @@ export function ProfileVirtualMappings({
   const [filter, setFilter] = useState<"all" | "assigned" | "unassigned">(
     "all",
   );
+  const [applyToWheel, setApplyToWheel] = useState(false);
   const [editorTab, setEditorTab] = useState<
     "buttons" | "clutch" | "system" | "defaults"
   >("buttons");
@@ -218,6 +220,23 @@ export function ProfileVirtualMappings({
     setSavingMapping(true);
     setError(null);
     try {
+      if (applyToWheel && profile.wheelId) {
+        const result = await invoke<WheelVirtualMapping>(
+          "save_wheel_virtual_profile_button",
+          {
+            profileId: profile.id,
+            proposed: capture.mapping,
+            replaceConflict,
+          },
+        );
+        setMappings(result.mappings);
+        setInspection(null);
+        setConfirmation(null);
+        onNotice(
+          `${capture.mapping.logicalAction} mapped to ${describeControl(capture.mapping)} across ${result.profileCount} ${profile.wheelName ?? "wheel"} profile${result.profileCount === 1 ? "" : "s"}.`,
+        );
+        return;
+      }
       const next = await invoke<VirtualProfileMapping[]>(
         "save_virtual_profile_button",
         {
@@ -261,7 +280,7 @@ export function ProfileVirtualMappings({
           .join(", ");
         setConfirmation({
           title: "What should this control trigger?",
-          description: `${control} currently triggers ${existing}. It can trigger those actions together with “${action}”, or replace them.`,
+          description: `${control} currently triggers ${existing}. It can trigger those actions together with “${action}”, or replace them.${applyToWheel ? ` Your choice will also be applied to every ${profile.wheelName ?? "wheel"} profile.` : ""}`,
           confirmLabel: "Trigger both",
           onConfirm: () => void saveCapturedMapping(capture, false, true),
           alternateLabel: "Replace mapping",
@@ -782,6 +801,26 @@ export function ProfileVirtualMappings({
                     ),
                   )}
                 </div>
+                {profile.wheelId && (
+                  <label className="profile-wheel-share-toggle">
+                    <input
+                      type="checkbox"
+                      checked={applyToWheel}
+                      disabled={routingActive || savingMapping}
+                      onChange={(event) =>
+                        setApplyToWheel(event.target.checked)
+                      }
+                    />
+                    <span>
+                      <strong>
+                        All {profile.wheelName ?? "wheel"} profiles
+                      </strong>
+                      <small>
+                        Keep the same physical control across this wheel
+                      </small>
+                    </span>
+                  </label>
+                )}
                 <button
                   type="button"
                   className="secondary compact"
