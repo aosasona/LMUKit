@@ -1907,6 +1907,26 @@ fn remove_manual_virtual_action(
 }
 
 #[tauri::command]
+fn rename_manual_virtual_action(
+    action: String,
+    replacement: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<VirtualActionSummary>, String> {
+    let mut store = state.0.lock().map_err(|error| error.to_string())?;
+    store
+        .rename_manual_virtual_action(&action, replacement)
+        .map_err(|error| error.to_string())?;
+    Ok(store
+        .manual_virtual_layout()
+        .into_iter()
+        .map(|entry| VirtualActionSummary {
+            action: entry.logical_action,
+            virtual_button: entry.virtual_button,
+        })
+        .collect())
+}
+
+#[tauri::command]
 fn import_profile_virtual_mapping(
     profile_id: Uuid,
     state: State<'_, AppState>,
@@ -5595,6 +5615,7 @@ pub fn run() {
             test_manual_virtual_action,
             cancel_manual_virtual_action_test,
             remove_manual_virtual_action,
+            rename_manual_virtual_action,
             set_virtual_profile_default,
             clear_virtual_profile_default,
             learn_virtual_encoder_control,

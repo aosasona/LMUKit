@@ -6,11 +6,13 @@ import {
   Download,
   Gamepad2,
   LoaderCircle,
+  Pencil,
   Radio,
   RefreshCw,
   Send,
   Square,
   Trash2,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { displayClassTag } from "../lib/classTags";
@@ -29,6 +31,21 @@ import type { InputMode } from "../components/InputModeSwitch";
 
 const RECOMMENDED_VJOY_BUTTON_COUNT = 128;
 const MANUAL_TEST_DELAY_MS = 5_000;
+
+function splitManualAction(value: string) {
+  const separator = value.includes(" — ") ? " — " : " - ";
+  const index = value.indexOf(separator);
+  return index > 0
+    ? {
+        app: value.slice(0, index).trim(),
+        action: value.slice(index + separator.length).trim(),
+      }
+    : { app: "", action: value };
+}
+
+function manualActionLabel(app: string, action: string) {
+  return app.trim() ? `${app.trim()} — ${action.trim()}` : action.trim();
+}
 
 export function VirtualInputPage({
   busy,
@@ -62,7 +79,13 @@ export function VirtualInputPage({
   const [setupActionName, setSetupActionName] = useState("");
   const [setupActionArmed, setSetupActionArmed] = useState(false);
   const [manualActions, setManualActions] = useState<VirtualAction[]>([]);
+  const [manualActionApp, setManualActionApp] = useState("");
   const [manualActionName, setManualActionName] = useState("");
+  const [editingManualAction, setEditingManualAction] = useState<{
+    original: string;
+    app: string;
+    action: string;
+  } | null>(null);
   const [manualBusy, setManualBusy] = useState<string | null>(null);
   const [manualTest, setManualTest] = useState<{
     action: string;
@@ -91,6 +114,13 @@ export function VirtualInputPage({
     new Set(profiles.flatMap((profile) => profile.classTags)),
   ).sort();
   const availableClassesKey = availableClasses.join("\u0000");
+  const knownManualApps = Array.from(
+    new Set(
+      manualActions
+        .map((entry) => splitManualAction(entry.action).app)
+        .filter(Boolean),
+    ),
+  ).sort();
 
   const openVjoyDownload = async () => {
     try {
@@ -419,7 +449,7 @@ export function VirtualInputPage({
   };
 
   const createManualAction = async () => {
-    const action = manualActionName.trim();
+    const action = manualActionLabel(manualActionApp, manualActionName);
     if (!action) return;
     setManualBusy("create");
     setManualError(null);
@@ -431,6 +461,32 @@ export function VirtualInputPage({
       setManualActions((current) => [...current, created]);
       setManualActionName("");
       onNotice(`Saved ${created.action} as vJoy B${created.virtualButton}.`);
+    } catch (reason) {
+      setManualError(String(reason));
+      onNotice(String(reason));
+    } finally {
+      setManualBusy(null);
+    }
+  };
+
+  const renameManualAction = async () => {
+    if (!editingManualAction) return;
+    const replacement = manualActionLabel(
+      editingManualAction.app,
+      editingManualAction.action,
+    );
+    if (!replacement) return;
+    setManualBusy(editingManualAction.original);
+    setManualError(null);
+    try {
+      setManualActions(
+        await invoke<VirtualAction[]>("rename_manual_virtual_action", {
+          action: editingManualAction.original,
+          replacement,
+        }),
+      );
+      onNotice(`Renamed ${editingManualAction.original} to ${replacement}.`);
+      setEditingManualAction(null);
     } catch (reason) {
       setManualError(String(reason));
       onNotice(String(reason));
@@ -1011,12 +1067,29 @@ export function VirtualInputPage({
 
         <div className="virtual-manual-create">
           <label>
-            <span>Action name</span>
+            <span>Application</span>
+            <input
+              type="text"
+              list="manual-action-apps"
+              maxLength={60}
+              value={manualActionApp}
+              placeholder="FFBHub"
+              disabled={manualBusy !== null}
+              onChange={(event) => setManualActionApp(event.target.value)}
+            />
+            <datalist id="manual-action-apps">
+              {knownManualApps.map((app) => (
+                <option value={app} key={app} />
+              ))}
+            </datalist>
+          </label>
+          <label>
+            <span>Action</span>
             <input
               type="text"
               maxLength={120}
               value={manualActionName}
-              placeholder="RaceLab — Toggle overlay"
+              placeholder="Toggle overlay"
               disabled={manualBusy !== null}
               onChange={(event) => setManualActionName(event.target.value)}
               onKeyDown={(event) => {
@@ -1055,17 +1128,91 @@ export function VirtualInputPage({
         <div className="virtual-manual-list">
           {manualActions.map((action) => (
             <div key={action.action}>
-              <span>
-                <strong>{action.action}</strong>
-                <small>Available to profiles in this workspace</small>
-              </span>
+              {editingManualAction?.original === action.action ? (
+                <div className="virtual-manual-rename">
+                  <input
+                    value={editingManualAction.app}
+                    list="manual-action-apps"
+                    aria-label="Application name"
+                    placeholder="Application"
+                    onChange={(event) =>
+                      setEditingManualAction((current) =>
+                        current
+                          ? { ...current, app: event.target.value }
+                          : null,
+                      )
+                    }
+                  />
+                  <input
+                    value={editingManualAction.action}
+                    aria-label="Action name"
+                    placeholder="Action"
+                    onChange={(event) =>
+                      setEditingManualAction((current) =>
+                        current
+                          ? { ...current, action: event.target.value }
+                          : null,
+                      )
+                    }
+                  />
+                </div>
+              ) : (
+                <span>
+                  {splitManualAction(action.action).app && (
+                    <em>{splitManualAction(action.action).app}</em>
+                  )}
+                  <strong>{splitManualAction(action.action).action}</strong>
+                  <small>Available to profiles in this workspace</small>
+                </span>
+              )}
               <code>B{action.virtualButton}</code>
               <div className="virtual-manual-test-actions">
+                {editingManualAction?.original === action.action ? (
+                  <>
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={
+                        manualBusy !== null ||
+                        !editingManualAction.action.trim()
+                      }
+                      onClick={() => void renameManualAction()}
+                    >
+                      <Check /> Save
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary icon-button"
+                      aria-label="Cancel rename"
+                      disabled={manualBusy !== null}
+                      onClick={() => setEditingManualAction(null)}
+                    >
+                      <X />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={manualBusy !== null}
+                    onClick={() =>
+                      setEditingManualAction({
+                        original: action.action,
+                        ...splitManualAction(action.action),
+                      })
+                    }
+                  >
+                    <Pencil /> Rename
+                  </button>
+                )}
                 <button
                   type="button"
                   className="secondary"
                   disabled={
-                    manualBusy !== null || setup !== null || routing.active
+                    manualBusy !== null ||
+                    setup !== null ||
+                    routing.active ||
+                    editingManualAction?.original === action.action
                   }
                   onClick={() => void testManualAction(action, 0)}
                 >
@@ -1083,7 +1230,8 @@ export function VirtualInputPage({
                     (manualBusy !== null &&
                       manualTest?.action !== action.action) ||
                     setup !== null ||
-                    routing.active
+                    routing.active ||
+                    editingManualAction?.original === action.action
                   }
                   onClick={() =>
                     void (manualTest?.action === action.action

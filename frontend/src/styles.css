@@ -6333,7 +6333,7 @@ textarea,
 }
 .virtual-manual-create {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(150px, 0.45fr) minmax(220px, 1fr) auto;
   align-items: end;
   gap: 12px;
   margin-top: 14px;
@@ -6394,6 +6394,15 @@ textarea,
 .virtual-manual-list small {
   display: block;
 }
+.virtual-manual-list em {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--teal);
+  font-size: calc(10px * var(--font-scale));
+  font-style: normal;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 .virtual-manual-list strong {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6420,6 +6429,25 @@ textarea,
 .virtual-manual-test-actions button {
   min-height: 36px;
   white-space: nowrap;
+}
+.virtual-manual-rename {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(100px, 0.45fr) minmax(140px, 1fr);
+  gap: 7px;
+}
+.virtual-manual-rename input {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #353a35;
+  outline: 0;
+  background: #111210;
+  color: var(--text);
+}
+.virtual-manual-rename input:focus {
+  border-color: var(--teal);
 }
 .virtual-manual-list .virtual-manual-remove {
   width: 38px;

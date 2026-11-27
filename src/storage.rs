@@ -2075,6 +2075,78 @@ impl Store {
         self.save_settings()
     }
 
+    pub fn rename_manual_virtual_action(
+        &mut self,
+        logical_action: &str,
+        replacement: String,
+    ) -> Result<()> {
+        validate_virtual_label(&replacement, "Action name")?;
+        ensure!(
+            self.manual_virtual_action_names()
+                .iter()
+                .any(|action| action.eq_ignore_ascii_case(logical_action)),
+            "That manually named action no longer exists."
+        );
+        ensure!(
+            logical_action.eq_ignore_ascii_case(&replacement)
+                || !self
+                    .virtual_layout()
+                    .iter()
+                    .any(|entry| entry.logical_action.eq_ignore_ascii_case(&replacement)),
+            "An action named '{replacement}' already exists."
+        );
+
+        let active_workspace_id = self.settings.active_workspace_id.clone();
+        let changed_profiles = self
+            .profiles()?
+            .into_iter()
+            .filter(|profile| profile.workspace_id == active_workspace_id)
+            .filter_map(|mut profile| {
+                let mapping = profile.virtual_mapping.as_mut()?;
+                let mut changed = false;
+                for button in &mut mapping.buttons {
+                    if button.logical_action.eq_ignore_ascii_case(logical_action) {
+                        button.logical_action = replacement.clone();
+                        changed = true;
+                    }
+                }
+                for group in &mut mapping.encoder_groups {
+                    for mode in &mut group.modes {
+                        if mode.clockwise_action.eq_ignore_ascii_case(logical_action) {
+                            mode.clockwise_action = replacement.clone();
+                            changed = true;
+                        }
+                        if mode
+                            .counterclockwise_action
+                            .eq_ignore_ascii_case(logical_action)
+                        {
+                            mode.counterclockwise_action = replacement.clone();
+                            changed = true;
+                        }
+                    }
+                }
+                changed.then_some(profile)
+            })
+            .collect::<Vec<_>>();
+
+        for profile in &changed_profiles {
+            self.save_profile_metadata(profile)?;
+        }
+        let (layout, manual_actions) = self.active_virtual_layout_mut();
+        let entry = layout
+            .iter_mut()
+            .find(|entry| entry.logical_action.eq_ignore_ascii_case(logical_action))
+            .context("The manually named action is missing from the virtual layout.")?;
+        entry.logical_action = replacement.clone();
+        let action = manual_actions
+            .iter_mut()
+            .find(|action| action.eq_ignore_ascii_case(logical_action))
+            .context("The manually named action is missing from workspace metadata.")?;
+        *action = replacement;
+        self.save_settings()?;
+        Ok(())
+    }
+
     pub fn used_virtual_buttons_from_document(
         document: &serde_json::Value,
         virtual_device: &str,
@@ -4520,6 +4592,85 @@ mod tests {
             .to_string();
         assert!(error.contains("GT Neo"));
         assert_eq!(store.manual_virtual_layout().len(), 1);
+    }
+
+    #[test]
+    fn renames_a_manual_action_and_every_profile_reference() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("lmukit");
+        let mut store = Store::open_at(root.clone()).unwrap();
+        let profile = store
+            .import_profile_bytes("GT Neo", br#"{"Input":{}}"#)
+            .unwrap();
+        store
+            .add_manual_virtual_action("FFBHub — Toggle overlay".into(), 1)
+            .unwrap();
+        store
+            .set_profile_virtual_mapping(
+                profile.id,
+                Some(VirtualProfileMapping {
+                    buttons: vec![VirtualButtonMapping {
+                        device_id: "wheel".into(),
+                        device_name: "Wheel".into(),
+                        physical_button: 7,
+                        modifiers: Vec::new(),
+                        logical_action: "FFBHub — Toggle overlay".into(),
+                    }],
+                    encoder_groups: vec![VirtualEncoderGroup {
+                        name: "Overlay".into(),
+                        clockwise: VirtualEncoderControl {
+                            device_id: "wheel".into(),
+                            device_name: "Wheel".into(),
+                            physical_button: 8,
+                        },
+                        counterclockwise: VirtualEncoderControl {
+                            device_id: "wheel".into(),
+                            device_name: "Wheel".into(),
+                            physical_button: 9,
+                        },
+                        cycle: None,
+                        modes: vec![VirtualEncoderMode {
+                            name: "Default".into(),
+                            clockwise_action: "FFBHub — Toggle overlay".into(),
+                            counterclockwise_action: "FFBHub — Toggle overlay".into(),
+                        }],
+                    }],
+                    system_actions: Vec::new(),
+                    clutch: None,
+                    analog_axes: Vec::new(),
+                }),
+            )
+            .unwrap();
+
+        store
+            .rename_manual_virtual_action(
+                "FFBHub — Toggle overlay",
+                "FFBHub — Recenter overlay".into(),
+            )
+            .unwrap();
+        drop(store);
+
+        let reopened = Store::open_at(root).unwrap();
+        assert_eq!(
+            reopened.manual_virtual_layout()[0].logical_action,
+            "FFBHub — Recenter overlay"
+        );
+        let mapping = reopened
+            .profiles()
+            .unwrap()
+            .into_iter()
+            .find(|entry| entry.id == profile.id)
+            .unwrap()
+            .virtual_mapping
+            .unwrap();
+        assert_eq!(
+            mapping.buttons[0].logical_action,
+            "FFBHub — Recenter overlay"
+        );
+        assert_eq!(
+            mapping.encoder_groups[0].modes[0].clockwise_action,
+            "FFBHub — Recenter overlay"
+        );
     }
 
     #[test]
