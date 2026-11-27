@@ -22,6 +22,7 @@ custom-protocol = ["tauri/custom-protocol"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+directories = "6.0"
 lmukit-context = { path = "../crates/lmukit-context" }
 lmukit-core = { path = "../crates/lmukit-core" }
 lmukit-virtual = { path = "../crates/lmukit-virtual" }

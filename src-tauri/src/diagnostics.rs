@@ -5,7 +5,7 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     sync::{
-        Mutex, OnceLock,
+        Mutex, Once, OnceLock,
         atomic::{AtomicUsize, Ordering},
     },
     time::{SystemTime, UNIX_EPOCH},
@@ -19,6 +19,7 @@ const MAX_LOG_FILES_PER_DAY: usize = 3;
 const MAX_LOG_MESSAGE_CHARS: usize = 8 * 1024;
 
 static LOGGER: OnceLock<Logger> = OnceLock::new();
+static PANIC_HOOK: Once = Once::new();
 
 struct LogWriter {
     file: Option<File>,
@@ -43,9 +44,65 @@ pub struct LogSummary {
     pub recent_errors: Vec<String>,
 }
 
+/// Installs a best-effort panic recorder before settings or the normal logger are opened.
+///
+/// This intentionally writes without using `LOGGER`: a panic may occur while that logger's
+/// mutex is held, and attempting to acquire it from the panic hook could deadlock the process.
+pub fn install_panic_hook() {
+    PANIC_HOOK.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |panic| {
+            let directory = startup_log_directory();
+            if fs::create_dir_all(&directory).is_ok() {
+                let (date, _) = current_log_date();
+                let path = directory.join(format!("pivot-{date}.log"));
+                if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+                    let payload = panic
+                        .payload()
+                        .downcast_ref::<&str>()
+                        .copied()
+                        .or_else(|| panic.payload().downcast_ref::<String>().map(String::as_str))
+                        .unwrap_or("non-string panic payload");
+                    let location = panic.location().map_or_else(
+                        || "unknown location".to_owned(),
+                        |location| {
+                            format!(
+                                "{}:{}:{}",
+                                location.file(),
+                                location.line(),
+                                location.column()
+                            )
+                        },
+                    );
+                    let line = format!(
+                        "[{}] ERROR app.panic Rust panic at {}: {}\n",
+                        utc_timestamp(SystemTime::now()),
+                        clean(&location),
+                        clean(payload)
+                    );
+                    let _ = file.write_all(line.as_bytes());
+                    let _ = file.flush();
+                }
+            }
+            previous(panic);
+        }));
+    });
+}
+
 pub fn initialise(data_directory: &Path, retention_days: usize) -> std::io::Result<()> {
-    let directory = data_directory.join("logs");
-    fs::create_dir_all(&directory)?;
+    let legacy_directory = data_directory.join("logs");
+    let preferred_directory = preferred_log_directory(data_directory);
+    let directory = match fs::create_dir_all(&preferred_directory) {
+        Ok(()) => preferred_directory,
+        Err(_) if preferred_directory != legacy_directory => {
+            fs::create_dir_all(&legacy_directory)?;
+            legacy_directory.clone()
+        }
+        Err(error) => return Err(error),
+    };
+    let migration_error = (directory != legacy_directory && legacy_directory.exists())
+        .then(|| migrate_legacy_logs(&legacy_directory, &directory).err())
+        .flatten();
     let retention_days = normalize_retention(retention_days);
     let (date, today) = current_log_date();
     let _ = cleanup_old_logs(&directory, today, retention_days);
@@ -65,6 +122,67 @@ pub fn initialise(data_directory: &Path, retention_days: usize) -> std::io::Resu
         "app.start",
         format!("Pivot {} started", env!("CARGO_PKG_VERSION")),
     );
+    if let Some(error) = migration_error {
+        warn(
+            "logs.migration.failed",
+            format!("Some legacy logs could not be moved to Pivot's log folder: {error}"),
+        );
+    }
+    Ok(())
+}
+
+fn preferred_log_directory(data_directory: &Path) -> PathBuf {
+    if std::env::var_os("LMUKIT_DATA_DIR").is_some() {
+        return data_directory.join("logs");
+    }
+    directories::UserDirs::new()
+        .and_then(|directories| directories.document_dir().map(Path::to_path_buf))
+        .map(|documents| documents.join("Pivot").join("Logs"))
+        .unwrap_or_else(|| data_directory.join("logs"))
+}
+
+fn startup_log_directory() -> PathBuf {
+    if let Some(data_directory) = std::env::var_os("LMUKIT_DATA_DIR") {
+        return PathBuf::from(data_directory).join("logs");
+    }
+    if let Some(documents) = directories::UserDirs::new()
+        .and_then(|directories| directories.document_dir().map(Path::to_path_buf))
+    {
+        return documents.join("Pivot").join("Logs");
+    }
+    directories::ProjectDirs::from("app", "LMUKit", "LMUKit")
+        .map(|directories| directories.data_local_dir().join("logs"))
+        .unwrap_or_else(|| std::env::temp_dir().join("Pivot").join("Logs"))
+}
+
+fn migrate_legacy_logs(source: &Path, destination: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(destination)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let destination_name = if log_date_from_filename(&name).is_some()
+            && let Some(suffix) = name.strip_prefix("lmukit-")
+        {
+            format!("pivot-{suffix}")
+        } else if name.starts_with("diagnostic-report-") && name.ends_with(".json") {
+            name.into_owned()
+        } else {
+            continue;
+        };
+        let target = destination.join(destination_name);
+        if target.exists() {
+            continue;
+        }
+        fs::copy(entry.path(), &target)?;
+        fs::remove_file(entry.path())?;
+    }
+    if fs::read_dir(source)?.next().is_none() {
+        fs::remove_dir(source)?;
+    }
     Ok(())
 }
 
@@ -237,7 +355,7 @@ fn log_file_count(directory: &Path) -> std::io::Result<usize> {
 }
 
 fn open_for_date(directory: &Path, date: &str) -> std::io::Result<(File, u64)> {
-    let path = directory.join(format!("lmukit-{date}.log"));
+    let path = directory.join(format!("pivot-{date}.log"));
     let file = OpenOptions::new().create(true).append(true).open(path)?;
     let size = file.metadata()?.len();
     Ok((file, size))
@@ -248,17 +366,17 @@ fn create_for_date(directory: &Path, date: &str) -> std::io::Result<File> {
         .create(true)
         .write(true)
         .truncate(true)
-        .open(directory.join(format!("lmukit-{date}.log")))
+        .open(directory.join(format!("pivot-{date}.log")))
 }
 
 fn rotate_log_files(directory: &Path, date: &str) -> std::io::Result<()> {
     for segment in (1..MAX_LOG_FILES_PER_DAY).rev() {
         let source = if segment == 1 {
-            directory.join(format!("lmukit-{date}.log"))
+            directory.join(format!("pivot-{date}.log"))
         } else {
-            directory.join(format!("lmukit-{date}.{}.log", segment - 1))
+            directory.join(format!("pivot-{date}.{}.log", segment - 1))
         };
-        let destination = directory.join(format!("lmukit-{date}.{segment}.log"));
+        let destination = directory.join(format!("pivot-{date}.{segment}.log"));
         if destination.exists() {
             fs::remove_file(&destination)?;
         }
@@ -270,7 +388,10 @@ fn rotate_log_files(directory: &Path, date: &str) -> std::io::Result<()> {
 }
 
 fn log_date_from_filename(name: &str) -> Option<&str> {
-    let stem = name.strip_prefix("lmukit-")?.strip_suffix(".log")?;
+    let stem = name
+        .strip_prefix("pivot-")
+        .or_else(|| name.strip_prefix("lmukit-"))?
+        .strip_suffix(".log")?;
     let (date, segment) = stem
         .split_once('.')
         .map_or((stem, None), |(date, segment)| (date, Some(segment)));
@@ -337,7 +458,8 @@ fn date_from_days(days: i64) -> String {
 mod tests {
     use super::{
         MAX_LOG_MESSAGE_CHARS, clean, cleanup_old_logs, date_from_days, days_from_civil,
-        log_date_from_filename, log_file_count, rotate_log_files, utc_timestamp,
+        log_date_from_filename, log_file_count, migrate_legacy_logs, rotate_log_files,
+        utc_timestamp,
     };
     use std::fs;
     use std::time::{Duration, UNIX_EPOCH};
@@ -366,14 +488,18 @@ mod tests {
     #[test]
     fn recognises_only_daily_log_names() {
         assert_eq!(
-            log_date_from_filename("lmukit-2026-10-11.log"),
+            log_date_from_filename("pivot-2026-10-11.log"),
             Some("2026-10-11")
         );
         assert_eq!(
-            log_date_from_filename("lmukit-2026-10-11.2.log"),
+            log_date_from_filename("pivot-2026-10-11.2.log"),
             Some("2026-10-11")
         );
-        assert_eq!(log_date_from_filename("lmukit-2026-10-11.old.log"), None);
+        assert_eq!(
+            log_date_from_filename("lmukit-2026-10-11.log"),
+            Some("2026-10-11")
+        );
+        assert_eq!(log_date_from_filename("pivot-2026-10-11.old.log"), None);
         assert_eq!(log_date_from_filename("lmukit.log"), None);
         assert_eq!(log_date_from_filename("diagnostic-report-1.json"), None);
     }
@@ -390,15 +516,15 @@ mod tests {
             "2026-10-10",
             "2026-10-11",
         ] {
-            fs::write(directory.join(format!("lmukit-{date}.log")), date).unwrap();
+            fs::write(directory.join(format!("pivot-{date}.log")), date).unwrap();
         }
         fs::write(directory.join("diagnostic-report-1.json"), "report").unwrap();
 
         cleanup_old_logs(&directory, days_from_civil(2026, 10, 11), 3).unwrap();
 
         assert_eq!(log_file_count(&directory).unwrap(), 3);
-        assert!(!directory.join("lmukit-2026-10-08.log").exists());
-        assert!(directory.join("lmukit-2026-10-09.log").exists());
+        assert!(!directory.join("pivot-2026-10-08.log").exists());
+        assert!(directory.join("pivot-2026-10-09.log").exists());
         assert!(directory.join("diagnostic-report-1.json").exists());
         fs::remove_dir_all(directory).unwrap();
     }
@@ -408,22 +534,48 @@ mod tests {
         let directory =
             std::env::temp_dir().join(format!("lmukit-log-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&directory).unwrap();
-        fs::write(directory.join("lmukit-2026-10-11.log"), "newest").unwrap();
-        fs::write(directory.join("lmukit-2026-10-11.1.log"), "older").unwrap();
-        fs::write(directory.join("lmukit-2026-10-11.2.log"), "oldest").unwrap();
+        fs::write(directory.join("pivot-2026-10-11.log"), "newest").unwrap();
+        fs::write(directory.join("pivot-2026-10-11.1.log"), "older").unwrap();
+        fs::write(directory.join("pivot-2026-10-11.2.log"), "oldest").unwrap();
 
         rotate_log_files(&directory, "2026-10-11").unwrap();
 
-        assert!(!directory.join("lmukit-2026-10-11.log").exists());
+        assert!(!directory.join("pivot-2026-10-11.log").exists());
         assert_eq!(
-            fs::read_to_string(directory.join("lmukit-2026-10-11.1.log")).unwrap(),
+            fs::read_to_string(directory.join("pivot-2026-10-11.1.log")).unwrap(),
             "newest"
         );
         assert_eq!(
-            fs::read_to_string(directory.join("lmukit-2026-10-11.2.log")).unwrap(),
+            fs::read_to_string(directory.join("pivot-2026-10-11.2.log")).unwrap(),
             "older"
         );
         assert_eq!(log_file_count(&directory).unwrap(), 2);
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn migrates_legacy_logs_and_reports_to_pivot_names() {
+        let root =
+            std::env::temp_dir().join(format!("pivot-log-migration-{}", uuid::Uuid::new_v4()));
+        let source = root.join("legacy");
+        let destination = root.join("documents").join("Pivot").join("Logs");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("lmukit-2026-10-11.log"), "log").unwrap();
+        fs::write(source.join("diagnostic-report-1.json"), "report").unwrap();
+        fs::write(source.join("unrelated.txt"), "keep").unwrap();
+
+        migrate_legacy_logs(&source, &destination).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(destination.join("pivot-2026-10-11.log")).unwrap(),
+            "log"
+        );
+        assert_eq!(
+            fs::read_to_string(destination.join("diagnostic-report-1.json")).unwrap(),
+            "report"
+        );
+        assert!(source.join("unrelated.txt").exists());
+        assert!(!source.join("lmukit-2026-10-11.log").exists());
+        fs::remove_dir_all(root).unwrap();
     }
 }

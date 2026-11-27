@@ -5791,6 +5791,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    diagnostics::install_panic_hook();
     let store = Store::open().expect("Pivot data store should open");
     if let Err(error) =
         diagnostics::initialise(&store.data_dir(), store.settings.log_retention_days)
