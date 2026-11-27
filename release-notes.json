@@ -1,11 +1,11 @@
 {
-  "version": "0.6.15",
-  "title": "Portable settings and dependable startup",
-  "summary": "Move a complete Pivot setup between PCs, control application volume, and safely open settings written by newer builds.",
+  "version": "0.6.16",
+  "title": "Cleaner controls and better diagnostics",
+  "summary": "Keep the current Virtual Input workflow in reach while making startup failures and diagnostic logs much easier to find.",
   "highlights": [
-    "Export and import versioned Pivot settings ZIPs containing profiles, mappings, shared wheels, and managed images, with validation, recovery backups, and rollback protection.",
-    "Bind wheel controls to per-application Windows volume actions alongside microphone controls.",
-    "Preserve unfamiliar future system actions as inactive data instead of crashing while opening the settings store.",
-    "Use the available workspace width consistently while keeping the desktop window within its focused maximum size."
+    "Move the global Disable remapping control into the custom title bar so it remains available without crowding every page header.",
+    "Keep Legacy JSON switching and file tools accessible under advanced compatibility controls while focusing the main interface on live Virtual Input mappings.",
+    "Store readable Pivot-named logs under Documents/Pivot/Logs and migrate recognized LMUKit-era logs and diagnostic reports automatically.",
+    "Capture fatal Rust startup panics before settings load so otherwise silent launch failures leave a useful dated log."
   ]
 }
