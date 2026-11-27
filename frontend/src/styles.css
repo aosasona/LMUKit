@@ -1227,7 +1227,7 @@ main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  max-width: 1420px;
+  max-width: 1800px;
   margin: 0 auto;
   padding: 0;
   overflow: hidden;
@@ -4314,7 +4314,7 @@ textarea,
   min-height: 0;
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(240px, 0.58fr) minmax(0, 1.7fr);
+  grid-template-columns: clamp(300px, 24%, 380px) minmax(0, 1fr);
   overflow: hidden;
 }
 .profile-list-pane {
@@ -5524,10 +5524,9 @@ textarea,
   flex: 1 1 280px;
 }
 .system-action-editor {
-  margin: 0 0 1rem;
-  padding: 1rem;
-  border: 1px solid var(--line);
-  background: var(--panel);
+  width: 100%;
+  max-width: 1240px;
+  margin: 0;
 }
 
 .system-action-editor > header,
@@ -5540,6 +5539,9 @@ textarea,
 .system-action-editor > header {
   justify-content: space-between;
   gap: 1rem;
+  min-height: 54px;
+  padding: 0 0 16px;
+  border-bottom: 1px solid var(--line);
 }
 
 .system-action-editor > header > span {
@@ -5547,7 +5549,8 @@ textarea,
 }
 
 .system-action-editor header svg {
-  width: 1.1rem;
+  width: 1.2rem;
+  color: var(--teal);
 }
 
 .system-action-editor strong,
@@ -5557,15 +5560,25 @@ textarea,
 
 .system-action-editor small {
   color: var(--muted);
+  line-height: 1.45;
 }
 
 .system-action-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.8rem;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--line);
+  gap: 16px;
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  background: #121211;
+}
+
+.system-action-form label {
+  min-width: 0;
+}
+
+.system-action-form .system-action-input-field {
+  grid-column: 1 / -1;
 }
 
 .system-action-form label > span {
@@ -5637,26 +5650,41 @@ textarea,
   padding: 0 0.75rem;
   border: 1px solid var(--line);
   background: #141414;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.system-action-form > div {
+.system-action-form > .system-action-form-actions {
   grid-column: 1 / -1;
   display: flex;
   justify-content: flex-end;
   gap: 0.6rem;
+  padding-top: 2px;
 }
 
 .system-action-list {
   display: grid;
-  gap: 0.5rem;
-  margin-top: 1rem;
+  gap: 8px;
+  margin-top: 18px;
 }
 
 .system-action-list > div {
-  gap: 0.7rem;
-  padding: 0.7rem;
+  display: grid;
+  grid-template-columns: 10px minmax(260px, 1fr) auto 38px 38px;
+  gap: 12px;
+  min-height: 62px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
-  background: #141414;
+  background: #121211;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.system-action-list > div:hover {
+  border-color: #323830;
+  background: #151614;
 }
 
 .system-action-list > div > span {
@@ -5665,8 +5693,8 @@ textarea,
 }
 
 .system-action-list i {
-  width: 0.65rem;
-  height: 0.65rem;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--muted);
 }
@@ -5680,7 +5708,7 @@ textarea,
 }
 
 .system-action-list button {
-  padding: 0.35rem;
+  align-self: center;
 }
 
 .system-action-list .system-action-remove {
@@ -5711,6 +5739,7 @@ textarea,
   display: inline-grid;
   place-items: center;
   color: #8e9a93;
+  align-self: center;
 }
 
 .system-action-list .system-action-kind svg {
@@ -5759,6 +5788,19 @@ textarea,
 @media (max-width: 760px) {
   .system-action-form {
     grid-template-columns: 1fr;
+  }
+
+  .system-action-form .system-action-input-field {
+    grid-column: auto;
+  }
+
+  .system-action-list > div {
+    grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  }
+
+  .system-action-list > div > .secondary {
+    grid-column: 2 / -1;
+    justify-self: start;
   }
 }
 .profile-mapping-search {

@@ -303,7 +303,7 @@ export function SystemActionMappings({
     <section className="system-action-editor">
       <header>
         <span>
-          <Mic />
+          <Volume2 />
           <span>
             <strong>System actions</strong>
             <small>Native microphone and application volume controls</small>
@@ -322,7 +322,7 @@ export function SystemActionMappings({
       {error && <div className="virtual-error">{error}</div>}
       {capture && (
         <div className="system-action-form">
-          <label>
+          <label className="system-action-input-field">
             <span>Input</span>
             <strong>{controlLabel(capture)}</strong>
           </label>
@@ -450,7 +450,7 @@ export function SystemActionMappings({
               </strong>
             </label>
           )}
-          <div>
+          <div className="system-action-form-actions">
             <button className="secondary" onClick={() => setCapture(null)}>
               Cancel
             </button>
