@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Minus, Square, X } from "lucide-react";
+import { Minus, X } from "lucide-react";
 
 export function TitleBar({
   onError,
@@ -23,10 +23,6 @@ export function TitleBar({
         )
           run(() => getCurrentWindow().startDragging());
       }}
-      onDoubleClick={(event) => {
-        if (!(event.target as HTMLElement).closest("button"))
-          run(() => getCurrentWindow().toggleMaximize());
-      }}
     >
       <div className="titlebar-brand" data-tauri-drag-region>
         <img src="/app-icon.png" alt="" />
@@ -38,12 +34,6 @@ export function TitleBar({
           onClick={() => run(() => getCurrentWindow().minimize())}
         >
           <Minus />
-        </button>
-        <button
-          aria-label="Maximize or restore"
-          onClick={() => run(() => getCurrentWindow().toggleMaximize())}
-        >
-          <Square />
         </button>
         <button
           className="close"
