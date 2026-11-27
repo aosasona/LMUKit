@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Trash2,
   Type,
+  Upload,
 } from "lucide-react";
 import {
   useEffect,
@@ -31,6 +32,7 @@ import type {
   Workspace,
 } from "../models";
 import type { AppUpdateState } from "../hooks/useAppUpdater";
+import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
 
 const MIN_SCALE = 0.85;
 const MAX_SCALE = 1.4;
@@ -79,7 +81,8 @@ type Props = {
       | "settings"
       | "executable"
       | "assetto_corsa_folder"
-      | "pivot_export",
+      | "pivot_export"
+      | "pivot_import",
     initialPath?: string,
   ) => Promise<string | null>;
 };
@@ -145,7 +148,10 @@ export function SettingsPage(props: Props) {
     null,
   );
   const [exportBusy, setExportBusy] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  const suspendAutosave = useRef(false);
   const saveRevision = useRef(0);
   const saveSettings = useRef(onSaveSettings);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
@@ -181,6 +187,7 @@ export function SettingsPage(props: Props) {
     pendingSave.current = true;
     setSaveState("pending");
     const timeout = window.setTimeout(() => {
+      if (suspendAutosave.current) return;
       setSaveState("saving");
       const request = saveQueue.current
         .catch(() => undefined)
@@ -277,6 +284,52 @@ export function SettingsPage(props: Props) {
       setExportMessage(String(error));
     } finally {
       setExportBusy(false);
+    }
+  };
+  const importPortableSettings = async (source: string) => {
+    setImportBusy(true);
+    setExportMessage(null);
+    setConfirmation(null);
+    suspendAutosave.current = true;
+    saveRevision.current += 1;
+    pendingSave.current = false;
+    try {
+      await saveQueue.current.catch(() => undefined);
+      const recoveryPath = await invoke<string>("import_portable_settings", {
+        source,
+      });
+      window.sessionStorage.setItem(
+        "pivot-import-notice",
+        `Settings imported. Previous settings were preserved at ${recoveryPath}`,
+      );
+      window.location.reload();
+    } catch (error) {
+      suspendAutosave.current = false;
+      setExportMessage(String(error));
+      setImportBusy(false);
+    }
+  };
+  const choosePortableImport = async () => {
+    setExportMessage(null);
+    try {
+      await saveQueue.current.catch(() => undefined);
+      if (dirty || pendingSave.current) {
+        await saveSettings.current(bindings, gameSettings, apps, mode);
+        pendingSave.current = false;
+        setSaveState("saved");
+      }
+      const source = await onBrowse("pivot_import");
+      if (!source) return;
+      setConfirmation({
+        title: "Replace Pivot settings from this backup?",
+        description:
+          "This replaces the current profiles, mappings, shared wheels, images, and app settings. Pivot will first preserve the current installation as a recovery ZIP. Live remapping must be disabled.",
+        confirmLabel: "Import and replace",
+        danger: true,
+        onConfirm: () => void importPortableSettings(source),
+      });
+    } catch (error) {
+      setExportMessage(String(error));
     }
   };
   const updateLogRetention = async (days: number) => {
@@ -847,15 +900,26 @@ export function SettingsPage(props: Props) {
               Paths may need to be selected again on the other PC.
             </small>
           </span>
-          <button
-            type="button"
-            className="primary"
-            disabled={busy || exportBusy}
-            onClick={() => void exportPortableSettings()}
-          >
-            {exportBusy ? <LoaderCircle className="spin" /> : <Download />}
-            {exportBusy ? "Creating backup…" : "Export settings ZIP"}
-          </button>
+          <div className="settings-transfer-actions">
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy || exportBusy || importBusy}
+              onClick={() => void choosePortableImport()}
+            >
+              {importBusy ? <LoaderCircle className="spin" /> : <Upload />}
+              {importBusy ? "Importing…" : "Import settings ZIP"}
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={busy || exportBusy || importBusy}
+              onClick={() => void exportPortableSettings()}
+            >
+              {exportBusy ? <LoaderCircle className="spin" /> : <Download />}
+              {exportBusy ? "Creating backup…" : "Export settings ZIP"}
+            </button>
+          </div>
         </div>
         {exportMessage && (
           <div className="settings-transfer-message">{exportMessage}</div>
@@ -1093,6 +1157,11 @@ export function SettingsPage(props: Props) {
           <div className="diagnostic-message">{diagnosticsMessage}</div>
         )}
       </section>
+      <ConfirmDialog
+        confirmation={confirmation}
+        busy={importBusy}
+        onClose={() => setConfirmation(null)}
+      />
     </section>
   );
 }

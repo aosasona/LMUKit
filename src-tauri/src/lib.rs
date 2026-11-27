@@ -4276,6 +4276,10 @@ fn pick_file_dialog(kind: &str, initial_path: Option<&str>) -> Result<Option<Str
         let script = "Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.SaveFileDialog; $d.Filter='ZIP archives (*.zip)|*.zip'; $d.DefaultExt='zip'; $d.AddExtension=$true; $d.OverwritePrompt=$true; $d.FileName=('Pivot-settings-' + (Get-Date -Format 'yyyy-MM-dd') + '.zip'); if($d.ShowDialog() -eq 'OK'){[Console]::Write($d.FileName)}";
         return run_picker_script(script);
     }
+    if kind == "pivot_import" {
+        let script = "Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.OpenFileDialog; $d.Filter='Pivot settings archives (*.zip)|*.zip'; $d.Multiselect=$false; if($d.ShowDialog() -eq 'OK'){[Console]::Write($d.FileName)}";
+        return run_picker_script(script);
+    }
     let (filter, filename) = match kind {
         "bindings" => ("JSON files (*.json)|*.json", "direct input.json"),
         "settings" => ("JSON files (*.json)|*.json", "Settings.JSON"),
@@ -4572,6 +4576,65 @@ fn export_portable_settings(
         .map_err(|error| format!("Could not export Pivot's settings: {error}"))?;
     diagnostics::info("settings.export", "Exported a portable settings backup");
     Ok(destination.display().to_string())
+}
+
+#[tauri::command]
+fn import_portable_settings(
+    source: String,
+    app_state: State<'_, AppState>,
+    routing_state: State<'_, VirtualRoutingState>,
+    setup_state: State<'_, VirtualSetupState>,
+    hotkey_state: State<'_, HotkeyState>,
+    auto_state: State<'_, AutoProfileState>,
+) -> Result<String, String> {
+    if routing_state
+        .status
+        .lock()
+        .map_err(|error| error.to_string())?
+        .active
+    {
+        return Err("Disable live remapping before importing Pivot settings.".to_owned());
+    }
+    if setup_state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())?
+        .active
+    {
+        return Err("Finish or cancel virtual-input setup before importing settings.".to_owned());
+    }
+    let (backup, shortcuts) = {
+        let mut store = app_state.0.lock().map_err(|error| error.to_string())?;
+        let backup = store
+            .import_portable_bundle(std::path::Path::new(&source))
+            .map_err(|error| format!("Could not import Pivot's settings: {error}"))?;
+        let profiles = store
+            .active_workspace_profiles()
+            .map_err(|error| error.to_string())?;
+        (backup, profile_shortcuts(&profiles))
+    };
+    if hotkey_state
+        .0
+        .send(HotkeyUpdate::Profiles(shortcuts))
+        .is_err()
+    {
+        diagnostics::warn(
+            "settings.import.hotkeys",
+            "Settings were imported, but profile shortcuts could not be refreshed",
+        );
+    }
+    match auto_state.0.lock() {
+        Ok(mut runtime) => *runtime = AutoProfileRuntime::default(),
+        Err(error) => diagnostics::warn(
+            "settings.import.automatic-selection",
+            format!("Settings were imported, but automatic selection could not reset: {error}"),
+        ),
+    }
+    diagnostics::info(
+        "settings.import",
+        "Imported a portable settings backup after preserving current settings",
+    );
+    Ok(backup.display().to_string())
 }
 
 #[tauri::command]
@@ -5893,6 +5956,7 @@ pub fn run() {
             delete_profile,
             reveal_profiles,
             export_portable_settings,
+            import_portable_settings,
             diagnostic_status,
             reveal_logs,
             export_diagnostic_report,

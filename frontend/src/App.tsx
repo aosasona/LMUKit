@@ -81,7 +81,11 @@ export default function App() {
     useState<ProfileDetailTab>("overview");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [notice, setNotice] = useState("Ready");
+  const [notice, setNotice] = useState(() => {
+    const restored = window.sessionStorage.getItem("pivot-import-notice");
+    if (restored) window.sessionStorage.removeItem("pivot-import-notice");
+    return restored ?? "Ready";
+  });
   const [wheelImageUrl, setWheelImageUrl] = useState<string | null>(null);
   const wheelImageObjectUrl = useRef<string | null>(null);
   const lastLiveProfileId = useRef<string | null>(null);
@@ -958,7 +962,8 @@ export default function App() {
       | "settings"
       | "executable"
       | "assetto_corsa_folder"
-      | "pivot_export",
+      | "pivot_export"
+      | "pivot_import",
     initialPath?: string,
   ) => {
     try {

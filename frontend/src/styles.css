@@ -3654,6 +3654,11 @@ textarea,
   flex: 0 0 auto;
   white-space: nowrap;
 }
+.settings-transfer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
 .settings-transfer-message {
   margin-top: 10px;
   padding: 10px 12px;
@@ -8123,6 +8128,10 @@ textarea,
 
   .settings-transfer-row button {
     justify-content: center;
+  }
+
+  .settings-transfer-actions {
+    flex-direction: column;
   }
 }
 

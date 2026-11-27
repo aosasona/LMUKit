@@ -1511,6 +1511,206 @@ impl Store {
         Ok(())
     }
 
+    pub fn import_portable_bundle(&mut self, source: &Path) -> Result<PathBuf> {
+        ensure!(
+            source.is_file(),
+            "The selected Pivot backup does not exist."
+        );
+        let file = File::open(source).context("could not open the Pivot backup")?;
+        let mut archive = zip::ZipArchive::new(file).context("the selected file is not a ZIP")?;
+        ensure!(
+            archive.len() <= 4_096,
+            "The Pivot backup contains too many files."
+        );
+        let mut files = BTreeMap::<String, Vec<u8>>::new();
+        let mut canonical_names = BTreeSet::new();
+        let mut total_size = 0_u64;
+        for index in 0..archive.len() {
+            let mut entry = archive
+                .by_index(index)
+                .context("could not read the Pivot backup")?;
+            if entry.is_dir() {
+                continue;
+            }
+            let name = entry.name().to_owned();
+            validate_portable_entry_name(&name)?;
+            ensure!(
+                canonical_names.insert(name.to_ascii_lowercase()),
+                "Backup entry '{name}' conflicts with another filename."
+            );
+            let entry_size = entry.size();
+            ensure!(
+                entry_size <= 32 * 1024 * 1024,
+                "Backup entry '{name}' is too large."
+            );
+            total_size = total_size.saturating_add(entry_size);
+            ensure!(
+                total_size <= 128 * 1024 * 1024,
+                "The Pivot backup is larger than the supported 128 MB limit."
+            );
+            let mut bytes = Vec::with_capacity(entry_size as usize);
+            entry
+                .by_ref()
+                .take(entry_size.saturating_add(1))
+                .read_to_end(&mut bytes)
+                .with_context(|| format!("could not read backup entry '{name}'"))?;
+            ensure!(
+                bytes.len() as u64 == entry_size,
+                "Backup entry '{name}' has an invalid size."
+            );
+            ensure!(
+                files.insert(name.clone(), bytes).is_none(),
+                "Backup entry '{name}' appears more than once."
+            );
+        }
+
+        let manifest: serde_json::Value = serde_json::from_slice(
+            files
+                .get("manifest.json")
+                .context("This is not a Pivot settings backup: manifest.json is missing.")?,
+        )
+        .context("The Pivot backup manifest is invalid")?;
+        ensure!(
+            manifest.get("format").and_then(serde_json::Value::as_str)
+                == Some("pivot-portable-settings")
+                && manifest
+                    .get("formatVersion")
+                    .and_then(serde_json::Value::as_u64)
+                    == Some(1),
+            "This Pivot backup format is not supported."
+        );
+        serde_json::from_slice::<Settings>(
+            files
+                .get("settings.json")
+                .context("The Pivot backup does not contain settings.json.")?,
+        )
+        .context("The Pivot backup contains invalid settings")?;
+        validate_portable_payloads(&files)?;
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let staged_root = self.root.join(format!(".portable-import-{nonce}.tmp"));
+        ensure!(!staged_root.exists(), "Could not stage the Pivot backup.");
+        fs::create_dir_all(staged_root.join("profiles"))?;
+        fs::create_dir_all(staged_root.join("wheels"))?;
+        for (name, bytes) in &files {
+            let Some(relative) = portable_payload_path(name)? else {
+                continue;
+            };
+            let destination = staged_root.join(relative);
+            if let Some(parent) = destination.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(destination, bytes)?;
+        }
+
+        let validation = (|| -> Result<()> {
+            let staged = Self::open_at(staged_root.clone())?;
+            staged.save_settings()?;
+            let profiles = staged.profiles()?;
+            let wheels = staged
+                .wheels()?
+                .into_iter()
+                .map(|wheel| wheel.id)
+                .collect::<BTreeSet<_>>();
+            for profile in profiles {
+                if let Some(wheel_id) = profile.wheel_id {
+                    ensure!(
+                        wheels.contains(&wheel_id),
+                        "Profile '{}' refers to a wheel missing from the backup.",
+                        profile.name
+                    );
+                }
+                if let Some(mapping) = &profile.virtual_mapping {
+                    validate_virtual_mapping(
+                        mapping,
+                        staged.virtual_layout_for_workspace(&profile.workspace_id),
+                    )?;
+                }
+            }
+            Ok(())
+        })();
+        if let Err(error) = validation {
+            let _ = fs::remove_dir_all(&staged_root);
+            return Err(error.context("The Pivot backup failed validation"));
+        }
+
+        let backup = self
+            .root
+            .join("backups")
+            .join(format!("pivot-settings-before-import-{nonce}.zip"));
+        self.export_portable_bundle(&backup)
+            .context("could not create a recovery backup before importing")?;
+
+        let old_profiles = self.root.join(format!(".profiles-before-import-{nonce}"));
+        let old_wheels = self.root.join(format!(".wheels-before-import-{nonce}"));
+        let old_settings = self
+            .root
+            .join(format!(".settings-before-import-{nonce}.json"));
+        let settings_path = self.root.join("settings.json");
+        let had_settings = settings_path.exists();
+        let mut old_profiles_moved = false;
+        let mut old_wheels_moved = false;
+        let mut old_settings_moved = false;
+        let mut new_profiles_moved = false;
+        let mut new_wheels_moved = false;
+        let mut new_settings_moved = false;
+        let imported = (|| -> Result<Self> {
+            fs::rename(self.root.join("profiles"), &old_profiles)?;
+            old_profiles_moved = true;
+            fs::rename(self.root.join("wheels"), &old_wheels)?;
+            old_wheels_moved = true;
+            if had_settings {
+                fs::rename(&settings_path, &old_settings)?;
+                old_settings_moved = true;
+            }
+            fs::rename(staged_root.join("profiles"), self.root.join("profiles"))?;
+            new_profiles_moved = true;
+            fs::rename(staged_root.join("wheels"), self.root.join("wheels"))?;
+            new_wheels_moved = true;
+            fs::rename(staged_root.join("settings.json"), &settings_path)?;
+            new_settings_moved = true;
+            Self::open_at_with_launcher_root(self.root.clone(), self.launcher_root.clone())
+        })();
+        match imported {
+            Ok(store) => {
+                *self = store;
+                let _ = fs::remove_dir_all(old_profiles);
+                let _ = fs::remove_dir_all(old_wheels);
+                let _ = fs::remove_file(old_settings);
+                let _ = fs::remove_dir_all(staged_root);
+                Ok(backup)
+            }
+            Err(error) => {
+                if new_profiles_moved {
+                    let _ = fs::remove_dir_all(self.root.join("profiles"));
+                }
+                if new_wheels_moved {
+                    let _ = fs::remove_dir_all(self.root.join("wheels"));
+                }
+                if new_settings_moved {
+                    let _ = fs::remove_file(&settings_path);
+                }
+                if old_profiles_moved {
+                    let _ = fs::rename(old_profiles, self.root.join("profiles"));
+                }
+                if old_wheels_moved {
+                    let _ = fs::rename(old_wheels, self.root.join("wheels"));
+                }
+                if old_settings_moved {
+                    let _ = fs::rename(old_settings, &settings_path);
+                }
+                let _ = fs::remove_dir_all(staged_root);
+                Err(error.context(format!(
+                    "Could not activate the imported settings. Recovery backup: {}",
+                    backup.display()
+                )))
+            }
+        }
+    }
+
     pub fn wheels(&self) -> Result<Vec<Wheel>> {
         let mut wheels: Vec<Wheel> = Vec::new();
         for entry in fs::read_dir(self.root.join("wheels"))? {
@@ -2834,6 +3034,92 @@ fn add_archive_directory(
                 .read_to_end(&mut bytes)
                 .with_context(|| format!("could not read {archive_name}"))?;
             add_archive_bytes(archive, &archive_name, &bytes, options)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_portable_entry_name(name: &str) -> Result<()> {
+    ensure!(
+        !name.contains('\\') && !name.starts_with('/') && !name.contains('\0'),
+        "Backup entry '{name}' has an unsafe filename."
+    );
+    ensure!(
+        Path::new(name)
+            .components()
+            .all(|component| matches!(component, std::path::Component::Normal(_))),
+        "Backup entry '{name}' has an unsafe path."
+    );
+    portable_payload_path(name)?;
+    Ok(())
+}
+
+fn portable_payload_path(name: &str) -> Result<Option<PathBuf>> {
+    if matches!(name, "manifest.json" | "RESTORE.txt") {
+        return Ok(None);
+    }
+    if name == "settings.json" {
+        return Ok(Some(PathBuf::from(name)));
+    }
+    let parts = name.split('/').collect::<Vec<_>>();
+    ensure!(
+        parts.len() == 3,
+        "Backup entry '{name}' is not part of Pivot's portable settings format."
+    );
+    Uuid::parse_str(parts[1])
+        .with_context(|| format!("Backup entry '{name}' has an invalid item ID."))?;
+    match parts[0] {
+        "profiles" => ensure!(
+            matches!(parts[2], "profile.json" | CONFIG_FILE_NAME),
+            "Backup entry '{name}' is not a supported profile file."
+        ),
+        "wheels" => ensure!(
+            parts[2] == "wheel.json"
+                || matches!(
+                    parts[2],
+                    "wheel-image.png" | "wheel-image.jpg" | "wheel-image.webp"
+                ),
+            "Backup entry '{name}' is not a supported wheel file."
+        ),
+        _ => bail!("Backup entry '{name}' is not part of Pivot's portable settings format."),
+    }
+    Ok(Some(PathBuf::from_iter(parts)))
+}
+
+fn validate_portable_payloads(files: &BTreeMap<String, Vec<u8>>) -> Result<()> {
+    for (name, bytes) in files {
+        let parts = name.split('/').collect::<Vec<_>>();
+        if parts.len() != 3 {
+            continue;
+        }
+        let directory_id = Uuid::parse_str(parts[1])?;
+        match (parts[0], parts[2]) {
+            ("profiles", "profile.json") => {
+                let profile: Profile = serde_json::from_slice(bytes)
+                    .with_context(|| format!("Profile metadata '{name}' is invalid."))?;
+                ensure!(
+                    profile.id == directory_id,
+                    "Profile metadata '{name}' does not match its folder."
+                );
+            }
+            ("profiles", CONFIG_FILE_NAME) => validate_lmu_bytes(bytes, name)?,
+            ("wheels", "wheel.json") => {
+                let wheel: Wheel = serde_json::from_slice(bytes)
+                    .with_context(|| format!("Wheel metadata '{name}' is invalid."))?;
+                ensure!(
+                    wheel.id == directory_id,
+                    "Wheel metadata '{name}' does not match its folder."
+                );
+            }
+            ("wheels", filename) if filename.starts_with("wheel-image.") => {
+                validate_image_bytes(bytes)
+                    .with_context(|| format!("Managed wheel image '{name}' is invalid."))?;
+                ensure!(
+                    image_extension(bytes).is_some_and(|extension| filename.ends_with(extension)),
+                    "Managed wheel image '{name}' has the wrong file extension."
+                );
+            }
+            _ => {}
         }
     }
     Ok(())
@@ -5713,5 +5999,54 @@ mod tests {
         assert!(names.contains(&format!("wheels/{}/wheel-image.png", wheel.id)));
         assert!(!names.iter().any(|name| name.starts_with("logs/")));
         assert!(!names.iter().any(|name| name.starts_with("backups/")));
+    }
+
+    #[test]
+    fn imports_a_portable_backup_and_preserves_a_recovery_archive() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut source = Store::open_at(temp.path().join("source")).unwrap();
+        let imported = source.create_virtual_profile("Imported profile").unwrap();
+        source.settings.ui_font_scale = 1.2;
+        source.save_settings().unwrap();
+        let archive = temp.path().join("portable.zip");
+        source.export_portable_bundle(&archive).unwrap();
+
+        let mut destination = Store::open_at(temp.path().join("destination")).unwrap();
+        destination.create_virtual_profile("Old profile").unwrap();
+        let recovery = destination.import_portable_bundle(&archive).unwrap();
+
+        let profiles = destination.profiles().unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].id, imported.id);
+        assert_eq!(destination.settings.ui_font_scale, 1.2);
+        assert!(recovery.is_file());
+        let recovery_archive = zip::ZipArchive::new(File::open(recovery).unwrap()).unwrap();
+        assert!(recovery_archive.len() >= 3);
+    }
+
+    #[test]
+    fn rejects_unknown_files_in_a_portable_backup_without_changing_the_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut store = Store::open_at(temp.path().join("data")).unwrap();
+        let existing = store.create_virtual_profile("Keep me").unwrap();
+        let archive_path = temp.path().join("unsafe.zip");
+        let file = File::create(&archive_path).unwrap();
+        let mut archive = ZipWriter::new(file);
+        archive
+            .start_file("manifest.json", SimpleFileOptions::default())
+            .unwrap();
+        archive
+            .write_all(br#"{"format":"pivot-portable-settings","formatVersion":1}"#)
+            .unwrap();
+        archive
+            .start_file("unrelated/private.txt", SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(b"not Pivot data").unwrap();
+        archive.finish().unwrap();
+
+        let error = store.import_portable_bundle(&archive_path).unwrap_err();
+
+        assert!(error.to_string().contains("not part of Pivot"));
+        assert_eq!(store.profiles().unwrap()[0].id, existing.id);
     }
 }

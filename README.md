@@ -220,7 +220,7 @@ Pivot keeps date-named logs in its application-data `logs` folder. Entries use r
 
 Open **Settings → Export Pivot settings** to create a portable ZIP containing `settings.json`, every profile and virtual mapping, and the shared wheel library with its managed images. The archive also contains a manifest and restore instructions. It deliberately excludes diagnostic logs, recovery backups, game-owned LMU/AC files, vJoy, and other drivers.
 
-On the destination PC, install Pivot and vJoy normally, close Pivot, then extract the exported `settings.json`, `profiles`, and `wheels` into Pivot's existing application-data folder. Paths to games and companion applications are machine-specific and may need to be selected again.
+On the destination PC, install Pivot and vJoy normally, disable live remapping, then use **Import settings ZIP** in the same panel. Pivot validates the archive, rejects files outside its portable format, preserves the current installation as a recovery ZIP, replaces settings/profiles/wheels, and reloads the interface. Paths to games and companion applications are machine-specific and may need to be selected again.
 
 ### App updates
 
