@@ -7,7 +7,6 @@ import {
   LoaderCircle,
   Power,
   Settings,
-  SlidersHorizontal,
   Workflow,
   Wrench,
 } from "lucide-react";
@@ -20,7 +19,6 @@ const items = [
   ["home", "Overview", LayoutDashboard],
   ["profiles", "Profiles", Gamepad2],
   ["wheels", "Wheels", Disc3],
-  ["bindings", "Profile editor", SlidersHorizontal],
   ["virtual", "Virtual input", Workflow],
   ["game", "Game settings", Wrench],
   ["settings", "Settings", Settings],

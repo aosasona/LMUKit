@@ -76,7 +76,7 @@ Assetto Corsa uses the existing button-only Virtual Input engine and a one-time 
 1. Select **Assetto Corsa** and create a profile under **Profiles**.
 2. Assign a shared wheel, then open **Virtual input**.
 3. Open **One-time Assetto Corsa button setup**, name and arm an action, make AC listen for input, then press `Ctrl+Alt+V`. Pivot sends the next unused vJoy button and saves that name after the pulse succeeds; confirm AC accepted it and repeat.
-4. Open **Profile editor** and bind the physical wheel control to the named action.
+4. Open that profile's **Inputs** tab and bind the physical wheel control to the named action.
 5. Start that profile's live remapping from Profiles.
 6. Add one or more exact tags from the car's `content/cars/<car-id>/ui/ui_car.json`, make the appropriate profile the default for each tag, and optionally enable **Auto-select** on the AC overview.
 
@@ -106,9 +106,9 @@ Use **Wheels** to create reusable hardware entries, edit their brand and name, a
 
 Each profile has one searchable tag picker. Select any combination of `LMGT3`, `GTE`, `LMP3`, `LMP2`, and `HY`, or type a custom tag. Leaving the class selection empty makes the profile generic. Existing data continues to store LMGT3 under the original `GT3` identifier so profiles and default references remain compatible.
 
-### Profile editor
+### Profile workspace
 
-The **Profile editor** opens on the current Virtual Input mapping system, where each profile maps its physical buttons and modifiers to the stable named vJoy actions taught to LMU and other applications. The older saved-file workflow remains available under **LMU file tools** for Legacy mode: it includes device-grouped DirectInput binding management, force-feedback tuning, a read-only JSON preview, and live control lookup. Open a file binding's action menu to replace it or add its missing primary or alternate mapping, then press or move the desired control. **Add binding** can search action names found across your saved and live LMU files or accept an exact LMU action name. Pivot names any conflicts before applying the change and creates a recovery backup when saving.
+Profiles and editing share one two-pane workspace. Select a profile on the left, then use **Overview**, **Inputs**, or **LMU file tools** on the right without navigating to a separate editor page. **Inputs** maps physical buttons and modifiers to the stable named vJoy actions taught to LMU and other applications. A persistent device rail shows every DirectInput controller's numbered buttons and highlights held and most-recently pressed controls without entering test mode. The older saved-file workflow remains available under **LMU file tools** for Legacy mode: it includes device-grouped DirectInput binding management, force-feedback tuning, a read-only JSON preview, and live control lookup. Open a file binding's action menu to replace it or add its missing primary or alternate mapping, then press or move the desired control. **Add binding** can search action names found across your saved and live LMU files or accept an exact LMU action name. Pivot names any conflicts before applying the change and creates a recovery backup when saving.
 
 **Find a wheel control** waits for a button, POV, or axis movement and then shows the matching action for each saved profile; the operation can be cancelled at any time. For safety, assignment only accepts devices already represented in that profile.
 
@@ -160,7 +160,7 @@ This is a one-time LMU-side setup for each action: LMU learns that, for example,
 
 #### Register actions in other applications
 
-The shared virtual layout can also contain user-named actions that do not belong to LMU. Under **Virtual input → External app actions**, enter a descriptive name such as `RaceLab — Recenter VR` and choose **Send & save action**. Pivot selects the next unused vJoy button, sends an initial test pulse, and adds that name to every profile mapping editor. Saved actions offer **Send now** for an already-open listener and a cancellable **In 5s** pulse for focus-sensitive applications: start the countdown, switch to Discord, and open Edit Keybind before it finishes. The delay runs outside the UI thread, so changing window focus does not stop it. An action cannot be removed while a profile still references it.
+The shared virtual layout can also contain user-named actions that do not belong to LMU. Under **Virtual input → External app actions**, enter the target application and action separately—such as `RaceLab` and `Recenter VR`—then choose **Send & save action**. Existing actions can be renamed later; Pivot updates every profile reference in that workspace rather than breaking its mappings. Pivot selects the next unused vJoy button, sends an initial test pulse, and adds that name to every profile mapping editor. Saved actions offer **Send now** for an already-open listener and a cancellable **In 5s** pulse for focus-sensitive applications: start the countdown, switch to Discord, and open Edit Keybind before it finishes. The delay runs outside the UI thread, so changing window focus does not stop it. An action cannot be removed while a profile still references it.
 
 External actions use the same per-profile physical controls and modifier combinations as LMU actions. Live remapping must be stopped while registering or testing one because the routing engine owns the vJoy device. Only leave the intended target application listening—the vJoy button remains visible to LMU and other applications even when they have no binding for it.
 
@@ -174,7 +174,7 @@ Core Audio endpoint mute is respected by applications that capture through the n
 
 #### Map and use profiles
 
-Select a profile under **Profiles** and use the visible **Edit button mappings** action in its Virtual Input section. The dedicated mapping workspace can search or filter actions and convert saved LMU button assignments into virtual mappings by matching the LMU action name. Search accepts partial words in any order and also finds physical buttons, vJoy outputs, and device names. Pivot leaves manual mappings untouched and reports ambiguous controls for review. Choose **Bind control**, then press and release one button for a normal binding, or keep the first button held and press another to create a modifier combination. A normal and modified action may share the same trigger; the modified mapping takes precedence while its modifier is held.
+Select a profile under **Profiles**, then open its **Inputs** tab. The mapping workspace can search or filter actions and convert saved LMU button assignments into virtual mappings by matching the LMU action name. Search accepts partial words in any order and also finds physical buttons, vJoy outputs, and device names. Pivot leaves manual mappings untouched and reports ambiguous controls for review. Choose **Bind control**, then press and release one button for a normal binding, or keep the first button held and press another to create a modifier combination. A normal and modified action may share the same trigger; the modified mapping takes precedence while its modifier is held. Enable **All [wheel] profiles** before saving when that physical control should trigger the same action in every profile linked to the selected wheel.
 
 Use **Test a control** in the same workspace to press a button or modifier combination and see every effective named action and vJoy output without changing the profile. The matching action rows are highlighted; unmapped controls are reported explicitly. Disable live remapping before testing so inspection cannot trigger an LMU action. Assigning a control that already belongs to another action shows the existing targets and asks whether to trigger both or replace the previous mapping.
 

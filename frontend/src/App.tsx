@@ -40,8 +40,7 @@ import { useAppUpdater } from "./hooks/useAppUpdater";
 import { GameSettingsPage } from "./pages/GameSettingsPage";
 import { HelpPage } from "./pages/HelpPage";
 import { OverviewPage } from "./pages/OverviewPage";
-import { ProfilesPage } from "./pages/ProfilesPage";
-import { ProfileEditorPage } from "./pages/ProfileEditorPage";
+import { ProfilesPage, type ProfileDetailTab } from "./pages/ProfilesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { VirtualInputPage } from "./pages/VirtualInputPage";
 import { WheelsPage } from "./pages/WheelsPage";
@@ -77,6 +76,8 @@ export default function App() {
     useState<AutoProfileSelectionStatus>(emptyAutoProfileSelectionStatus);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [profileDetailTab, setProfileDetailTab] =
+    useState<ProfileDetailTab>("overview");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("Ready");
@@ -161,7 +162,15 @@ export default function App() {
 
   const dismissWhatsNew = () => setWhatsNewOpen(false);
 
-  const navigate = (next: Page) => {
+  const navigate = (requested: Page) => {
+    const next = requested === "bindings" ? "profiles" : requested;
+    if (
+      requested === "bindings" &&
+      profileDetailTab === "lmu-file" &&
+      profileDocumentDirty &&
+      !window.confirm("Discard your unsaved profile changes?")
+    )
+      return;
     if (
       page === "game" &&
       next !== "game" &&
@@ -170,14 +179,47 @@ export default function App() {
     )
       return;
     if (
-      page === "bindings" &&
-      next !== "bindings" &&
+      page === "profiles" &&
+      profileDetailTab === "lmu-file" &&
+      next !== "profiles" &&
       profileDocumentDirty &&
       !window.confirm("Discard your unsaved profile changes?")
     )
       return;
+    if (requested === "bindings") setProfileDetailTab("inputs");
     setPage(next);
   };
+
+  const selectProfile = (profileId: string) => {
+    if (
+      profileId !== selected?.id &&
+      profileDetailTab === "lmu-file" &&
+      profileDocumentDirty &&
+      !window.confirm("Discard your unsaved profile changes?")
+    )
+      return;
+    setSelectedId(profileId);
+  };
+
+  const changeProfileDetailTab = (tab: ProfileDetailTab) => {
+    if (
+      profileDetailTab === "lmu-file" &&
+      tab !== "lmu-file" &&
+      profileDocumentDirty &&
+      !window.confirm("Discard your unsaved profile changes?")
+    )
+      return;
+    setProfileDetailTab(tab);
+  };
+
+  useEffect(() => {
+    if (
+      snapshot.activeWorkspaceKind !== "le_mans_ultimate" &&
+      profileDetailTab === "lmu-file"
+    ) {
+      setProfileDetailTab("overview");
+    }
+  }, [profileDetailTab, snapshot.activeWorkspaceKind]);
   const reviewUpdate = () => {
     if (updater.state.phase === "available") setUpdateDialogOpen(true);
     else navigate("settings");
@@ -423,17 +465,18 @@ export default function App() {
   }
   useEffect(() => {
     if (
-      page === "bindings" &&
+      page === "profiles" &&
+      profileDetailTab === "lmu-file" &&
       snapshot.activeWorkspaceKind === "le_mans_ultimate"
     ) {
       void loadBindings();
       void loadProfileDocument();
-    } else if (page === "bindings") {
+    } else if (page === "profiles") {
       setBindings([]);
       setProfileDocument(null);
       setProfileDocumentBaseline(null);
     }
-  }, [page, selected?.id, snapshot.activeWorkspaceKind]);
+  }, [page, profileDetailTab, selected?.id, snapshot.activeWorkspaceKind]);
   async function loadGameSettings() {
     setGameSettingsLoading(true);
     try {
@@ -1137,12 +1180,10 @@ export default function App() {
                   }
                   loading={loading}
                   setQuery={setQuery}
-                  setSelectedId={setSelectedId}
+                  setSelectedId={selectProfile}
                   onActivate={activate}
-                  onEdit={(profile) => {
-                    setSelectedId(profile.id);
-                    navigate("bindings");
-                  }}
+                  detailTab={profileDetailTab}
+                  onDetailTabChange={changeProfileDetailTab}
                   onImport={importPreset}
                   onCapture={captureProfile}
                   onCreateVirtual={createVirtualProfile}
@@ -1156,24 +1197,14 @@ export default function App() {
                   onAssignWheel={assignWheel}
                   onNotice={setNotice}
                   workspaceKind={snapshot.activeWorkspaceKind}
-                />
-              )}
-              {page === "bindings" && (
-                <ProfileEditorPage
-                  profile={selected}
                   bindings={bindings}
-                  document={profileDocument}
-                  baseline={profileDocumentBaseline}
-                  loading={profileDocumentLoading}
-                  busy={busy}
-                  inputMode={snapshot.inputMode}
-                  wheelImageRevision={wheelImageRevision}
-                  onClear={clearBinding}
-                  onAssign={assignBinding}
-                  onChange={setProfileDocument}
-                  onSave={saveProfileDocument}
-                  onNotice={setNotice}
-                  workspaceKind={snapshot.activeWorkspaceKind}
+                  profileDocument={profileDocument}
+                  profileDocumentBaseline={profileDocumentBaseline}
+                  profileDocumentLoading={profileDocumentLoading}
+                  onClearBinding={clearBinding}
+                  onAssignBinding={assignBinding}
+                  onProfileDocumentChange={setProfileDocument}
+                  onSaveProfileDocument={saveProfileDocument}
                 />
               )}
               {page === "wheels" && (
