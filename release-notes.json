@@ -1,10 +1,11 @@
 {
-  "version": "0.6.14",
-  "title": "A clearer profile garage",
-  "summary": "Profile editing and automatic selection now have focused, roomier workspaces.",
+  "version": "0.6.15",
+  "title": "Portable settings and dependable startup",
+  "summary": "Move a complete Pivot setup between PCs, control application volume, and safely open settings written by newer builds.",
   "highlights": [
-    "Promoted Automatic Selection to its own workspace page with class cards, assigned wheel images, searchable profile choices, and enable or resume controls.",
-    "Combined profile browsing and editing into a cleaner two-pane workspace with flatter navigation and more consistent scrolling.",
-    "Made class defaults global to the workspace instead of repeating them inside every profile, while allowing any profile to be assigned and tagged in one step."
+    "Export and import versioned Pivot settings ZIPs containing profiles, mappings, shared wheels, and managed images, with validation, recovery backups, and rollback protection.",
+    "Bind wheel controls to per-application Windows volume actions alongside microphone controls.",
+    "Preserve unfamiliar future system actions as inactive data instead of crashing while opening the settings store.",
+    "Use the available workspace width consistently while keeping the desktop window within its focused maximum size."
   ]
 }
