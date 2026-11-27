@@ -37,6 +37,8 @@ import { ProfileClutchMapping } from "./ProfileClutchMapping";
 import { SystemActionMappings } from "./SystemActionMappings";
 import type { InputMode } from "./InputModeSwitch";
 
+export type ProfileInputSection = "buttons" | "clutch" | "system" | "defaults";
+
 function searchTokens(value: string) {
   return value
     .toLowerCase()
@@ -65,6 +67,7 @@ export function ProfileVirtualMappings({
   onEditorOpenChange,
   presentation = "card",
   workspaceKind,
+  workspaceSection,
 }: {
   profile: Profile;
   busy: boolean;
@@ -74,6 +77,7 @@ export function ProfileVirtualMappings({
   onEditorOpenChange?: (open: boolean) => void;
   presentation?: "card" | "workspace";
   workspaceKind: Workspace["kind"];
+  workspaceSection?: ProfileInputSection;
 }) {
   const isLmu = workspaceKind === "le_mans_ultimate";
   const [actions, setActions] = useState<VirtualAction[]>([]);
@@ -94,9 +98,11 @@ export function ProfileVirtualMappings({
   const [filter, setFilter] = useState<"all" | "assigned" | "unassigned">(
     "all",
   );
-  const [editorTab, setEditorTab] = useState<
-    "buttons" | "clutch" | "system" | "defaults"
-  >("buttons");
+  const [editorTab, setEditorTab] = useState<ProfileInputSection>("buttons");
+  const activeSection =
+    presentation === "workspace" && workspaceSection
+      ? workspaceSection
+      : editorTab;
   const [routing, setRouting] = useState<VirtualRoutingStatus>({
     active: false,
     profileId: null,
@@ -532,54 +538,56 @@ export function ProfileVirtualMappings({
           </span>
         </div>
       )}
-      <div className="profile-remapping-bar">
-        <span>
-          <i className={routing.active ? "active" : ""} />
+      {presentation === "card" && (
+        <div className="profile-remapping-bar">
           <span>
-            <strong>
-              {routing.active
-                ? routing.profileId === profile.id
-                  ? "Live remapping is on"
-                  : `${routing.profileName ?? "Another profile"} is remapping`
-                : "Live remapping is off"}
-            </strong>
-            <small>
-              {routing.profileId === profile.id && routing.lastEvent
-                ? routing.lastEvent
-                : `${mappings.length} physical mapping${mappings.length === 1 ? "" : "s"}`}
-            </small>
+            <i className={routing.active ? "active" : ""} />
+            <span>
+              <strong>
+                {routing.active
+                  ? routing.profileId === profile.id
+                    ? "Live remapping is on"
+                    : `${routing.profileName ?? "Another profile"} is remapping`
+                  : "Live remapping is off"}
+              </strong>
+              <small>
+                {routing.profileId === profile.id && routing.lastEvent
+                  ? routing.lastEvent
+                  : `${mappings.length} physical mapping${mappings.length === 1 ? "" : "s"}`}
+              </small>
+            </span>
           </span>
-        </span>
-        {routing.active && routing.profileId === profile.id ? (
-          <button
-            type="button"
-            className="secondary compact"
-            disabled={routingBusy}
-            onClick={() => void stopRouting()}
-          >
-            <Square /> Disable remapping
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="primary compact"
-            disabled={
-              busy ||
-              routingBusy ||
-              (!mappings.length && !systemActionCount && !hasClutch) ||
-              inputMode !== "virtual"
-            }
-            onClick={() => void startRouting()}
-          >
-            {routingBusy ? <LoaderCircle className="spin" /> : <Gamepad2 />}
-            {inputMode !== "virtual"
-              ? "Select Virtual Input above"
-              : routing.active
-                ? "Switch to this profile"
-                : "Use this profile live"}
-          </button>
-        )}
-      </div>
+          {routing.active && routing.profileId === profile.id ? (
+            <button
+              type="button"
+              className="secondary compact"
+              disabled={routingBusy}
+              onClick={() => void stopRouting()}
+            >
+              <Square /> Disable remapping
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="primary compact"
+              disabled={
+                busy ||
+                routingBusy ||
+                (!mappings.length && !systemActionCount && !hasClutch) ||
+                inputMode !== "virtual"
+              }
+              onClick={() => void startRouting()}
+            >
+              {routingBusy ? <LoaderCircle className="spin" /> : <Gamepad2 />}
+              {inputMode !== "virtual"
+                ? "Select Virtual Input above"
+                : routing.active
+                  ? "Switch to this profile"
+                  : "Use this profile live"}
+            </button>
+          )}
+        </div>
+      )}
       {routing.profileId === profile.id &&
         !!routing.activeEncoderModes.length && (
           <div className="active-encoder-modes profile-active-encoder-modes">
@@ -636,53 +644,58 @@ export function ProfileVirtualMappings({
               )}
             </header>
 
-            {routingActive && (
+            {routingActive && activeSection !== "defaults" && (
               <div className="profile-mapping-notice">
-                Disable live remapping before changing button assignments.
+                Disable live remapping before changing this profile's inputs.
               </div>
             )}
             {error && <div className="virtual-error">{error}</div>}
 
-            <nav className="profile-input-tabs" aria-label="Profile input type">
-              <button
-                type="button"
-                className={editorTab === "buttons" ? "active" : ""}
-                onClick={() => setEditorTab("buttons")}
+            {presentation === "card" && (
+              <nav
+                className="profile-input-tabs"
+                aria-label="Profile input type"
               >
-                <Gamepad2 /> Virtual buttons
-              </button>
-              <button
-                type="button"
-                className={editorTab === "clutch" ? "active" : ""}
-                onClick={() => setEditorTab("clutch")}
-              >
-                <Gauge /> Clutch axis
-              </button>
-              <button
-                type="button"
-                className={editorTab === "system" ? "active" : ""}
-                onClick={() => setEditorTab("system")}
-              >
-                <Mic2 /> System actions
-              </button>
-              <button
-                type="button"
-                className={editorTab === "defaults" ? "active" : ""}
-                onClick={() => setEditorTab("defaults")}
-              >
-                <Star /> Auto defaults
-              </button>
-              <ProfileEncoderMappings
-                profile={profile}
-                busy={busy}
-                routingActive={routingActive}
-                onNotice={onNotice}
-              />
-            </nav>
+                <button
+                  type="button"
+                  className={activeSection === "buttons" ? "active" : ""}
+                  onClick={() => setEditorTab("buttons")}
+                >
+                  <Gamepad2 /> Virtual buttons
+                </button>
+                <button
+                  type="button"
+                  className={activeSection === "clutch" ? "active" : ""}
+                  onClick={() => setEditorTab("clutch")}
+                >
+                  <Gauge /> Clutch axis
+                </button>
+                <button
+                  type="button"
+                  className={activeSection === "system" ? "active" : ""}
+                  onClick={() => setEditorTab("system")}
+                >
+                  <Mic2 /> System actions
+                </button>
+                <button
+                  type="button"
+                  className={activeSection === "defaults" ? "active" : ""}
+                  onClick={() => setEditorTab("defaults")}
+                >
+                  <Star /> Auto defaults
+                </button>
+                <ProfileEncoderMappings
+                  profile={profile}
+                  busy={busy}
+                  routingActive={routingActive}
+                  onNotice={onNotice}
+                />
+              </nav>
+            )}
 
             <div
               className="profile-mapping-tab-panel"
-              hidden={editorTab !== "clutch"}
+              hidden={activeSection !== "clutch"}
             >
               <ProfileClutchMapping
                 profileId={profile.id}
@@ -702,7 +715,7 @@ export function ProfileVirtualMappings({
 
             <div
               className="profile-mapping-tab-panel"
-              hidden={editorTab !== "system"}
+              hidden={activeSection !== "system"}
             >
               <SystemActionMappings
                 profileId={profile.id}
@@ -720,21 +733,18 @@ export function ProfileVirtualMappings({
 
             <div
               className="profile-mapping-tab-panel"
-              hidden={editorTab !== "defaults"}
+              hidden={activeSection !== "defaults"}
             >
               <div className="profile-defaults">
                 <div className="profile-defaults-heading">
                   <span>
                     <Star />
                     <span>
-                      <strong>
-                        {isLmu
-                          ? "Automatic class defaults"
-                          : "Automatic car-tag defaults"}
-                      </strong>
+                      <strong>Automatic switching</strong>
                       <small>
-                        One profile is selected for each{" "}
-                        {isLmu ? "class" : "matching tag"}.
+                        {isLmu
+                          ? "When LMU reports a class, Pivot can start its chosen profile."
+                          : "When AC reports a matching car tag, Pivot can start its chosen profile."}
                       </small>
                     </span>
                   </span>
@@ -763,24 +773,37 @@ export function ProfileVirtualMappings({
                                 : "No default selected"}
                             </small>
                           </span>
-                          <button
-                            type="button"
-                            className={
-                              isThisProfile
-                                ? "ghost compact"
-                                : "secondary compact"
-                            }
-                            disabled={busy || defaultsBusy !== null}
-                            onClick={() =>
-                              void changeDefault(classTag, isThisProfile)
-                            }
-                          >
-                            {defaultsBusy === classTag
-                              ? "Saving…"
-                              : isThisProfile
-                                ? "Remove default"
-                                : "Make default"}
-                          </button>
+                          {isThisProfile ? (
+                            <div className="profile-default-current">
+                              <span>
+                                <Star /> Default
+                              </span>
+                              <ActionMenu
+                                label={`Actions for ${isLmu ? displayClassTag(classTag) : classTag} default`}
+                                items={[
+                                  {
+                                    label: "Remove default",
+                                    danger: true,
+                                    onSelect: () =>
+                                      void changeDefault(classTag, true),
+                                  },
+                                ]}
+                              />
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="primary compact"
+                              disabled={busy || defaultsBusy !== null}
+                              onClick={() =>
+                                void changeDefault(classTag, false)
+                              }
+                            >
+                              {defaultsBusy === classTag
+                                ? "Saving…"
+                                : `Set as ${isLmu ? displayClassTag(classTag) : classTag} default`}
+                            </button>
+                          )}
                         </div>
                       );
                     })}
@@ -791,7 +814,7 @@ export function ProfileVirtualMappings({
 
             <div
               className="profile-mapping-button-tab"
-              hidden={editorTab !== "buttons"}
+              hidden={activeSection !== "buttons"}
             >
               <div className="profile-mapping-toolbar">
                 <label className="profile-mapping-search">
@@ -860,6 +883,14 @@ export function ProfileVirtualMappings({
                     },
                   ]}
                 />
+                {presentation === "workspace" && (
+                  <ProfileEncoderMappings
+                    profile={profile}
+                    busy={busy}
+                    routingActive={routingActive}
+                    onNotice={onNotice}
+                  />
+                )}
               </div>
 
               <div className="profile-mapping-content">

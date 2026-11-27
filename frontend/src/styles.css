@@ -4543,6 +4543,7 @@ textarea,
   height: 100%;
   display: flex;
   overflow: hidden;
+  border: 0;
 }
 .profile-virtual-mappings.workspace
   .profile-mapping-dialog.inline
@@ -5204,6 +5205,28 @@ textarea,
 .profile-default-scope button {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+.profile-default-current {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.profile-default-current > span {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid rgba(198, 243, 107, 0.24);
+  background: rgba(198, 243, 107, 0.08);
+  color: var(--teal);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 700;
+}
+.profile-default-current > span svg {
+  width: 13px;
+  fill: currentColor;
 }
 .profile-mapping-dialog {
   position: relative;

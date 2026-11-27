@@ -186,7 +186,7 @@ export default function App() {
       !window.confirm("Discard your unsaved profile changes?")
     )
       return;
-    if (requested === "bindings") setProfileDetailTab("inputs");
+    if (requested === "bindings") setProfileDetailTab("buttons");
     setPage(next);
   };
 

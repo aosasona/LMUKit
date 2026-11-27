@@ -2,12 +2,14 @@ import {
   CircleCheck,
   FileJson,
   FolderOpen,
+  Gauge,
   Gamepad2,
   IdCard,
+  Mic2,
   Play,
   Search,
+  Star,
   Upload,
-  Workflow,
 } from "lucide-react";
 import { useState } from "react";
 import { ActionMenu } from "../components/ActionMenu";
@@ -15,7 +17,10 @@ import { ConfirmDialog, type Confirmation } from "../components/ConfirmDialog";
 import type { InputMode } from "../components/InputModeSwitch";
 import { ProfileTagPicker } from "../components/ProfileTagPicker";
 import { ProfileLegacyTools } from "../components/ProfileLegacyTools";
-import { ProfileVirtualMappings } from "../components/ProfileVirtualMappings";
+import {
+  ProfileVirtualMappings,
+  type ProfileInputSection,
+} from "../components/ProfileVirtualMappings";
 import { WheelImage } from "../components/WheelImage";
 import { SearchSelect } from "../components/SearchSelect";
 import { displayClassTag } from "../lib/classTags";
@@ -30,7 +35,7 @@ import type {
   Workspace,
 } from "../models";
 
-export type ProfileDetailTab = "overview" | "inputs" | "lmu-file";
+export type ProfileDetailTab = "overview" | ProfileInputSection | "lmu-file";
 
 const DEFAULT_CLASSES = ["GT3", "GTE", "LMP3", "LMP2", "HY"] as const;
 
@@ -333,7 +338,6 @@ export function ProfilesPage(props: Props) {
                 revision={wheelImageRevision}
               />
               <div>
-                <span className="eyebrow">Selected profile</span>
                 <h3>{selected.name}</h3>
                 <small>{wheelLabel(selected) ?? "No wheel assigned"}</small>
               </div>
@@ -342,7 +346,7 @@ export function ProfilesPage(props: Props) {
                   items={[
                     {
                       label: "Edit button mappings",
-                      onSelect: () => onDetailTabChange("inputs"),
+                      onSelect: () => onDetailTabChange("buttons"),
                     },
                     {
                       label: "Edit LMU configuration",
@@ -416,10 +420,28 @@ export function ProfilesPage(props: Props) {
                 <IdCard /> Overview
               </button>
               <button
-                className={detailTab === "inputs" ? "active" : ""}
-                onClick={() => onDetailTabChange("inputs")}
+                className={detailTab === "buttons" ? "active" : ""}
+                onClick={() => onDetailTabChange("buttons")}
               >
-                <Workflow /> Inputs
+                <Gamepad2 /> Buttons
+              </button>
+              <button
+                className={detailTab === "clutch" ? "active" : ""}
+                onClick={() => onDetailTabChange("clutch")}
+              >
+                <Gauge /> Clutch
+              </button>
+              <button
+                className={detailTab === "system" ? "active" : ""}
+                onClick={() => onDetailTabChange("system")}
+              >
+                <Mic2 /> System actions
+              </button>
+              <button
+                className={detailTab === "defaults" ? "active" : ""}
+                onClick={() => onDetailTabChange("defaults")}
+              >
+                <Star /> {isLmu ? "Class defaults" : "Car defaults"}
               </button>
               {isLmu && (
                 <button
@@ -572,7 +594,9 @@ export function ProfilesPage(props: Props) {
                 </div>
               </div>
             )}
-            {detailTab === "inputs" && (
+            {(["buttons", "clutch", "system", "defaults"] as const).includes(
+              detailTab as ProfileInputSection,
+            ) && (
               <div className="profile-detail-section profile-inputs-section">
                 <ProfileVirtualMappings
                   key={`virtual-${selected.id}`}
@@ -582,6 +606,7 @@ export function ProfilesPage(props: Props) {
                   onNotice={onNotice}
                   presentation="workspace"
                   workspaceKind={workspaceKind}
+                  workspaceSection={detailTab as ProfileInputSection}
                 />
               </div>
             )}
