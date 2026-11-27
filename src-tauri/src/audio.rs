@@ -170,6 +170,9 @@ fn run_worker(receiver: Receiver<Request>, notifier: ChangeNotifier) {
                         executable,
                         step_percent,
                     } => backend.execute_application_volume(executable, *operation, *step_percent),
+                    SystemAction::Unsupported { action_type, .. } => Err(format!(
+                        "System action '{action_type}' is not supported by this version of Pivot."
+                    )),
                 }
                 .map(AudioResult::State),
             },

@@ -1421,7 +1421,10 @@ async fn learn_clutch_input(allow_button: bool) -> Result<ClutchInputCaptureSumm
     .map_err(|error| error.to_string())?
 }
 
-fn system_action_summary(scope: &str, binding: &SystemActionBinding) -> SystemActionBindingSummary {
+fn system_action_summary(
+    scope: &str,
+    binding: &SystemActionBinding,
+) -> Option<SystemActionBindingSummary> {
     let (action_type, operation, target_type, target_id, step_percent) = match &binding.action {
         SystemAction::Microphone { operation, device } => {
             let (target_type, target_id) = match device {
@@ -1462,8 +1465,9 @@ fn system_action_summary(scope: &str, binding: &SystemActionBinding) -> SystemAc
             Some(executable.clone()),
             *step_percent,
         ),
+        SystemAction::Unsupported { .. } => return None,
     };
-    SystemActionBindingSummary {
+    Some(SystemActionBindingSummary {
         scope: scope.to_owned(),
         device_id: binding.device_id.clone(),
         device_name: binding.device_name.clone(),
@@ -1483,7 +1487,7 @@ fn system_action_summary(scope: &str, binding: &SystemActionBinding) -> SystemAc
         target_id,
         step_percent,
         play_feedback_sound: binding.play_feedback_sound,
-    }
+    })
 }
 
 fn stored_system_action(
@@ -1576,7 +1580,7 @@ fn system_action_bindings(
         .settings
         .global_system_actions
         .iter()
-        .map(|binding| system_action_summary("global", binding))
+        .filter_map(|binding| system_action_summary("global", binding))
         .collect::<Vec<_>>();
     result.extend(
         profile
@@ -1584,7 +1588,7 @@ fn system_action_bindings(
             .as_ref()
             .into_iter()
             .flat_map(|mapping| mapping.system_actions.iter())
-            .map(|binding| system_action_summary("profile", binding)),
+            .filter_map(|binding| system_action_summary("profile", binding)),
     );
     Ok(result)
 }
@@ -3903,7 +3907,8 @@ fn resolve_system_actions<'a>(
         let candidates = bindings
             .iter()
             .filter(|binding| {
-                binding.device_id == device_id
+                !matches!(binding.action, SystemAction::Unsupported { .. })
+                    && binding.device_id == device_id
                     && binding.physical_button == physical_button
                     && binding.modifiers.iter().all(|modifier| {
                         held.contains(&(modifier.device_id.clone(), modifier.physical_button))
@@ -6659,7 +6664,7 @@ mod tests {
                 step_percent: 5,
             }
         );
-        let summary = system_action_summary("profile", &stored);
+        let summary = system_action_summary("profile", &stored).unwrap();
         assert_eq!(summary.action_type, "application_volume");
         assert_eq!(summary.operation, "decrease");
         assert_eq!(summary.target_id.as_deref(), Some("Le Mans Ultimate.exe"));

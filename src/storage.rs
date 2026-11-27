@@ -151,8 +151,7 @@ fn is_true(value: &bool) -> bool {
     *value
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SystemAction {
     Microphone {
         operation: MicrophoneOperation,
@@ -163,6 +162,117 @@ pub enum SystemAction {
         executable: String,
         step_percent: u8,
     },
+    Unsupported {
+        action_type: String,
+        fields: BTreeMap<String, serde_json::Value>,
+    },
+}
+
+impl Serialize for SystemAction {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut fields = serde_json::Map::new();
+        match self {
+            Self::Microphone { operation, device } => {
+                fields.insert(
+                    "type".into(),
+                    serde_json::Value::String("microphone".into()),
+                );
+                fields.insert(
+                    "operation".into(),
+                    serde_json::to_value(operation).map_err(serde::ser::Error::custom)?,
+                );
+                fields.insert(
+                    "device".into(),
+                    serde_json::to_value(device).map_err(serde::ser::Error::custom)?,
+                );
+            }
+            Self::ApplicationVolume {
+                operation,
+                executable,
+                step_percent,
+            } => {
+                fields.insert(
+                    "type".into(),
+                    serde_json::Value::String("application_volume".into()),
+                );
+                fields.insert(
+                    "operation".into(),
+                    serde_json::to_value(operation).map_err(serde::ser::Error::custom)?,
+                );
+                fields.insert(
+                    "executable".into(),
+                    serde_json::Value::String(executable.clone()),
+                );
+                fields.insert("step_percent".into(), (*step_percent).into());
+            }
+            Self::Unsupported {
+                action_type,
+                fields: stored_fields,
+            } => {
+                fields.extend(
+                    stored_fields
+                        .iter()
+                        .map(|(name, value)| (name.clone(), value.clone())),
+                );
+                fields.insert(
+                    "type".into(),
+                    serde_json::Value::String(action_type.clone()),
+                );
+            }
+        }
+        fields.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for SystemAction {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let mut fields = serde_json::Map::<String, serde_json::Value>::deserialize(deserializer)?;
+        let action_type = fields
+            .remove("type")
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .ok_or_else(|| serde::de::Error::custom("system action type must be a string"))?;
+        let required = |fields: &mut serde_json::Map<String, serde_json::Value>, name: &str| {
+            fields
+                .remove(name)
+                .ok_or_else(|| format!("system action field '{name}' is missing"))
+        };
+        match action_type.as_str() {
+            "microphone" => Ok(Self::Microphone {
+                operation: serde_json::from_value(
+                    required(&mut fields, "operation").map_err(serde::de::Error::custom)?,
+                )
+                .map_err(serde::de::Error::custom)?,
+                device: serde_json::from_value(
+                    required(&mut fields, "device").map_err(serde::de::Error::custom)?,
+                )
+                .map_err(serde::de::Error::custom)?,
+            }),
+            "application_volume" => Ok(Self::ApplicationVolume {
+                operation: serde_json::from_value(
+                    required(&mut fields, "operation").map_err(serde::de::Error::custom)?,
+                )
+                .map_err(serde::de::Error::custom)?,
+                executable: serde_json::from_value(
+                    required(&mut fields, "executable").map_err(serde::de::Error::custom)?,
+                )
+                .map_err(serde::de::Error::custom)?,
+                step_percent: serde_json::from_value(
+                    required(&mut fields, "step_percent").map_err(serde::de::Error::custom)?,
+                )
+                .map_err(serde::de::Error::custom)?,
+            }),
+            _ => Ok(Self::Unsupported {
+                action_type,
+                fields: fields.into_iter().collect(),
+            }),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -3726,7 +3836,7 @@ fn validate_system_action_bindings(bindings: &[SystemActionBinding]) -> Result<(
                 binding.device_id.clone(),
                 binding.physical_button,
                 modifiers.into_iter().collect::<Vec<_>>(),
-                binding.action.clone(),
+                serde_json::to_string(&binding.action)?,
             )),
             "The same physical button chord cannot target the same system action more than once."
         );
@@ -3978,6 +4088,27 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<SystemActionBinding>(&json).unwrap(),
             binding
+        );
+        validate_system_action_bindings(&[binding]).unwrap();
+    }
+
+    #[test]
+    fn preserves_unrecognised_future_system_actions_instead_of_rejecting_settings() {
+        let json = r#"{"device_id":"wheel","physical_button":9,"action":{"type":"future_action","operation":"toggle","nested":{"enabled":true}}}"#;
+
+        let binding: SystemActionBinding = serde_json::from_str(json).unwrap();
+
+        assert!(matches!(
+            &binding.action,
+            SystemAction::Unsupported { action_type, fields }
+                if action_type == "future_action"
+                    && fields.get("operation") == Some(&serde_json::json!("toggle"))
+                    && fields.get("nested") == Some(&serde_json::json!({"enabled": true}))
+        ));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&serde_json::to_string(&binding).unwrap())
+                .unwrap(),
+            serde_json::from_str::<serde_json::Value>(json).unwrap()
         );
         validate_system_action_bindings(&[binding]).unwrap();
     }
