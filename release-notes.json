@@ -1,10 +1,10 @@
 {
-  "version": "0.6.13",
-  "title": "Clearer setup and recovery",
-  "summary": "SteamVR and vJoy setup are now explicit, guided, and easier to diagnose.",
+  "version": "0.6.14",
+  "title": "A clearer profile garage",
+  "summary": "Profile editing and automatic selection now have focused, roomier workspaces.",
   "highlights": [
-    "Added a clear Desktop, OpenXR, and SteamVR launch selector with a dedicated SteamVR launcher setup panel.",
-    "Added an in-app vJoy installation and device 1 configuration guide with a 128-button readiness check.",
-    "Page failures now show a recoverable error instead of a blank workspace, and updater preparation no longer blocks the interface."
+    "Promoted Automatic Selection to its own workspace page with class cards, assigned wheel images, searchable profile choices, and enable or resume controls.",
+    "Combined profile browsing and editing into a cleaner two-pane workspace with flatter navigation and more consistent scrolling.",
+    "Made class defaults global to the workspace instead of repeating them inside every profile, while allowing any profile to be assigned and tagged in one step."
   ]
 }
