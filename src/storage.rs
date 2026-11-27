@@ -156,12 +156,27 @@ pub enum SystemAction {
         operation: MicrophoneOperation,
         device: AudioDeviceTarget,
     },
+    ApplicationVolume {
+        operation: ApplicationVolumeOperation,
+        executable: String,
+        step_percent: u8,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum MicrophoneOperation {
     Toggle,
+    Mute,
+    Unmute,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationVolumeOperation {
+    Increase,
+    Decrease,
+    ToggleMute,
     Mute,
     Unmute,
 }
@@ -3283,6 +3298,22 @@ fn validate_system_action_bindings(bindings: &[SystemActionBinding]) -> Result<(
         {
             validate_virtual_label(device_id, "Microphone device ID")?;
         }
+        if let SystemAction::ApplicationVolume {
+            executable,
+            step_percent,
+            ..
+        } = &binding.action
+        {
+            validate_virtual_label(executable, "Application executable")?;
+            ensure!(
+                executable.to_ascii_lowercase().ends_with(".exe"),
+                "Application volume targets must be Windows executable names."
+            );
+            ensure!(
+                (1..=25).contains(step_percent),
+                "Application volume steps must be between 1% and 25%."
+            );
+        }
         ensure!(
             seen.insert((
                 binding.device_id.clone(),
@@ -3519,6 +3550,29 @@ mod tests {
         .unwrap();
 
         assert!(binding.play_feedback_sound);
+    }
+
+    #[test]
+    fn application_volume_actions_round_trip_with_a_stable_executable_target() {
+        let binding = SystemActionBinding {
+            device_id: "wheel".into(),
+            device_name: "Wheel".into(),
+            physical_button: 7,
+            modifiers: Vec::new(),
+            play_feedback_sound: false,
+            action: SystemAction::ApplicationVolume {
+                operation: ApplicationVolumeOperation::Increase,
+                executable: "Le Mans Ultimate.exe".into(),
+                step_percent: 5,
+            },
+        };
+
+        let json = serde_json::to_string(&binding).unwrap();
+        assert_eq!(
+            serde_json::from_str::<SystemActionBinding>(&json).unwrap(),
+            binding
+        );
+        validate_system_action_bindings(&[binding]).unwrap();
     }
 
     #[test]

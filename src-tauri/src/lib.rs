@@ -4,10 +4,10 @@ use lmukit_core::car_context::{
     LmuSessionState, display_existing_class,
 };
 use lmukit_core::storage::{
-    AudioDeviceRole, AudioDeviceTarget, CompanionApp, CompanionAppIssue, InputMode, LaunchMode,
-    MicrophoneOperation, Profile, Store, SystemAction, SystemActionBinding,
-    VirtualAnalogAxisMapping, VirtualAxisCalibration, VirtualAxisId, VirtualAxisInput,
-    VirtualButtonConflictResolution, VirtualButtonMapping, VirtualButtonModifier,
+    ApplicationVolumeOperation, AudioDeviceRole, AudioDeviceTarget, CompanionApp,
+    CompanionAppIssue, InputMode, LaunchMode, MicrophoneOperation, Profile, Store, SystemAction,
+    SystemActionBinding, VirtualAnalogAxisMapping, VirtualAxisCalibration, VirtualAxisId,
+    VirtualAxisInput, VirtualButtonConflictResolution, VirtualButtonMapping, VirtualButtonModifier,
     VirtualClutchInput, VirtualClutchMapping, VirtualEncoderControl, VirtualEncoderGroup,
     VirtualEncoderMode as StoredEncoderMode, VirtualProfileMapping, Wheel, WorkspaceClutchSettings,
     WorkspaceKind, resolve_virtual_button_mappings, validate_assetto_corsa_root,
@@ -477,10 +477,22 @@ struct SystemActionBindingSummary {
     device_name: String,
     physical_button: u32,
     modifiers: Vec<VirtualButtonModifierSummary>,
+    #[serde(default = "default_system_action_type")]
+    action_type: String,
     operation: String,
     target_type: String,
     target_id: Option<String>,
+    #[serde(default = "default_volume_step_percent")]
+    step_percent: u8,
     play_feedback_sound: bool,
+}
+
+fn default_system_action_type() -> String {
+    "microphone".to_owned()
+}
+
+fn default_volume_step_percent() -> u8 {
+    5
 }
 
 #[derive(Serialize)]
@@ -1410,15 +1422,46 @@ async fn learn_clutch_input(allow_button: bool) -> Result<ClutchInputCaptureSumm
 }
 
 fn system_action_summary(scope: &str, binding: &SystemActionBinding) -> SystemActionBindingSummary {
-    let SystemAction::Microphone { operation, device } = &binding.action;
-    let (target_type, target_id) = match device {
-        AudioDeviceTarget::Default {
-            role: AudioDeviceRole::Console,
-        } => ("default", None),
-        AudioDeviceTarget::Default {
-            role: AudioDeviceRole::Communications,
-        } => ("communications", None),
-        AudioDeviceTarget::Specific { device_id } => ("specific", Some(device_id.clone())),
+    let (action_type, operation, target_type, target_id, step_percent) = match &binding.action {
+        SystemAction::Microphone { operation, device } => {
+            let (target_type, target_id) = match device {
+                AudioDeviceTarget::Default {
+                    role: AudioDeviceRole::Console,
+                } => ("default", None),
+                AudioDeviceTarget::Default {
+                    role: AudioDeviceRole::Communications,
+                } => ("communications", None),
+                AudioDeviceTarget::Specific { device_id } => ("specific", Some(device_id.clone())),
+            };
+            (
+                "microphone",
+                match operation {
+                    MicrophoneOperation::Toggle => "toggle",
+                    MicrophoneOperation::Mute => "mute",
+                    MicrophoneOperation::Unmute => "unmute",
+                },
+                target_type,
+                target_id,
+                5,
+            )
+        }
+        SystemAction::ApplicationVolume {
+            operation,
+            executable,
+            step_percent,
+        } => (
+            "application_volume",
+            match operation {
+                ApplicationVolumeOperation::Increase => "increase",
+                ApplicationVolumeOperation::Decrease => "decrease",
+                ApplicationVolumeOperation::ToggleMute => "toggle_mute",
+                ApplicationVolumeOperation::Mute => "mute",
+                ApplicationVolumeOperation::Unmute => "unmute",
+            },
+            "application",
+            Some(executable.clone()),
+            *step_percent,
+        ),
     };
     SystemActionBindingSummary {
         scope: scope.to_owned(),
@@ -1434,14 +1477,11 @@ fn system_action_summary(scope: &str, binding: &SystemActionBinding) -> SystemAc
                 physical_button: modifier.physical_button,
             })
             .collect(),
-        operation: match operation {
-            MicrophoneOperation::Toggle => "toggle",
-            MicrophoneOperation::Mute => "mute",
-            MicrophoneOperation::Unmute => "unmute",
-        }
-        .to_owned(),
+        action_type: action_type.to_owned(),
+        operation: operation.to_owned(),
         target_type: target_type.to_owned(),
         target_id,
+        step_percent,
         play_feedback_sound: binding.play_feedback_sound,
     }
 }
@@ -1449,6 +1489,43 @@ fn system_action_summary(scope: &str, binding: &SystemActionBinding) -> SystemAc
 fn stored_system_action(
     summary: SystemActionBindingSummary,
 ) -> Result<SystemActionBinding, String> {
+    if summary.action_type == "application_volume" {
+        let operation = match summary.operation.as_str() {
+            "increase" => ApplicationVolumeOperation::Increase,
+            "decrease" => ApplicationVolumeOperation::Decrease,
+            "toggle_mute" => ApplicationVolumeOperation::ToggleMute,
+            "mute" => ApplicationVolumeOperation::Mute,
+            "unmute" => ApplicationVolumeOperation::Unmute,
+            _ => return Err("Unknown application volume operation.".to_owned()),
+        };
+        let executable = summary
+            .target_id
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| "Choose an application with an active audio session.".to_owned())?;
+        if !(1..=25).contains(&summary.step_percent) {
+            return Err("Volume steps must be between 1% and 25%.".to_owned());
+        }
+        return Ok(SystemActionBinding {
+            device_id: summary.device_id,
+            device_name: summary.device_name,
+            physical_button: summary.physical_button,
+            modifiers: summary
+                .modifiers
+                .into_iter()
+                .map(|modifier| VirtualButtonModifier {
+                    device_id: modifier.device_id,
+                    device_name: modifier.device_name,
+                    physical_button: modifier.physical_button,
+                })
+                .collect(),
+            play_feedback_sound: false,
+            action: SystemAction::ApplicationVolume {
+                operation,
+                executable,
+                step_percent: summary.step_percent,
+            },
+        });
+    }
     let operation = match summary.operation.as_str() {
         "toggle" => MicrophoneOperation::Toggle,
         "mute" => MicrophoneOperation::Mute,
@@ -1696,6 +1773,13 @@ fn capture_audio_devices(
 }
 
 #[tauri::command]
+fn playback_applications(
+    audio: State<'_, AudioState>,
+) -> Result<Vec<audio::PlaybackApplication>, String> {
+    audio.0.list_playback_applications()
+}
+
+#[tauri::command]
 fn microphone_mute_state(
     target_type: String,
     target_id: Option<String>,
@@ -1707,12 +1791,16 @@ fn microphone_mute_state(
         device_name: String::new(),
         physical_button: 1,
         modifiers: vec![],
+        action_type: "microphone".into(),
         operation: "toggle".into(),
         target_type,
         target_id,
+        step_percent: 5,
         play_feedback_sound: false,
     })?;
-    let SystemAction::Microphone { device, .. } = target.action;
+    let SystemAction::Microphone { device, .. } = target.action else {
+        return Err("Expected a microphone action.".to_owned());
+    };
     audio.0.mute_state(device)
 }
 
@@ -1730,12 +1818,37 @@ fn test_microphone_action(
         device_name: String::new(),
         physical_button: 1,
         modifiers: vec![],
+        action_type: "microphone".into(),
         operation,
         target_type,
         target_id,
+        step_percent: 5,
         play_feedback_sound,
     })?;
     audio.0.execute(binding.action, binding.play_feedback_sound)
+}
+
+#[tauri::command]
+fn test_application_volume_action(
+    operation: String,
+    executable: String,
+    step_percent: u8,
+    audio: State<'_, AudioState>,
+) -> Result<bool, String> {
+    let binding = stored_system_action(SystemActionBindingSummary {
+        scope: String::new(),
+        device_id: "test".into(),
+        device_name: String::new(),
+        physical_button: 1,
+        modifiers: vec![],
+        action_type: "application_volume".into(),
+        operation,
+        target_type: "application".into(),
+        target_id: Some(executable),
+        step_percent,
+        play_feedback_sound: false,
+    })?;
+    audio.0.execute(binding.action, false)
 }
 
 #[tauri::command]
@@ -5808,8 +5921,10 @@ pub fn run() {
             save_system_action_binding,
             remove_system_action_binding,
             capture_audio_devices,
+            playback_applications,
             microphone_mute_state,
             test_microphone_action,
+            test_application_volume_action,
             saved_virtual_layout,
             import_profile_virtual_mapping,
             virtual_profile_defaults,
@@ -6434,6 +6549,38 @@ mod tests {
                 },
             },
         }
+    }
+
+    #[test]
+    fn application_volume_summaries_preserve_the_executable_and_step() {
+        let stored = stored_system_action(SystemActionBindingSummary {
+            scope: "profile".into(),
+            device_id: "wheel".into(),
+            device_name: "Wheel".into(),
+            physical_button: 8,
+            modifiers: Vec::new(),
+            action_type: "application_volume".into(),
+            operation: "decrease".into(),
+            target_type: "application".into(),
+            target_id: Some("Le Mans Ultimate.exe".into()),
+            step_percent: 5,
+            play_feedback_sound: false,
+        })
+        .unwrap();
+
+        assert_eq!(
+            stored.action,
+            SystemAction::ApplicationVolume {
+                operation: ApplicationVolumeOperation::Decrease,
+                executable: "Le Mans Ultimate.exe".into(),
+                step_percent: 5,
+            }
+        );
+        let summary = system_action_summary("profile", &stored);
+        assert_eq!(summary.action_type, "application_volume");
+        assert_eq!(summary.operation, "decrease");
+        assert_eq!(summary.target_id.as_deref(), Some("Le Mans Ultimate.exe"));
+        assert_eq!(summary.step_percent, 5);
     }
 
     #[test]

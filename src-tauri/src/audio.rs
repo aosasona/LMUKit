@@ -1,4 +1,7 @@
-use lmukit_core::storage::{AudioDeviceRole, AudioDeviceTarget, MicrophoneOperation, SystemAction};
+use lmukit_core::storage::{
+    ApplicationVolumeOperation, AudioDeviceRole, AudioDeviceTarget, MicrophoneOperation,
+    SystemAction,
+};
 use serde::Serialize;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -16,8 +19,18 @@ pub struct CaptureDevice {
     pub default_communications: bool,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackApplication {
+    pub executable: String,
+    pub volume_percent: u8,
+    pub muted: bool,
+    pub session_count: usize,
+}
+
 enum Request {
     List(SyncSender<Result<Vec<CaptureDevice>, String>>),
+    ListApplications(SyncSender<Result<Vec<PlaybackApplication>, String>>),
     State(AudioDeviceTarget, SyncSender<Result<bool, String>>),
     Execute(SystemAction, bool, Option<SyncSender<Result<bool, String>>>),
 }
@@ -44,6 +57,14 @@ impl AudioService {
         let (reply, result) = mpsc::sync_channel(1);
         self.sender
             .send(Request::List(reply))
+            .map_err(service_stopped)?;
+        result.recv().map_err(service_stopped)?
+    }
+
+    pub fn list_playback_applications(&self) -> Result<Vec<PlaybackApplication>, String> {
+        let (reply, result) = mpsc::sync_channel(1);
+        self.sender
+            .send(Request::ListApplications(reply))
             .map_err(service_stopped)?;
         result.recv().map_err(service_stopped)?
     }
@@ -91,6 +112,19 @@ fn desired_mute_state(current: bool, operation: MicrophoneOperation) -> bool {
     }
 }
 
+fn adjusted_application_volume(
+    current: f32,
+    operation: ApplicationVolumeOperation,
+    step_percent: u8,
+) -> f32 {
+    let direction = match operation {
+        ApplicationVolumeOperation::Increase => 1.0,
+        ApplicationVolumeOperation::Decrease => -1.0,
+        _ => 0.0,
+    };
+    (current + direction * f32::from(step_percent) / 100.0).clamp(0.0, 1.0)
+}
+
 trait MicrophoneControl {
     fn mute_state(&mut self, target: &AudioDeviceTarget) -> Result<bool, String>;
     fn set_mute(&mut self, target: &AudioDeviceTarget, muted: bool) -> Result<bool, String>;
@@ -100,7 +134,9 @@ fn execute_microphone_action(
     backend: &mut impl MicrophoneControl,
     action: &SystemAction,
 ) -> Result<bool, String> {
-    let SystemAction::Microphone { operation, device } = action;
+    let SystemAction::Microphone { operation, device } = action else {
+        return Err("Expected a microphone action.".to_owned());
+    };
     let current = backend.mute_state(device)?;
     backend.set_mute(device, desired_mute_state(current, *operation))
 }
@@ -123,10 +159,19 @@ fn run_worker(receiver: Receiver<Request>, notifier: ChangeNotifier) {
         let result = match &mut backend {
             Some(backend) => match &request {
                 Request::List(_) => backend.list().map(AudioResult::Devices),
+                Request::ListApplications(_) => backend
+                    .list_playback_applications()
+                    .map(AudioResult::Applications),
                 Request::State(target, _) => backend.mute_state(target).map(AudioResult::State),
-                Request::Execute(action, _, _) => {
-                    execute_microphone_action(backend, action).map(AudioResult::State)
+                Request::Execute(action, _, _) => match action {
+                    SystemAction::Microphone { .. } => execute_microphone_action(backend, action),
+                    SystemAction::ApplicationVolume {
+                        operation,
+                        executable,
+                        step_percent,
+                    } => backend.execute_application_volume(executable, *operation, *step_percent),
                 }
+                .map(AudioResult::State),
             },
             None => Err("Windows Core Audio is unavailable.".to_owned()),
         };
@@ -138,6 +183,12 @@ fn run_worker(receiver: Receiver<Request>, notifier: ChangeNotifier) {
             Request::List(reply) => {
                 let _ = reply.send(result.and_then(|value| match value {
                     AudioResult::Devices(devices) => Ok(devices),
+                    _ => Err("The audio service returned an unexpected response.".to_owned()),
+                }));
+            }
+            Request::ListApplications(reply) => {
+                let _ = reply.send(result.and_then(|value| match value {
+                    AudioResult::Applications(applications) => Ok(applications),
                     _ => Err("The audio service returned an unexpected response.".to_owned()),
                 }));
             }
@@ -153,14 +204,7 @@ fn run_worker(receiver: Receiver<Request>, notifier: ChangeNotifier) {
                         play_state_feedback(muted);
                     }
                     notify_changed(&notifier);
-                    crate::diagnostics::info(
-                        "audio.microphone.changed",
-                        if muted {
-                            "Microphone muted"
-                        } else {
-                            "Microphone unmuted"
-                        },
-                    );
+                    crate::diagnostics::info("audio.system_action.changed", "Audio action applied");
                     if let Some(reply) = reply {
                         let _ = reply.send(Ok(muted));
                     }
@@ -281,15 +325,19 @@ fn notify_changed(notifier: &ChangeNotifier) {
 
 enum AudioResult {
     Devices(Vec<CaptureDevice>),
+    Applications(Vec<PlaybackApplication>),
     State(bool),
 }
 
 #[cfg(target_os = "windows")]
 mod windows_backend {
     use super::*;
+    use std::collections::HashMap;
+    use std::mem::size_of;
     use windows::{
         Win32::{
             Devices::FunctionDiscovery::PKEY_Device_FriendlyName,
+            Foundation::{CloseHandle, ERROR_NO_MORE_FILES, HANDLE, WIN32_ERROR},
             Media::Audio::{
                 AUDIO_VOLUME_NOTIFICATION_DATA, DEVICE_STATE, DEVICE_STATE_ACTIVE,
                 DEVICE_STATE_DISABLED, DEVICE_STATE_NOTPRESENT, DEVICE_STATE_UNPLUGGED, EDataFlow,
@@ -298,15 +346,20 @@ mod windows_backend {
                     IAudioEndpointVolume, IAudioEndpointVolumeCallback,
                     IAudioEndpointVolumeCallback_Impl,
                 },
-                IMMDevice, IMMDeviceEnumerator, IMMNotificationClient, IMMNotificationClient_Impl,
-                MMDeviceEnumerator, eCapture, eCommunications, eConsole,
+                IAudioSessionControl2, IAudioSessionManager2, IMMDevice, IMMDeviceEnumerator,
+                IMMNotificationClient, IMMNotificationClient_Impl, ISimpleAudioVolume,
+                MMDeviceEnumerator, eCapture, eCommunications, eConsole, eRender,
             },
             System::Com::{
                 CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree,
                 CoUninitialize, STGM_READ,
             },
+            System::Diagnostics::ToolHelp::{
+                CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+                TH32CS_SNAPPROCESS,
+            },
         },
-        core::{PCWSTR, implement},
+        core::{Interface, PCWSTR, implement},
     };
 
     #[implement(IMMNotificationClient)]
@@ -459,6 +512,116 @@ mod windows_backend {
             }
         }
 
+        pub fn list_playback_applications(&self) -> Result<Vec<PlaybackApplication>, String> {
+            let sessions = self.playback_sessions()?;
+            let mut applications = sessions
+                .into_iter()
+                .map(|(executable, volumes)| {
+                    let session_count = volumes.len();
+                    let volume = volumes
+                        .iter()
+                        .filter_map(|item| unsafe { item.GetMasterVolume().ok() })
+                        .sum::<f32>()
+                        / session_count.max(1) as f32;
+                    let muted = volumes
+                        .iter()
+                        .all(|item| unsafe { item.GetMute().is_ok_and(|value| value.as_bool()) });
+                    PlaybackApplication {
+                        executable,
+                        volume_percent: (volume.clamp(0.0, 1.0) * 100.0).round() as u8,
+                        muted,
+                        session_count,
+                    }
+                })
+                .collect::<Vec<_>>();
+            applications.sort_by_key(|application| application.executable.to_lowercase());
+            Ok(applications)
+        }
+
+        pub fn execute_application_volume(
+            &self,
+            executable: &str,
+            operation: ApplicationVolumeOperation,
+            step_percent: u8,
+        ) -> Result<bool, String> {
+            let sessions = self
+                .playback_sessions()?
+                .into_iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case(executable))
+                .map(|(_, sessions)| sessions)
+                .ok_or_else(|| {
+                    format!(
+                        "{executable} has no active Windows playback session. Start its audio and try again."
+                    )
+                })?;
+            let toggle_to_muted = operation == ApplicationVolumeOperation::ToggleMute
+                && !sessions
+                    .iter()
+                    .all(|item| unsafe { item.GetMute().is_ok_and(|value| value.as_bool()) });
+            for volume in &sessions {
+                unsafe {
+                    match operation {
+                        ApplicationVolumeOperation::Increase
+                        | ApplicationVolumeOperation::Decrease => {
+                            let current = volume.GetMasterVolume().map_err(format_windows_error)?;
+                            let next =
+                                adjusted_application_volume(current, operation, step_percent);
+                            volume
+                                .SetMasterVolume(next, std::ptr::null())
+                                .map_err(format_windows_error)?;
+                        }
+                        ApplicationVolumeOperation::ToggleMute => volume
+                            .SetMute(toggle_to_muted, std::ptr::null())
+                            .map_err(format_windows_error)?,
+                        ApplicationVolumeOperation::Mute => volume
+                            .SetMute(true, std::ptr::null())
+                            .map_err(format_windows_error)?,
+                        ApplicationVolumeOperation::Unmute => volume
+                            .SetMute(false, std::ptr::null())
+                            .map_err(format_windows_error)?,
+                    }
+                }
+            }
+            Ok(sessions
+                .iter()
+                .all(|item| unsafe { item.GetMute().is_ok_and(|value| value.as_bool()) }))
+        }
+
+        fn playback_sessions(&self) -> Result<Vec<(String, Vec<ISimpleAudioVolume>)>, String> {
+            unsafe {
+                let process_names = process_names()?;
+                let devices = self
+                    .enumerator
+                    .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+                    .map_err(format_windows_error)?;
+                let mut grouped: HashMap<String, Vec<ISimpleAudioVolume>> = HashMap::new();
+                for device_index in 0..devices.GetCount().map_err(format_windows_error)? {
+                    let device = devices.Item(device_index).map_err(format_windows_error)?;
+                    let manager: IAudioSessionManager2 = device
+                        .Activate(CLSCTX_ALL, None)
+                        .map_err(format_windows_error)?;
+                    let sessions = manager
+                        .GetSessionEnumerator()
+                        .map_err(format_windows_error)?;
+                    for session_index in 0..sessions.GetCount().map_err(format_windows_error)? {
+                        let control = sessions
+                            .GetSession(session_index)
+                            .map_err(format_windows_error)?;
+                        let control2: IAudioSessionControl2 =
+                            control.cast().map_err(format_windows_error)?;
+                        let process_id = control2.GetProcessId().map_err(format_windows_error)?;
+                        let Some(executable) = process_names.get(&process_id) else {
+                            continue;
+                        };
+                        let volume: ISimpleAudioVolume =
+                            control.cast().map_err(format_windows_error)?;
+                        grouped.entry(executable.clone()).or_default().push(volume);
+                    }
+                }
+                Ok(grouped.into_iter().collect())
+            }
+        }
+
         fn read_state(&self, target: &AudioDeviceTarget) -> Result<bool, String> {
             unsafe {
                 endpoint_volume(&self.resolve(target)?)?
@@ -551,6 +714,47 @@ mod windows_backend {
         }
     }
 
+    fn process_names() -> Result<HashMap<u32, String>, String> {
+        struct Snapshot(HANDLE);
+        impl Drop for Snapshot {
+            fn drop(&mut self) {
+                let _ = unsafe { CloseHandle(self.0) };
+            }
+        }
+        let snapshot = Snapshot(
+            unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }
+                .map_err(format_windows_error)?,
+        );
+        let mut entry = PROCESSENTRY32W {
+            dwSize: size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        unsafe { Process32FirstW(snapshot.0, &mut entry) }.map_err(format_windows_error)?;
+        let mut result = HashMap::new();
+        loop {
+            let length = entry
+                .szExeFile
+                .iter()
+                .position(|character| *character == 0)
+                .unwrap_or(entry.szExeFile.len());
+            result.insert(
+                entry.th32ProcessID,
+                String::from_utf16_lossy(&entry.szExeFile[..length]),
+            );
+            match unsafe { Process32NextW(snapshot.0, &mut entry) } {
+                Ok(()) => {}
+                Err(error)
+                    if WIN32_ERROR::from_error(&error)
+                        .is_some_and(|code| code == ERROR_NO_MORE_FILES) =>
+                {
+                    break;
+                }
+                Err(error) => return Err(format_windows_error(error)),
+            }
+        }
+        Ok(result)
+    }
+
     fn device_id(device: &IMMDevice) -> Result<String, String> {
         unsafe {
             let value = device.GetId().map_err(format_windows_error)?;
@@ -590,6 +794,22 @@ mod tests {
         assert!(desired_mute_state(true, MicrophoneOperation::Mute));
         assert!(!desired_mute_state(false, MicrophoneOperation::Unmute));
         assert!(!desired_mute_state(true, MicrophoneOperation::Unmute));
+    }
+
+    #[test]
+    fn application_volume_steps_clamp_without_skipping_press_edges() {
+        assert_eq!(
+            adjusted_application_volume(0.98, ApplicationVolumeOperation::Increase, 5),
+            1.0
+        );
+        assert_eq!(
+            adjusted_application_volume(0.02, ApplicationVolumeOperation::Decrease, 5),
+            0.0
+        );
+        assert_eq!(
+            adjusted_application_volume(0.5, ApplicationVolumeOperation::Increase, 5),
+            0.55
+        );
     }
 
     #[derive(Default)]

@@ -59,6 +59,7 @@ _Assetto Corsa keeps its profiles and named actions separate while reusing the g
 - Name and pulse unused vJoy buttons for external tools such as RaceLab, then map those shared actions—with the same modifier support—independently in every profile.
 - Deliberately make one physical button or modifier combination trigger several named actions—for example, recentering VR in both LMU and RaceLab—while retaining replacement warnings for accidental conflicts.
 - Bind a physical button or modifier combination to native Windows microphone Toggle, Mute, or Unmute actions, targeting the current default, communications default, or a specific capture device without keyboard-shortcut emulation.
+- Control a specific game's or companion application's Windows playback volume from wheel buttons or encoders, including configurable volume steps and mute actions.
 - Bind one persistent vJoy clutch axis in LMU, then relay the firmware-combined clutch axis from SimPro, SimHub, or similar wheel software through each Pivot profile.
 
 Pivot stores profiles, managed wheel images, settings, and timestamped recovery backups in the current Windows user's application-data directory. Use the **Folder** button on Profiles to open the exact location.
@@ -166,9 +167,15 @@ External actions use the same per-profile physical controls and modifier combina
 
 #### Bind a microphone mute action
 
-Open a profile's **Edit button mappings** workspace and use **System actions → Bind microphone action**. Press a wheel, controller, or button-box control (or hold one modifier and press the trigger), choose Toggle, Mute, or Unmute, then select the default Windows microphone, the default communications microphone, or a specific detected capture device. Choose **This profile** or **Every workspace and profile** and save. Global bindings remain available whenever any Virtual Input profile is live; a profile-specific binding on the same chord takes precedence.
+Open a profile's **System actions** workspace and select **Bind system action**. Press a wheel, controller, or button-box control (or hold one modifier and press the trigger), choose **Microphone mute**, then choose Toggle, Mute, or Unmute and select the default Windows microphone, communications microphone, or a specific detected capture device. Choose **This profile** or **Every workspace and profile** and save. Global bindings remain available whenever any Virtual Input profile is live; a profile-specific binding on the same chord takes precedence.
 
 Pivot resolves default targets when the button is pressed, so changing the Windows default microphone does not require rebinding. Specific-device bindings retain the endpoint identifier and show as unavailable if that microphone is disconnected rather than silently switching devices. Windows Core Audio notifications refresh device, default, and mute status, including changes made outside Pivot. Actions run on a dedicated COM worker and execute once per physical press edge, not repeatedly while held. Each binding can play Pivot's short descending mute chime or ascending active chime after the resulting state is verified; disable the speaker control beside a binding if you do not want audio feedback.
+
+#### Control a game's or application's volume
+
+Start the game or application and make sure it has produced audio, then open a profile's **System actions** workspace and select **Bind system action**. After capturing a control, choose **Application volume**, select its running executable, and choose Increase, Decrease, Toggle mute, Mute, or Unmute. Increase and Decrease support steps from 1% to 25%, making a pair of encoder directions a natural volume control.
+
+Pivot stores the executable name rather than a temporary process or audio-session identifier. Each press resolves and updates all matching playback sessions across active Windows output devices. A saved target remains configured while the application is closed, but testing or triggering it requires an active Windows playback session. Applications using exclusive-mode audio may not expose a controllable shared session.
 
 Core Audio endpoint mute is respected by applications that capture through the normal Windows audio endpoint, including typical Discord and OBS configurations. An application that opens hardware through a proprietary or exclusive path may not honor endpoint mute; Pivot cannot guarantee muting in that application.
 

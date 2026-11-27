@@ -185,20 +185,40 @@ export type CaptureAudioDevice = {
   default: boolean;
   defaultCommunications: boolean;
 };
+export type PlaybackApplication = {
+  executable: string;
+  volumePercent: number;
+  muted: boolean;
+  sessionCount: number;
+};
 export type SystemActionBinding = {
   scope: "profile" | "global";
   deviceId: string;
   deviceName: string;
   physicalButton: number;
   modifiers: VirtualButtonModifier[];
-  operation: "toggle" | "mute" | "unmute";
-  targetType: "default" | "communications" | "specific";
+  actionType: "microphone" | "application_volume";
+  operation:
+    | "toggle"
+    | "mute"
+    | "unmute"
+    | "increase"
+    | "decrease"
+    | "toggle_mute";
+  targetType: "default" | "communications" | "specific" | "application";
   targetId: string | null;
+  stepPercent: number;
   playFeedbackSound: boolean;
 };
 export type PhysicalControlCapture = Omit<
   SystemActionBinding,
-  "scope" | "operation" | "targetType" | "targetId" | "playFeedbackSound"
+  | "scope"
+  | "actionType"
+  | "operation"
+  | "targetType"
+  | "targetId"
+  | "stepPercent"
+  | "playFeedbackSound"
 >;
 export type VirtualControlInspection = {
   control: string;
